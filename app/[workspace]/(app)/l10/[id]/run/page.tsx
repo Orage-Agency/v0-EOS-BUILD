@@ -4,12 +4,12 @@ import { Toaster } from "sonner"
 export default async function RunnerPage({
   params,
 }: {
-  params: Promise<{ id: string }>
+  params: Promise<{ workspace: string; id: string }>
 }) {
-  const { id } = await params
+  const { workspace, id } = await params
   return (
     <>
-      <RunnerShell id={id} />
+      <RunnerShell id={id} workspaceSlug={workspace} />
       <Toaster
         position="bottom-center"
         theme="dark"

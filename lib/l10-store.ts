@@ -1,7 +1,8 @@
 "use client"
 
 import { create } from "zustand"
-import { CURRENT_USER, USERS, type MockUser } from "@/lib/mock-data"
+import { USERS, type MockUser } from "@/lib/mock-data"
+import { createL10Meeting } from "@/app/actions/l10"
 
 export type AgendaSegment =
   | "segue"
@@ -274,6 +275,7 @@ const seedMeetings: Meeting[] = [
 
 type State = {
   meetings: Meeting[]
+  workspaceSlug: string
   // Runner state
   timerSec: number
   timerRunning: boolean
@@ -282,6 +284,8 @@ type State = {
 }
 
 type Actions = {
+  setMeetings: (meetings: Meeting[]) => void
+  setWorkspaceSlug: (slug: string) => void
   // Selectors
   getMeeting: (id: string) => Meeting | undefined
   getActiveSegment: (id: string) => AgendaItem | undefined
@@ -317,7 +321,7 @@ type Actions = {
   // Start
   startMeeting: (meetingId: string) => void
   // Create
-  createMeeting: (when: number) => string
+  createMeeting: (when: number) => Promise<string>
 }
 
 function uid(prefix: string) {
@@ -326,10 +330,14 @@ function uid(prefix: string) {
 
 export const useL10Store = create<State & Actions>((set, get) => ({
   meetings: seedMeetings,
+  workspaceSlug: "",
   timerSec: 45 * 60 + 28,
   timerRunning: true,
   concludeOpen: false,
   toast: null,
+
+  setMeetings: (meetings) => set({ meetings }),
+  setWorkspaceSlug: (slug) => set({ workspaceSlug: slug }),
 
   getMeeting: (id) => get().meetings.find((m) => m.id === id),
   getActiveSegment: (id) =>
@@ -522,26 +530,41 @@ export const useL10Store = create<State & Actions>((set, get) => ({
   showToast: (msg) => set({ toast: msg }),
   clearToast: () => set({ toast: null }),
 
-  createMeeting: (when) => {
-    const id = uid("mtg")
+  createMeeting: async (when) => {
+    const tempId = uid("mtg")
+    const agenda = defaultAgenda()
+    const participants = defaultParticipants()
     set((s) => ({
       meetings: [
         ...s.meetings,
         {
-          id,
+          id: tempId,
           name: "L10 LEADERSHIP",
           type: "L10",
           scheduledAt: when,
           durationMin: 90,
           status: "scheduled",
-          agenda: defaultAgenda(),
-          participants: defaultParticipants(),
+          agenda,
+          participants,
           ids: [],
           captures: [],
         },
       ],
     }))
-    return id
+    const slug = get().workspaceSlug
+    if (slug) {
+      const result = await createL10Meeting(slug, when)
+      if (result.ok) {
+        const realId = result.id
+        set((s) => ({
+          meetings: s.meetings.map((m) =>
+            m.id === tempId ? { ...m, id: realId } : m,
+          ),
+        }))
+        return realId
+      }
+    }
+    return tempId
   },
 }))
 
@@ -558,4 +581,4 @@ export function userById(id?: string) {
   if (!id) return undefined
   return USERS.find((u) => u.id === id)
 }
-export const ME = CURRENT_USER
+// Session user is available via useUIStore(s => s.currentUser) in client components

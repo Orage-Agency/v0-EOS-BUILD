@@ -2,13 +2,13 @@
 
 import { TenantLink as Link } from "@/components/tenant-link"
 import { useTenantPath } from "@/hooks/use-tenant-path"
-import { useL10Store } from "@/lib/l10-store"
+import { useL10Store, type Meeting } from "@/lib/l10-store"
 import { USERS } from "@/lib/mock-data"
 import { useUIStore } from "@/lib/store"
 import { OrageAvatar } from "@/components/orage/avatar"
 import { IcCalendar, IcArrowRight } from "@/components/orage/icons"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 function relativeTime(ts: number): string {
   const diffMs = ts - Date.now()
@@ -23,13 +23,29 @@ function relativeTime(ts: number): string {
   return `${Math.abs(Math.round(days / 7))}W AGO`
 }
 
-export function L10List() {
+export function L10List({
+  initialMeetings,
+  workspaceSlug,
+}: {
+  initialMeetings?: Meeting[]
+  workspaceSlug?: string
+} = {}) {
   const meetings = useL10Store((s) => s.meetings)
+  const setMeetings = useL10Store((s) => s.setMeetings)
+  const setWorkspaceSlug = useL10Store((s) => s.setWorkspaceSlug)
   const createMeeting = useL10Store((s) => s.createMeeting)
   const router = useRouter()
   const tp = useTenantPath()
   const [creating, setCreating] = useState(false)
   const sessionUser = useUIStore((s) => s.currentUser)
+
+  useEffect(() => {
+    if (workspaceSlug) setWorkspaceSlug(workspaceSlug)
+  }, [workspaceSlug, setWorkspaceSlug])
+
+  useEffect(() => {
+    if (initialMeetings && initialMeetings.length > 0) setMeetings(initialMeetings)
+  }, [initialMeetings, setMeetings])
 
   const active = meetings.find((m) => m.status === "in_session")
   const upcoming = meetings
@@ -39,10 +55,10 @@ export function L10List() {
     .filter((m) => m.status === "concluded")
     .sort((a, b) => (b.concludedAt ?? 0) - (a.concludedAt ?? 0))
 
-  function handleCreate() {
+  async function handleCreate() {
     setCreating(true)
     const when = Date.now() + 7 * 24 * 60 * 60 * 1000
-    const id = createMeeting(when)
+    const id = await createMeeting(when)
     router.push(tp(`/l10/${id}`))
   }
 
