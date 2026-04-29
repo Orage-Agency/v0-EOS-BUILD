@@ -1,6 +1,7 @@
 "use client"
 
-import { useScorecardStore } from "@/lib/scorecard-store"
+import { useEffect } from "react"
+import { useScorecardStore, type Metric, type MetricCell } from "@/lib/scorecard-store"
 import { canEditRocks } from "@/lib/permissions"
 import { useUIStore } from "@/lib/store"
 import { IcPlus } from "@/components/orage/icons"
@@ -11,10 +12,24 @@ import { InsightsPanel } from "./insights-panel"
 import { MetricDrawer } from "./metric-drawer"
 import { NewMetricModal } from "./new-metric-modal"
 
-export function ScorecardShell() {
-  const { metrics, openNewMetric, filterRedOnly, setFilterRedOnly } =
+export function ScorecardShell({
+  initialMetrics,
+  initialCells,
+}: {
+  initialMetrics?: Metric[]
+  initialCells?: MetricCell[]
+} = {}) {
+  const { metrics, openNewMetric, filterRedOnly, setFilterRedOnly, setMetrics, setCells } =
     useScorecardStore()
   const sessionUser = useUIStore((s) => s.currentUser)
+
+  useEffect(() => {
+    if (initialMetrics && initialMetrics.length > 0) setMetrics(initialMetrics)
+  }, [initialMetrics, setMetrics])
+
+  useEffect(() => {
+    if (initialCells && initialCells.length > 0) setCells(initialCells)
+  }, [initialCells, setCells])
   const canCreate = canEditRocks({
     id: sessionUser?.id ?? "",
     role: sessionUser?.role as import("@/types/permissions").Role ?? "member",

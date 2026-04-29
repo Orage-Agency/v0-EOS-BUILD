@@ -1,12 +1,18 @@
 import { redirect } from "next/navigation"
-import { CURRENT_USER } from "@/lib/mock-data"
+import { requireUser } from "@/lib/auth"
 import { DangerZone } from "@/components/settings/danger-zone"
 
 export const metadata = { title: "Danger Zone" }
 
-export default function DangerPage() {
-  if (CURRENT_USER.role !== "founder" && !CURRENT_USER.isMaster) {
-    redirect("/settings/workspace")
+export default async function DangerPage({
+  params,
+}: {
+  params: Promise<{ workspace: string }>
+}) {
+  const { workspace } = await params
+  const user = await requireUser(workspace)
+  if (!["founder", "owner"].includes(user.role) && !user.isMaster) {
+    redirect(`/${workspace}/settings/workspace`)
   }
   return <DangerZone />
 }

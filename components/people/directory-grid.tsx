@@ -1,22 +1,52 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { USERS } from "@/lib/mock-data"
+import { USERS, type MockUser } from "@/lib/mock-data"
+import type { Role } from "@/types/permissions"
 import { usePeopleStore } from "@/lib/people-store"
+import type { WorkspaceMember } from "@/lib/people-server"
 import { PersonCard } from "./person-card"
 import { cn } from "@/lib/utils"
+
+const AVATAR_COLORS = ["geo", "bro", "bar", "ivy"] as const
+
+function memberToMockUser(m: WorkspaceMember): MockUser {
+  const parts = m.name.trim().split(/\s+/)
+  const initials = parts.length >= 2
+    ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+    : (parts[0]?.slice(0, 2) ?? "??").toUpperCase()
+  const colorIdx = m.id.charCodeAt(m.id.length - 1) % AVATAR_COLORS.length
+  return {
+    id: m.id,
+    name: m.name,
+    initials,
+    email: m.email,
+    role: m.role as Role,
+    isMaster: m.isMaster,
+    color: AVATAR_COLORS[colorIdx],
+  }
+}
 
 type SortKey = "name" | "role" | "tenure"
 type RoleFilter = "all" | "founder" | "member"
 
-export function DirectoryGrid() {
+export function DirectoryGrid({ initialMembers }: { initialMembers?: WorkspaceMember[] }) {
   const profiles = usePeopleStore((s) => s.profiles)
   const [sort, setSort] = useState<SortKey>("name")
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all")
   const [activeOnly, setActiveOnly] = useState(true)
 
+  // Use real DB members when available, fall back to mock USERS for demo
+  const mockUsers: MockUser[] = useMemo(
+    () =>
+      initialMembers && initialMembers.length > 0
+        ? initialMembers.map(memberToMockUser)
+        : USERS,
+    [initialMembers],
+  )
+
   const visible = useMemo(() => {
-    let list = USERS
+    let list = mockUsers
     if (roleFilter !== "all") list = list.filter((u) => u.role === roleFilter)
     if (sort === "name") list = [...list].sort((a, b) => a.name.localeCompare(b.name))
     if (sort === "role") list = [...list].sort((a, b) => a.role.localeCompare(b.role))
@@ -27,7 +57,7 @@ export function DirectoryGrid() {
         return bJ.localeCompare(aJ)
       })
     return list
-  }, [sort, roleFilter, profiles])
+  }, [sort, roleFilter, profiles, mockUsers])
 
   return (
     <>

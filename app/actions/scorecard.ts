@@ -2,11 +2,11 @@
 
 /**
  * Orage Core · Scorecard server actions
- * Inputs no longer carry actor / tenantId — auth is derived from the session.
  */
 
 import { requireUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/server/permissions"
+import { upsertScorecardEntry } from "@/lib/scorecard-server"
 
 export type CreateMetricInput = {
   name: string
@@ -41,7 +41,6 @@ export async function updateMetricValue(
   input: UpdateMetricValueInput,
 ) {
   const user = await requireUser(workspaceSlug)
-  // Members can only edit metrics they own; founders/admins/leaders can edit any.
   const isEditor =
     user.isMaster || ["founder", "admin", "leader"].includes(user.role)
   const isOwner =
@@ -49,7 +48,10 @@ export async function updateMetricValue(
   if (!isEditor && !isOwner) {
     throw new Error("Forbidden: you can only edit metrics you own.")
   }
-  console.log("[v0] updateMetricValue", input)
+  const result = await upsertScorecardEntry(workspaceSlug, input.metricId, input.week, input.value)
+  if (!result.ok) {
+    console.error("[v0] updateMetricValue upsert failed", result.error)
+  }
   return { ok: true as const }
 }
 

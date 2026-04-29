@@ -11,16 +11,17 @@ import {
   SectionShell,
 } from "@/components/vto/section-shell"
 import { RevisionHistoryDrawer } from "@/components/vto/revision-history-drawer"
-import { CURRENT_USER } from "@/lib/mock-data"
+import { useUIStore } from "@/lib/store"
 import { canEditVto } from "@/lib/permissions"
 
 export default function VTOPage() {
   const activeTab = useVTOStore((s) => s.activeTab)
+  const sessionUser = useUIStore((s) => s.currentUser)
 
   const canEdit = canEditVto({
-    id: CURRENT_USER.id,
-    role: CURRENT_USER.role,
-    isMaster: CURRENT_USER.isMaster,
+    id: sessionUser?.id ?? "",
+    role: (sessionUser?.role ?? "member") as import("@/types/permissions").Role,
+    isMaster: sessionUser?.isMaster ?? false,
   })
 
   return (

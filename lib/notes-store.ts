@@ -3,10 +3,11 @@
 /**
  * Orage Core · Notes client store
  * Tree of notes (by rock, meetings, personal) plus the active note's
- * blocks. Replace with Supabase queries once wired.
+ * blocks. Note creation is persisted via the createNote server action.
  */
 
 import { create } from "zustand"
+import { createNote as createNoteAction } from "@/app/actions/notes"
 
 export type BlockType =
   | "h1"
@@ -185,6 +186,9 @@ type SlashState = {
 
 type NotesState = {
   notes: NoteRef[]
+  setNotes: (notes: NoteRef[]) => void
+  workspaceSlug: string
+  setWorkspaceSlug: (slug: string) => void
   blocks: Record<string, Block[]>
   backlinks: Record<string, Backlink[]>
 
@@ -209,11 +213,14 @@ type NotesState = {
   closeSlash: () => void
   setSlashQuery: (q: string) => void
 
-  createNote: () => string
+  createNote: (parentType?: "rock" | "meetings" | "personal", parentId?: string) => Promise<string>
 }
 
 export const useNotesStore = create<NotesState>((set, get) => ({
   notes: [...NOTES],
+  setNotes: (notes) => set({ notes }),
+  workspaceSlug: "",
+  setWorkspaceSlug: (slug) => set({ workspaceSlug: slug }),
   blocks: { n_module7: [...SEED_BLOCKS] },
   backlinks: BACKLINKS,
 
@@ -310,26 +317,50 @@ export const useNotesStore = create<NotesState>((set, get) => ({
   setSlashQuery: (q) =>
     set((state) => ({ slash: { ...state.slash, query: q } })),
 
-  createNote: () => {
-    const id = `n_${crypto.randomUUID().slice(0, 8)}`
+  createNote: async (parentType = "personal", parentId) => {
+    const slug = get().workspaceSlug
+    const tempId = `n_${crypto.randomUUID().slice(0, 8)}`
+    const now = new Date().toISOString()
+    const parent: NoteRef["parent"] =
+      parentType === "rock" && parentId
+        ? { kind: "rock", rockId: parentId }
+        : parentType === "meetings"
+          ? { kind: "meetings" }
+          : { kind: "personal" }
     set((state) => ({
       notes: [
         {
-          id,
+          id: tempId,
           title: "Untitled",
-          parent: { kind: "personal" },
-          authorId: "u_geo",
-          createdAt: new Date().toISOString().slice(0, 10),
-          updatedAt: new Date().toISOString(),
+          parent,
+          authorId: "",
+          createdAt: now.slice(0, 10),
+          updatedAt: now,
           visibility: "private",
           wordCount: 0,
         },
         ...state.notes,
       ],
-      blocks: { ...state.blocks, [id]: [{ id: "b1", type: "p", html: "" }] },
-      activeNoteId: id,
+      blocks: { ...state.blocks, [tempId]: [{ id: "b1", type: "p", html: "" }] },
+      activeNoteId: tempId,
     }))
-    return id
+    if (slug) {
+      const result = await createNoteAction(slug, { parentType, parentId })
+      if (result.ok) {
+        const realId = result.id
+        set((state) => ({
+          notes: state.notes.map((n) => (n.id === tempId ? { ...n, id: realId } : n)),
+          blocks: (() => {
+            const next = { ...state.blocks, [realId]: state.blocks[tempId] ?? [] }
+            delete next[tempId]
+            return next
+          })(),
+          activeNoteId: state.activeNoteId === tempId ? realId : state.activeNoteId,
+        }))
+        return realId
+      }
+    }
+    return tempId
   },
 }))
 

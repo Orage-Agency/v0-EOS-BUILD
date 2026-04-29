@@ -1,18 +1,36 @@
 "use client"
 
 import { useEffect } from "react"
-import { useNotesStore } from "@/lib/notes-store"
+import { useNotesStore, type NoteRef } from "@/lib/notes-store"
 import { NotesSidebar } from "./notes-sidebar"
 import { NotesEditor } from "./notes-editor"
 import { NotesMetaPanel } from "./notes-meta-panel"
 import { SlashMenu } from "./slash-menu"
 
-export function NotesShell({ initialNoteId }: { initialNoteId?: string } = {}) {
+export function NotesShell({
+  initialNoteId,
+  initialNotes,
+  workspaceSlug,
+}: {
+  initialNoteId?: string
+  initialNotes?: NoteRef[]
+  workspaceSlug?: string
+} = {}) {
   const closeSlash = useNotesStore((s) => s.closeSlash)
   const setActiveNote = useNotesStore((s) => s.setActiveNote)
+  const setNotes = useNotesStore((s) => s.setNotes)
+  const setWorkspaceSlug = useNotesStore((s) => s.setWorkspaceSlug)
   const noteExists = useNotesStore((s) =>
     initialNoteId ? Boolean(s.notes.find((n) => n.id === initialNoteId)) : false,
   )
+
+  useEffect(() => {
+    if (workspaceSlug) setWorkspaceSlug(workspaceSlug)
+  }, [workspaceSlug, setWorkspaceSlug])
+
+  useEffect(() => {
+    if (initialNotes && initialNotes.length > 0) setNotes(initialNotes)
+  }, [initialNotes, setNotes])
 
   useEffect(() => {
     if (initialNoteId && noteExists) setActiveNote(initialNoteId)

@@ -38,8 +38,8 @@ export function NotesEditor() {
             ctas={[
               {
                 label: "New Note",
-                onClick: () => {
-                  const id = createNote()
+                onClick: async () => {
+                  const id = await createNote()
                   if (id) useNotesStore.getState().setActiveNote(id)
                 },
               },

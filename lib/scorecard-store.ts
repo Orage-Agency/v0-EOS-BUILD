@@ -193,6 +193,8 @@ export function colorForCell(
 type ScorecardState = {
   metrics: Metric[]
   cells: MetricCell[]
+  setMetrics: (metrics: Metric[]) => void
+  setCells: (cells: MetricCell[]) => void
   drawerMetricId: string | null
   newMetricOpen: boolean
   filterRedOnly: boolean
@@ -216,6 +218,8 @@ type ScorecardState = {
 export const useScorecardStore = create<ScorecardState>((set, get) => ({
   metrics: [...SEED_METRICS],
   cells: seedCells(),
+  setMetrics: (metrics) => set({ metrics }),
+  setCells: (cells) => set({ cells }),
   drawerMetricId: null,
   newMetricOpen: false,
   filterRedOnly: false,

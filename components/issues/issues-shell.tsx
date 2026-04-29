@@ -30,7 +30,7 @@ export function IssuesShell({
   const setWorkspaceSlug = useIssuesStore((s) => s.setWorkspaceSlug)
 
   useEffect(() => {
-    setIssues(initialIssues)
+    if (initialIssues.length > 0) setIssues(initialIssues)
   }, [initialIssues, setIssues])
 
   useEffect(() => {
