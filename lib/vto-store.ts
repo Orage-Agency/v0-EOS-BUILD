@@ -248,17 +248,69 @@ const SEED_VALUES: CoreValue[] = [
   },
 ]
 
-const SEED_UNIQUES: Unique[] = []
+const SEED_UNIQUES: Unique[] = [
+  { id: "u1", text: "We build the agent + the operating system around it — not just the integration." },
+  { id: "u2", text: "We use what we sell: Orage Core runs Orage. Every recommendation is battle-tested internally first." },
+  { id: "u3", text: "90-day proof-of-impact guarantee — if measurable ROI doesn't land, we keep building at no extra cost." },
+]
 
-const SEED_3Y_MEASURABLES: Measurable[] = []
+const SEED_3Y_MEASURABLES: Measurable[] = [
+  { id: "3ym1", label: "ARR", value: "$12M", meta: "target · Apr 2029" },
+  { id: "3ym2", label: "TEAM SIZE", value: "25", meta: "FTE + contractors" },
+  { id: "3ym3", label: "SaaS CUSTOMERS", value: "800+", meta: "paid Orage Core seats" },
+  { id: "3ym4", label: "TOOLKIT MODULES", value: "4", meta: "publicly shipped" },
+]
 
-const SEED_3Y_MILESTONES: Milestone3Y[] = []
+const SEED_3Y_MILESTONES: Milestone3Y[] = [
+  { id: "ms1", text: "Orage Core publicly launched as paid SaaS with 100 paying tenants" },
+  { id: "ms2", text: "Sr. AI Engineer + Marketing Lead fully ramped and shipping" },
+  { id: "ms3", text: "Toolkit T1 + T2 live with documented case studies" },
+  { id: "ms4", text: "CDMX HQ operational — hybrid team of 15+ in-person" },
+  { id: "ms5", text: "Orage featured in at least 3 major industry podcasts / publications" },
+]
 
-const SEED_1Y_MEASURABLES: Measurable[] = []
+const SEED_1Y_MEASURABLES: Measurable[] = [
+  { id: "1ym1", label: "ARR", value: "$1.2M", meta: "target · Apr 2027" },
+  { id: "1ym2", label: "RECURRING %", value: "65%", meta: "vs 40% today" },
+  { id: "1ym3", label: "PRODUCT MRR", value: "$200K", meta: "Toolkit T1" },
+  { id: "1ym4", label: "OUTBOUND CLOSED", value: "12", meta: "OKC pipeline" },
+  { id: "1ym5", label: "BOOMER USERS", value: "153", meta: "active at partner" },
+]
 
-const SEED_GOALS: Goal[] = []
+const SEED_GOALS: Goal[] = [
+  { id: "g1", text: "Launch Toolkit T1 publicly and reach $200K product MRR", rocksLinked: 2, status: "on_track" },
+  { id: "g2", text: "Hire and ramp Sr. AI Engineer + Marketing Lead", rocksLinked: 1, status: "at_risk" },
+  { id: "g3", text: "Quintessa case study live and in active distribution", rocksLinked: 1, status: "on_track" },
+  { id: "g4", text: "Boomer partnership producing 153 active users", rocksLinked: 0, status: "on_track" },
+  { id: "g5", text: "OKC outbound system delivering 12 closed-won by Q4", rocksLinked: 0, status: "at_risk" },
+]
 
-const SEED_REVISIONS: Revision[] = []
+const SEED_REVISIONS: Revision[] = [
+  {
+    id: "rev_001",
+    rev: 13,
+    authorLabel: "George",
+    at: "APR 22, 2026 · 11:30 AM",
+    summary: "Tightened 3-year measurables; added CDMX HQ milestone.",
+    isCurrent: false,
+  },
+  {
+    id: "rev_002",
+    rev: 12,
+    authorLabel: "Brooklyn",
+    at: "APR 14, 2026 · 3:15 PM",
+    summary: "Revised marketing strategy — three uniques refined after Boomer call.",
+    isCurrent: false,
+  },
+  {
+    id: "rev_003",
+    rev: 11,
+    authorLabel: "George",
+    at: "MAR 31, 2026 · 9:00 AM",
+    summary: "Updated 1-year ARR target from $900K to $1.2M following pipeline review.",
+    isCurrent: false,
+  },
+]
 
 export const useVTOStore = create<VTOState>((set, get) => ({
   rev: 14,
