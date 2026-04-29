@@ -5,21 +5,30 @@ import { useUIStore } from "@/lib/store"
 import { CURRENT_USER } from "@/lib/mock-data"
 import { formatDateChip, shortTime } from "@/lib/format"
 
+type DateChip = { dow: string; month: string; day: number }
+
 export function DashboardHeader() {
   const [time, setTime] = useState<string>("—")
+  const [chip, setChip] = useState<DateChip>({ dow: "—", month: "—", day: 0 })
+  const [greeting, setGreeting] = useState<string>("GOOD MORNING")
   const sessionUser = useUIStore((s) => s.currentUser)
 
   useEffect(() => {
-    setTime(shortTime(new Date()))
-    const id = setInterval(() => setTime(shortTime(new Date())), 60_000)
+    const now = new Date()
+    setTime(shortTime(now))
+    setChip(formatDateChip(now))
+    setGreeting(greetingFor(now.getHours()))
+    const id = setInterval(() => {
+      const t = new Date()
+      setTime(shortTime(t))
+      setChip(formatDateChip(t))
+      setGreeting(greetingFor(t.getHours()))
+    }, 60_000)
     return () => clearInterval(id)
   }, [])
 
-  const today = new Date()
-  const chip = formatDateChip(today)
   const name = sessionUser?.name ?? CURRENT_USER.name
   const firstName = name.split(" ")[0].toUpperCase()
-  const greeting = greetingFor(today.getHours())
 
   return (
     <div className="px-6 md:px-8 pt-6 md:pt-8 pb-0 flex flex-col md:flex-row md:items-end md:justify-between gap-3 md:gap-6">
