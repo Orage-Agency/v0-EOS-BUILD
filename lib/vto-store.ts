@@ -73,6 +73,11 @@ export type AICritique = {
 }
 
 type VTOState = {
+  // Workspace context
+  workspaceSlug: string
+  setWorkspaceSlug: (slug: string) => void
+  hydrate: (data: Record<string, unknown>) => void
+
   // Document meta
   rev: number
   lastEditedLabel: string
@@ -313,6 +318,33 @@ const SEED_REVISIONS: Revision[] = [
 ]
 
 export const useVTOStore = create<VTOState>((set, get) => ({
+  workspaceSlug: "",
+  setWorkspaceSlug: (workspaceSlug) => set({ workspaceSlug }),
+  hydrate: (data) => {
+    const s = get()
+    set({
+      coreValues: (data.coreValues as CoreValue[]) ?? s.coreValues,
+      purpose: (data.purpose as string) ?? s.purpose,
+      niche: (data.niche as string) ?? s.niche,
+      tenYearTarget: (data.tenYearTarget as string) ?? s.tenYearTarget,
+      targetMarket: (data.targetMarket as string) ?? s.targetMarket,
+      uniques: (data.uniques as Unique[]) ?? s.uniques,
+      provenProcess: (data.provenProcess as string) ?? s.provenProcess,
+      guarantee: (data.guarantee as string) ?? s.guarantee,
+      threeYearDate: (data.threeYearDate as string) ?? s.threeYearDate,
+      bigPicture: (data.bigPicture as string) ?? s.bigPicture,
+      threeYearMeasurables: (data.threeYearMeasurables as Measurable[]) ?? s.threeYearMeasurables,
+      threeYearMilestones: (data.threeYearMilestones as Milestone3Y[]) ?? s.threeYearMilestones,
+      oneYearDate: (data.oneYearDate as string) ?? s.oneYearDate,
+      oneYearMeasurables: (data.oneYearMeasurables as Measurable[]) ?? s.oneYearMeasurables,
+      goals: (data.goals as Goal[]) ?? s.goals,
+      rev: (data.rev as number) ?? s.rev,
+      lastEditedLabel: (data.lastEditedLabel as string) ?? s.lastEditedLabel,
+      lastEditedBy: (data.lastEditedBy as string) ?? s.lastEditedBy,
+      revisions: (data.revisions as Revision[]) ?? s.revisions,
+    })
+  },
+
   rev: 14,
   lastEditedLabel: "4 days ago",
   lastEditedBy: "George",
@@ -590,5 +622,29 @@ export function sectionLabel(section: VTOSection): string {
       return "1-YEAR PLAN"
     case "rocks":
       return "QUARTERLY ROCKS"
+  }
+}
+
+export function vtoSnapshot(s: VTOState): Record<string, unknown> {
+  return {
+    coreValues: s.coreValues,
+    purpose: s.purpose,
+    niche: s.niche,
+    tenYearTarget: s.tenYearTarget,
+    targetMarket: s.targetMarket,
+    uniques: s.uniques,
+    provenProcess: s.provenProcess,
+    guarantee: s.guarantee,
+    threeYearDate: s.threeYearDate,
+    bigPicture: s.bigPicture,
+    threeYearMeasurables: s.threeYearMeasurables,
+    threeYearMilestones: s.threeYearMilestones,
+    oneYearDate: s.oneYearDate,
+    oneYearMeasurables: s.oneYearMeasurables,
+    goals: s.goals,
+    rev: s.rev,
+    lastEditedLabel: s.lastEditedLabel,
+    lastEditedBy: s.lastEditedBy,
+    revisions: s.revisions,
   }
 }

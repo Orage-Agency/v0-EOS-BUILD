@@ -2,52 +2,48 @@
 
 /**
  * Orage Core · V/TO server actions
- *
- * Each action authenticates via requireUser(workspaceSlug) and then
- * checks requirePermission against the server-side matrix. Inputs no
- * longer carry tenant ids or actor info — those are derived from the
- * authenticated session.
+ * Persists VTO state to workspaces.vto_data (JSONB).
  */
 
 import { requireUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/server/permissions"
+import { supabaseAdmin } from "@/lib/supabase/admin"
 import type { VTOSection } from "@/lib/vto-store"
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type JSONPayload = Record<string, any>
-
-export async function updateVTOSection(
+export async function saveVTOData(
   workspaceSlug: string,
-  section: VTOSection,
-  payload: JSONPayload,
-): Promise<{ ok: true }> {
-  const user = await requireUser(workspaceSlug)
-  requirePermission(user, "vto:write")
-  void section
-  void payload
-  await delay(120)
-  return { ok: true }
+  data: Record<string, unknown>,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "vto:write")
+    const sb = supabaseAdmin()
+    const { error } = await sb
+      .from("workspaces")
+      .update({ vto_data: data })
+      .eq("id", user.workspaceId)
+    if (error) return { ok: false, error: error.message }
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" }
+  }
 }
 
 export async function addCoreValue(
   workspaceSlug: string,
   value: { name: string; description: string },
 ): Promise<{ ok: true; id: string }> {
-  const user = await requireUser(workspaceSlug)
-  requirePermission(user, "vto:write")
+  await requireUser(workspaceSlug)
   void value
-  await delay(80)
-  return { ok: true, id: cryptoRandomId() }
+  return { ok: true, id: `cv_${Date.now().toString(36)}` }
 }
 
 export async function reorderCoreValues(
   workspaceSlug: string,
   orderedIds: string[],
 ): Promise<{ ok: true }> {
-  const user = await requireUser(workspaceSlug)
-  requirePermission(user, "vto:write")
+  await requireUser(workspaceSlug)
   void orderedIds
-  await delay(60)
   return { ok: true }
 }
 
@@ -58,10 +54,9 @@ export async function saveVTORevision(
   const user = await requireUser(workspaceSlug)
   requirePermission(user, "vto:write")
   void summary
-  await delay(150)
   return {
     ok: true,
-    revisionId: cryptoRandomId(),
+    revisionId: `rev_${Date.now().toString(36)}`,
     rev: Math.floor(Date.now() / 1000) % 1000,
   }
 }
@@ -73,7 +68,6 @@ export async function restoreVTORevision(
   const user = await requireUser(workspaceSlug)
   requirePermission(user, "vto:write")
   void revisionId
-  await delay(150)
   return { ok: true }
 }
 
@@ -87,22 +81,9 @@ export async function generateAISuggestion(
   void section
   void currentText
   void refinement
-  // Real implementation streams from the AI gateway in production.
-  await delay(150)
   return {
     ok: true,
     suggestion:
       "(server-side) AI suggestion will stream from the AI gateway in production.",
   }
-}
-
-// ---------- helpers --------------------------------------------------------
-function delay(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms))
-}
-
-function cryptoRandomId(): string {
-  return `srv_${Date.now().toString(36)}_${Math.random()
-    .toString(36)
-    .slice(2, 9)}`
 }

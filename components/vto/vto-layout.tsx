@@ -8,9 +8,10 @@
 import { useEffect, useRef, type ReactNode } from "react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import { useVTOStore, type VTOTab } from "@/lib/vto-store"
+import { useVTOStore, vtoSnapshot, type VTOTab } from "@/lib/vto-store"
 import { useUIStore } from "@/lib/store"
 import { canEditVto } from "@/lib/permissions"
+import { saveVTOData } from "@/app/actions/vto"
 
 const TABS: { id: VTOTab; label: string }[] = [
   { id: "vision", label: "Vision · 8 Questions" },
@@ -28,6 +29,7 @@ export function VTOLayout({ children }: { children: ReactNode }) {
   const autosaveAt = useVTOStore((s) => s.autosaveAt)
   const isSaving = useVTOStore((s) => s.isSaving)
   const setIsSaving = useVTOStore((s) => s.setIsSaving)
+  const workspaceSlug = useVTOStore((s) => s.workspaceSlug)
   const openRevisions = useVTOStore((s) => s.openRevisions)
   const saveRevision = useVTOStore((s) => s.saveRevision)
 
@@ -43,18 +45,22 @@ export function VTOLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (autosaveAt == null) return
     if (timer.current) clearTimeout(timer.current)
-    timer.current = setTimeout(() => {
+    timer.current = setTimeout(async () => {
+      if (!workspaceSlug) return
       setIsSaving(true)
-      // simulate write latency
-      setTimeout(() => {
-        setIsSaving(false)
+      const snapshot = vtoSnapshot(useVTOStore.getState())
+      const result = await saveVTOData(workspaceSlug, snapshot)
+      setIsSaving(false)
+      if (result.ok) {
         toast("AUTO-SAVED")
-      }, 350)
+      } else {
+        toast("SAVE FAILED", { description: result.error })
+      }
     }, 8000)
     return () => {
       if (timer.current) clearTimeout(timer.current)
     }
-  }, [autosaveAt, setIsSaving])
+  }, [autosaveAt, setIsSaving, workspaceSlug])
 
   function manualSave() {
     if (!canEdit) {

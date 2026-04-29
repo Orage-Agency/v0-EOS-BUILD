@@ -1,51 +1,12 @@
-"use client"
+import { VTOClient } from "@/components/vto/vto-client"
+import { getVTOData } from "@/lib/vto-server"
 
-import { useVTOStore } from "@/lib/vto-store"
-import { VTOLayout } from "@/components/vto/vto-layout"
-import { VisionPanel } from "@/components/vto/vision-panel"
-import { TractionPanel } from "@/components/vto/traction-panel"
-import { ThreeYearPictureEditor } from "@/components/vto/three-year-picture-editor"
-import { TenYearTargetEditor } from "@/components/vto/ten-year-target-editor"
-import {
-  PermissionBanner,
-  SectionShell,
-} from "@/components/vto/section-shell"
-import { RevisionHistoryDrawer } from "@/components/vto/revision-history-drawer"
-import { useUIStore } from "@/lib/store"
-import { canEditVto } from "@/lib/permissions"
-
-export default function VTOPage() {
-  const activeTab = useVTOStore((s) => s.activeTab)
-  const sessionUser = useUIStore((s) => s.currentUser)
-
-  const canEdit = canEditVto({
-    id: sessionUser?.id ?? "",
-    role: (sessionUser?.role ?? "member") as import("@/types/permissions").Role,
-    isMaster: sessionUser?.isMaster ?? false,
-  })
-
-  return (
-    <VTOLayout>
-      {activeTab === "vision" ? <VisionPanel /> : null}
-      {activeTab === "traction" ? <TractionPanel /> : null}
-      {activeTab === "threeYear" ? (
-        <>
-          <PermissionBanner show={!canEdit} />
-          <SectionShell num={5} title="3-YEAR PICTURE · APR 2029" fullWidth>
-            <ThreeYearPictureEditor canEdit={canEdit} />
-          </SectionShell>
-        </>
-      ) : null}
-      {activeTab === "tenYear" ? (
-        <>
-          <PermissionBanner show={!canEdit} />
-          <SectionShell num={3} title="10-YEAR TARGET" fullWidth>
-            <TenYearTargetEditor canEdit={canEdit} />
-          </SectionShell>
-        </>
-      ) : null}
-
-      <RevisionHistoryDrawer />
-    </VTOLayout>
-  )
+export default async function VTOPage({
+  params,
+}: {
+  params: Promise<{ workspace: string }>
+}) {
+  const { workspace } = await params
+  const initialData = await getVTOData(workspace)
+  return <VTOClient workspaceSlug={workspace} initialData={initialData} />
 }
