@@ -1,13 +1,9 @@
-// ═══════════════════════════════════════════════════════════
-// components/breadcrumb.tsx
-// Replaces hard-coded "Dashboard" breadcrumb with one that derives from URL.
-// ═══════════════════════════════════════════════════════════
-
 'use client';
 
 import { usePathname, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
+import { useL10Store } from '@/lib/l10-store';
 
 const LABELS: Record<string, string> = {
   '': 'Dashboard',
@@ -35,6 +31,7 @@ export function Breadcrumb({ workspaceName = 'Orage Agency' }: { workspaceName?:
   const pathname = usePathname();
   const params = useParams();
   const workspaceSlug = (params?.workspace as string) ?? 'orage';
+  const getMeeting = useL10Store((s) => s.getMeeting);
 
   // Strip workspace slug from path
   const segments = pathname.split('/').filter(Boolean);
@@ -44,7 +41,12 @@ export function Breadcrumb({ workspaceName = 'Orage Agency' }: { workspaceName?:
     ? [{ label: 'Dashboard', href: `/${workspaceSlug}` }]
     : moduleSegments.map((seg, i) => {
         const href = `/${workspaceSlug}/${moduleSegments.slice(0, i + 1).join('/')}`;
-        const label = LABELS[seg] ?? seg.charAt(0).toUpperCase() + seg.slice(1);
+        let label = LABELS[seg];
+        if (!label) {
+          // Check if it's an L10 meeting ID
+          const meeting = getMeeting(seg);
+          label = meeting ? meeting.name : seg.charAt(0).toUpperCase() + seg.slice(1);
+        }
         return { label, href };
       });
 
