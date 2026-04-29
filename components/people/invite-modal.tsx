@@ -6,6 +6,8 @@ import { USERS } from "@/lib/mock-data"
 import { IcClose } from "@/components/orage/icons"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import { sendWorkspaceInvite } from "@/app/actions/people"
+import { useWorkspaceSlug } from "@/hooks/use-workspace-slug"
 
 type Role = "founder" | "admin" | "leader" | "member" | "viewer" | "field"
 
@@ -44,14 +46,15 @@ const ROLES: {
 export function InviteModal() {
   const open = usePeopleStore((s) => s.inviteOpen)
   const close = usePeopleStore((s) => s.closeInvite)
-  const send = usePeopleStore((s) => s.sendInvite)
   const role = usePeopleStore((s) => s.selectedRole)
   const setRole = usePeopleStore((s) => s.setInviteRole)
+  const workspaceSlug = useWorkspaceSlug()
 
   const [email, setEmail] = useState("")
   const [fullName, setFullName] = useState("")
   const [reportsToId, setReportsToId] = useState("")
   const [note, setNote] = useState("")
+  const [sending, setSending] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -59,6 +62,7 @@ export function InviteModal() {
     setFullName("")
     setReportsToId("")
     setNote("")
+    setSending(false)
     setRole("member")
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close()
@@ -69,20 +73,26 @@ export function InviteModal() {
 
   if (!open) return null
 
-  function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!email.trim()) {
       toast("EMAIL REQUIRED")
       return
     }
-    send({
+    setSending(true)
+    const result = await sendWorkspaceInvite(workspaceSlug, {
       email: email.trim(),
       fullName: fullName.trim() || undefined,
       role,
-      reportsToId: reportsToId || undefined,
       note: note.trim() || undefined,
     })
-    toast("INVITE SENT", { description: email })
+    setSending(false)
+    if (!result.ok) {
+      toast("INVITE FAILED", { description: result.error })
+      return
+    }
+    toast("INVITE SENT", { description: email.trim() })
+    close()
   }
 
   return (
@@ -220,9 +230,10 @@ export function InviteModal() {
               </button>
               <button
                 type="submit"
-                className="h-9 px-4 bg-gold-500 hover:bg-gold-400 text-text-on-gold text-xs font-semibold tracking-wider uppercase rounded-sm"
+                disabled={sending}
+                className="h-9 px-4 bg-gold-500 hover:bg-gold-400 disabled:opacity-50 text-text-on-gold text-xs font-semibold tracking-wider uppercase rounded-sm"
               >
-                Send Invite
+                {sending ? "Sending..." : "Send Invite"}
               </button>
             </div>
           </footer>

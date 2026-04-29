@@ -26,7 +26,7 @@ export async function listWorkspaceMembers(workspaceSlug: string): Promise<Works
       .from("workspace_memberships")
       .select(`
         role,
-        joined_at,
+        created_at,
         user:profiles(id, full_name, email, avatar_url, is_master)
       `)
       .eq("workspace_id", user.workspaceId)
@@ -39,7 +39,7 @@ export async function listWorkspaceMembers(workspaceSlug: string): Promise<Works
 
     return ((data ?? []) as Array<{
       role: string
-      joined_at: string | null
+      created_at: string | null
       user: { id: string; full_name: string | null; email: string; avatar_url: string | null; is_master: boolean } | null
     }>)
       .filter((m) => m.user !== null)
@@ -50,7 +50,7 @@ export async function listWorkspaceMembers(workspaceSlug: string): Promise<Works
         role: m.role,
         avatarUrl: m.user!.avatar_url,
         isMaster: m.user!.is_master,
-        joinedAt: m.joined_at,
+        joinedAt: m.created_at,
       }))
   } catch (err) {
     console.error("[v0] listWorkspaceMembers exception", err)

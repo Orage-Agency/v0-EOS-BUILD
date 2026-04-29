@@ -7,7 +7,17 @@
  */
 
 import { create } from "zustand"
-import { createNote as createNoteAction } from "@/app/actions/notes"
+import { createNote as createNoteAction, saveNoteContent as saveNoteContentAction } from "@/app/actions/notes"
+
+let _autosaveTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleAutosave(slug: string, noteId: string, blocks: Block[]) {
+  if (!slug || noteId.startsWith("n_")) return // skip seed/temp notes
+  if (_autosaveTimer) clearTimeout(_autosaveTimer)
+  _autosaveTimer = setTimeout(() => {
+    saveNoteContentAction(slug, noteId, blocks).catch(console.error)
+  }, 800)
+}
 
 export type BlockType =
   | "h1"
@@ -242,7 +252,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       return { expandedSections: next }
     }),
 
-  updateBlockHtml: (blockId, html) =>
+  updateBlockHtml: (blockId, html) => {
     set((state) => {
       const id = state.activeNoteId
       const blocks = state.blocks[id] ?? []
@@ -254,8 +264,11 @@ export const useNotesStore = create<NotesState>((set, get) => ({
           ),
         },
       }
-    }),
-  toggleTodo: (blockId) =>
+    })
+    const s = get()
+    scheduleAutosave(s.workspaceSlug, s.activeNoteId, s.blocks[s.activeNoteId] ?? [])
+  },
+  toggleTodo: (blockId) => {
     set((state) => {
       const id = state.activeNoteId
       const blocks = state.blocks[id] ?? []
@@ -267,7 +280,10 @@ export const useNotesStore = create<NotesState>((set, get) => ({
           ),
         },
       }
-    }),
+    })
+    const s = get()
+    scheduleAutosave(s.workspaceSlug, s.activeNoteId, s.blocks[s.activeNoteId] ?? [])
+  },
   insertBlock: (afterId, type, payload) => {
     const id = `b_${crypto.randomUUID().slice(0, 8)}`
     set((state) => {
@@ -280,16 +296,21 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       next.splice(insertAt, 0, newBlock)
       return { blocks: { ...state.blocks, [noteId]: next } }
     })
+    const s = get()
+    scheduleAutosave(s.workspaceSlug, s.activeNoteId, s.blocks[s.activeNoteId] ?? [])
     return id
   },
-  removeBlock: (blockId) =>
+  removeBlock: (blockId) => {
     set((state) => {
       const noteId = state.activeNoteId
       const blocks = state.blocks[noteId] ?? []
       return {
         blocks: { ...state.blocks, [noteId]: blocks.filter((b) => b.id !== blockId) },
       }
-    }),
+    })
+    const s = get()
+    scheduleAutosave(s.workspaceSlug, s.activeNoteId, s.blocks[s.activeNoteId] ?? [])
+  },
   acceptAi: (blockId) => {
     set((state) => {
       const noteId = state.activeNoteId

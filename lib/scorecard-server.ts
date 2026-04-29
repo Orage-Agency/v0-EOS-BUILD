@@ -55,10 +55,12 @@ const SOURCE_MAP: Record<string, ScorecardMetric["source"]> = {
   m_boomer: "n8n",
 }
 
+const NAME_TO_KEY = Object.fromEntries(SEED_SPEC.map((s) => [s.name, s.key]))
+
 /**
  * Returns the DB UUID for each client metric key for this tenant.
  * Seeds the metrics into Supabase if this tenant has none yet.
- * Client keys are encoded in the notes column as "key:<clientKey>".
+ * Client keys are matched by metric name — no extra column needed.
  */
 export async function getMetricIdMap(workspaceSlug: string): Promise<Record<string, string>> {
   const user = await requireUser(workspaceSlug)
@@ -66,15 +68,15 @@ export async function getMetricIdMap(workspaceSlug: string): Promise<Record<stri
 
   const { data: existing } = await sb
     .from("scorecard_metrics")
-    .select("id, notes")
+    .select("id, name")
     .eq("tenant_id", user.workspaceId)
     .is("archived_at", null)
 
-  const rows = (existing ?? []) as { id: string; notes: string | null }[]
+  const rows = (existing ?? []) as { id: string; name: string }[]
 
   const map: Record<string, string> = {}
   for (const r of rows) {
-    const key = r.notes?.startsWith("key:") ? r.notes.slice(4) : null
+    const key = NAME_TO_KEY[r.name]
     if (key) map[key] = r.id
   }
 
@@ -91,13 +93,12 @@ export async function getMetricIdMap(workspaceSlug: string): Promise<Record<stri
           goal_op: s.goalOp,
           frequency: "weekly",
           display_order: s.order,
-          notes: `key:${s.key}`,
         })),
       )
-      .select("id, notes")
+      .select("id, name")
 
-    for (const r of (inserted ?? []) as { id: string; notes: string | null }[]) {
-      const key = r.notes?.startsWith("key:") ? r.notes.slice(4) : null
+    for (const r of (inserted ?? []) as { id: string; name: string }[]) {
+      const key = NAME_TO_KEY[r.name]
       if (key) map[key] = r.id
     }
   }
@@ -124,7 +125,7 @@ export async function listScorecardData(workspaceSlug: string): Promise<{
 
     const { data: dbMetrics } = await sb
       .from("scorecard_metrics")
-      .select("id, name, unit, goal_value, goal_op, display_order, notes")
+      .select("id, name, unit, goal_value, goal_op, display_order")
       .eq("tenant_id", user.workspaceId)
       .is("archived_at", null)
       .order("display_order", { ascending: true })
@@ -138,11 +139,10 @@ export async function listScorecardData(workspaceSlug: string): Promise<{
       goal_value: number
       goal_op: string
       display_order: number
-      notes: string | null
     }[]
 
     const metrics: ScorecardMetric[] = typedMetrics.map((r) => {
-      const clientKey = r.notes?.startsWith("key:") ? r.notes.slice(4) : r.id
+      const clientKey = NAME_TO_KEY[r.name] ?? r.id
       return {
         id: clientKey,
         name: r.name,
