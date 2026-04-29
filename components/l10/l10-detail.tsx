@@ -48,7 +48,7 @@ export function L10Detail({ id }: { id: string }) {
           <h1 className="font-display text-text-primary text-3xl mb-1 tracking-[0.05em]">
             {meeting.name}
           </h1>
-          <p className="text-sm text-text-muted font-mono">
+          <p className="text-sm text-text-muted font-mono" suppressHydrationWarning>
             {date
               .toLocaleDateString([], {
                 weekday: "short",

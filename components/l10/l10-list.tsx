@@ -84,7 +84,7 @@ export function L10List() {
                   <div className="font-display text-gold-400 text-base mb-0.5 tracking-[0.1em]">
                     {active.name}
                   </div>
-                  <div className="text-xs text-text-muted font-mono">
+                  <div className="text-xs text-text-muted font-mono" suppressHydrationWarning>
                     LIVE · STARTED{" "}
                     {active.startedAt
                       ? new Date(active.startedAt).toLocaleTimeString([], {
@@ -204,7 +204,7 @@ function MeetingRow({
         <div className="text-sm text-text-primary font-medium mb-0.5 truncate">
           {meeting.name}
         </div>
-        <div className="text-xs text-text-muted font-mono">
+        <div className="text-xs text-text-muted font-mono" suppressHydrationWarning>
           {date
             .toLocaleDateString([], {
               weekday: "short",

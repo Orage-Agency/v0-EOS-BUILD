@@ -26,7 +26,7 @@ export function AgendaRail({ meetingId }: { meetingId: string }) {
     >
       <header className="px-5 py-5 border-b border-border-orage">
         <div className="h-display text-gold-400 text-base mb-1">{meeting.name}</div>
-        <div className="text-[10px] text-text-muted font-mono mb-3">
+        <div className="text-[10px] text-text-muted font-mono mb-3" suppressHydrationWarning>
           {new Date(meeting.scheduledAt)
             .toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })
             .toUpperCase()}{" "}
