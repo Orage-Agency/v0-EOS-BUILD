@@ -10,6 +10,12 @@ import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import crypto from "crypto"
 
+function appUrl() {
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
+  return "http://localhost:3000"
+}
+
 // ─── SIGN UP (master role only — for bootstrapping George) ───
 export async function signUpMaster(email: string, password: string, fullName: string) {
   if (password.length < 8) return { error: "Password must be at least 8 characters" }
@@ -21,7 +27,7 @@ export async function signUpMaster(email: string, password: string, fullName: st
     password,
     options: {
       data: { full_name: fullName },
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+      emailRedirectTo: `${appUrl()}/auth/callback`,
     },
   })
 
@@ -87,7 +93,7 @@ export async function sendMagicLink(workspaceSlug: string, email: string) {
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback?next=/${workspaceSlug}`,
+      emailRedirectTo: `${appUrl()}/auth/callback?next=/${workspaceSlug}`,
     },
   })
 
@@ -102,7 +108,7 @@ export async function signInWithGoogle(workspaceSlug: string) {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback?next=/${workspaceSlug}`,
+      redirectTo: `${appUrl()}/auth/callback?next=/${workspaceSlug}`,
     },
   })
 
@@ -151,7 +157,7 @@ export async function createInvite(
 
   if (error) return { error: error.message }
 
-  const link = `${process.env.NEXT_PUBLIC_APP_URL}/accept-invite?token=${token}`
+  const link = `${appUrl()}/accept-invite?token=${token}`
 
   revalidatePath(`/${workspaceSlug}/settings/members`)
   return { success: true, link }
