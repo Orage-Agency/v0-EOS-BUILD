@@ -13,6 +13,12 @@
 import { create } from "zustand"
 import type { MockTask, TaskStatus } from "@/lib/mock-data"
 import type { RockOption, WorkspaceMember } from "@/lib/tasks-server"
+import {
+  updateTaskStatus as updateTaskStatusAction,
+  updateTaskDueDate as updateTaskDueDateAction,
+  bulkUpdateTasks as bulkUpdateTasksAction,
+  bulkDeleteTasks as bulkDeleteTasksAction,
+} from "@/app/actions/tasks"
 
 export type Handoff = {
   id: string
@@ -29,6 +35,9 @@ type TasksState = {
   tasks: MockTask[]
   setTasks: (tasks: MockTask[]) => void
   handoffs: Handoff[]
+
+  workspaceSlug: string
+  setWorkspaceSlug: (slug: string) => void
 
   rockOptions: RockOption[]
   setRockOptions: (rocks: RockOption[]) => void
@@ -79,6 +88,9 @@ export const useTasksStore = create<TasksState>((set, get) => ({
   tasks: [],
   setTasks: (tasks) => set({ tasks }),
   handoffs: [],
+
+  workspaceSlug: "",
+  setWorkspaceSlug: (slug) => set({ workspaceSlug: slug }),
 
   rockOptions: [],
   setRockOptions: (rockOptions) => set({ rockOptions }),
@@ -154,29 +166,43 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     }))
   },
 
-  toggleStatus: (id) =>
-    set((state) => ({
-      tasks: state.tasks.map((t) =>
-        t.id === id
-          ? {
-              ...t,
-              status: t.status === "done" ? "open" : "done",
-              completed:
-                t.status === "done"
-                  ? undefined
-                  : new Date().toISOString().slice(0, 10),
-            }
-          : t,
-      ),
-    })),
-  updateStatus: (id, status) =>
+  toggleStatus: (id) => {
+    let newStatus: TaskStatus = "open"
+    set((state) => {
+      const tasks = state.tasks.map((t) => {
+        if (t.id !== id) return t
+        newStatus = t.status === "done" ? "open" : "done"
+        return {
+          ...t,
+          status: newStatus,
+          completed: newStatus === "done" ? new Date().toISOString().slice(0, 10) : undefined,
+        }
+      })
+      return { tasks }
+    })
+    const { workspaceSlug } = get()
+    if (workspaceSlug) {
+      updateTaskStatusAction(workspaceSlug, id, newStatus).catch(console.error)
+    }
+  },
+  updateStatus: (id, status) => {
     set((state) => ({
       tasks: state.tasks.map((t) => (t.id === id ? { ...t, status } : t)),
-    })),
-  updateDue: (id, due) =>
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug) {
+      updateTaskStatusAction(workspaceSlug, id, status).catch(console.error)
+    }
+  },
+  updateDue: (id, due) => {
     set((state) => ({
       tasks: state.tasks.map((t) => (t.id === id ? { ...t, due } : t)),
-    })),
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug) {
+      updateTaskDueDateAction(workspaceSlug, id, due).catch(console.error)
+    }
+  },
   reassign: (id, ownerId) =>
     set((state) => ({
       tasks: state.tasks.map((t) =>
@@ -194,7 +220,6 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     }),
   insertTask: (task) =>
     set((state) => {
-      // Replace if id already exists (e.g. optimistic upsert), otherwise prepend.
       const exists = state.tasks.some((t) => t.id === task.id)
       return {
         tasks: exists
@@ -202,19 +227,29 @@ export const useTasksStore = create<TasksState>((set, get) => ({
           : [task, ...state.tasks],
       }
     }),
-  bulkUpdate: (ids, patch) =>
+  bulkUpdate: (ids, patch) => {
     set((state) => {
       const idSet = new Set(ids)
       return {
         tasks: state.tasks.map((t) => (idSet.has(t.id) ? { ...t, ...patch } : t)),
       }
-    }),
-  bulkDelete: (ids) =>
+    })
+    const { workspaceSlug } = get()
+    if (workspaceSlug && ids.length > 0) {
+      bulkUpdateTasksAction(workspaceSlug, ids, patch).catch(console.error)
+    }
+  },
+  bulkDelete: (ids) => {
     set((state) => {
       const idSet = new Set(ids)
       return {
         tasks: state.tasks.filter((t) => !idSet.has(t.id)),
         selected: new Set(),
       }
-    }),
+    })
+    const { workspaceSlug } = get()
+    if (workspaceSlug && ids.length > 0) {
+      bulkDeleteTasksAction(workspaceSlug, ids).catch(console.error)
+    }
+  },
 }))

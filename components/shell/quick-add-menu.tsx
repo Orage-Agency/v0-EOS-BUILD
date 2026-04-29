@@ -74,14 +74,14 @@ export function QuickAddMenu() {
         toast("NEW ISSUE · OPENING")
         break
       case "note": {
-        // Create a new note locally then route to it (mock-data flow).
-        const id = useNotesStore.getState().createNote()
-        if (id) {
-          useNotesStore.getState().setActiveNote(id)
-          router.push(tp(`/notes/${id}`))
-        } else {
-          router.push(tp("/notes"))
-        }
+        useNotesStore.getState().createNote().then((id) => {
+          if (id) {
+            useNotesStore.getState().setActiveNote(id)
+            router.push(tp(`/notes/${id}`))
+          } else {
+            router.push(tp("/notes"))
+          }
+        })
         toast("NEW NOTE · OPENING")
         break
       }

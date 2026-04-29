@@ -36,7 +36,7 @@ export function draggableClassName(state: DndState): string {
 
 /** Compose drop-zone class names. */
 export function dropZoneClassName(state: DndState): string {
-  const parts = [DND_CLASSES.dropZone]
+  const parts: string[] = [DND_CLASSES.dropZone]
   if (state.isOver) parts.push(DND_CLASSES.dropZoneActive)
   return parts.join(" ")
 }

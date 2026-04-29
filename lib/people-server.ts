@@ -37,7 +37,7 @@ export async function listWorkspaceMembers(workspaceSlug: string): Promise<Works
       return []
     }
 
-    return ((data ?? []) as Array<{
+    return ((data ?? []) as unknown as Array<{
       role: string
       created_at: string | null
       user: { id: string; full_name: string | null; email: string; avatar_url: string | null; is_master: boolean } | null

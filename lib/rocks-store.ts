@@ -4,6 +4,7 @@ import { create } from "zustand"
 import { type MockRock, type RockStatus } from "@/lib/mock-data"
 import type { Role } from "@/types/permissions"
 import type { WorkspaceMember } from "@/lib/tasks-server"
+import { updateRockStatus as updateRockStatusAction } from "@/app/actions/rocks"
 
 export type RocksActor = {
   id: string
@@ -157,7 +158,7 @@ type RocksState = {
   addMilestone: (rockId: string, title: string, due: string) => void
 }
 
-export const useRocksStore = create<RocksState>((set) => ({
+export const useRocksStore = create<RocksState>((set, get) => ({
   rocks: [],
   setRocks: (rocks) => set({ rocks }),
   members: [],
@@ -190,10 +191,15 @@ export const useRocksStore = create<RocksState>((set) => ({
   openNewRock: () => set({ newRockOpen: true }),
   closeNewRock: () => set({ newRockOpen: false }),
 
-  updateStatus: (id, status) =>
+  updateStatus: (id, status) => {
     set((state) => ({
       rocks: state.rocks.map((r) => (r.id === id ? { ...r, status } : r)),
-    })),
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug) {
+      updateRockStatusAction(workspaceSlug, id, status).catch(console.error)
+    }
+  },
   toggleMilestone: (id) =>
     set((state) => ({
       milestones: state.milestones.map((m) => (m.id === id ? { ...m, done: !m.done } : m)),

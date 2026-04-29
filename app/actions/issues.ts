@@ -166,3 +166,36 @@ export async function dismissAISuggestion(
   console.log("[v0] dismissAISuggestion", suggestionId)
   return { ok: true }
 }
+
+export async function updateIssue(
+  workspaceSlug: string,
+  issueId: string,
+  patch: {
+    stage?: string
+    context?: string
+    title?: string
+    pinnedForL10?: boolean
+  },
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "issues:write")
+    const dbPatch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+    if (patch.stage !== undefined) dbPatch.stage = patch.stage
+    if (patch.context !== undefined) dbPatch.description = patch.context
+    if (patch.title !== undefined) dbPatch.title = patch.title.trim()
+    if (patch.pinnedForL10 !== undefined) dbPatch.pinned_for_l10 = patch.pinnedForL10
+    const sb = supabaseAdmin()
+    const { error } = await sb
+      .from("issues")
+      .update(dbPatch)
+      .eq("id", issueId)
+      .eq("tenant_id", user.workspaceId)
+    if (error) return { ok: false, error: error.message }
+    revalidateIssueRoutes(workspaceSlug)
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error"
+    return { ok: false, error: msg }
+  }
+}

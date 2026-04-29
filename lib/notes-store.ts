@@ -52,7 +52,13 @@ export type BlockType =
   | "embed_task"
 
 export type Block =
-  | { id: string; type: "h1" | "h2" | "h3" | "p" | "bullet" | "quote" | "code"; html: string }
+  | { id: string; type: "h1"; html: string }
+  | { id: string; type: "h2"; html: string }
+  | { id: string; type: "h3"; html: string }
+  | { id: string; type: "p"; html: string }
+  | { id: string; type: "bullet"; html: string }
+  | { id: string; type: "quote"; html: string }
+  | { id: string; type: "code"; html: string }
   | { id: string; type: "todo"; html: string; done: boolean }
   | { id: string; type: "divider" }
   | {

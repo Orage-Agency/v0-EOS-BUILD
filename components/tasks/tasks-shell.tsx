@@ -35,8 +35,13 @@ export function TasksShell({
   const setCurrentUserId = useTasksStore((s) => s.setCurrentUserId)
   const setRockOptions = useTasksStore((s) => s.setRockOptions)
   const setMembers = useTasksStore((s) => s.setMembers)
+  const setWorkspaceSlug = useTasksStore((s) => s.setWorkspaceSlug)
   const openNewTask = useTasksStore((s) => s.openNewTask)
   const quickAddRef = useRef<QuickAddHandle | null>(null)
+
+  useEffect(() => {
+    setWorkspaceSlug(workspaceSlug)
+  }, [workspaceSlug, setWorkspaceSlug])
 
   useEffect(() => {
     setTasks(initialTasks)
