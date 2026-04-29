@@ -7,7 +7,6 @@
 
 import { create } from "zustand"
 import { useIssuesStore } from "@/lib/issues-store"
-import { CURRENT_USER } from "@/lib/mock-data"
 
 export type MetricDirection = "up" | "down"
 export type MetricSource = "manual" | "stripe" | "ghl" | "n8n" | "ai"
@@ -360,5 +359,3 @@ export function cellEditableBy(
   return false
 }
 
-/** Check that scope works at module load — placeholder to avoid tree-shake dead-code warning. */
-void CURRENT_USER

@@ -13,7 +13,6 @@ import "server-only"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { requireUser, type AuthUser } from "@/lib/auth"
 import {
-  CURRENT_USER as MOCK_CURRENT_USER,
   ROCKS,
   TASKS,
   USERS,
@@ -334,11 +333,11 @@ export async function getDashboardTasks(
   return [...open, ...done]
 }
 
-/** Map the auth user id to the matching mock owner id, falling back to George. */
+/** Map the auth user id to the matching mock owner id, falling back to the first mock user. */
 function pickOwnerKey(authUserId: string): string {
   const direct = USERS.find((u) => u.id === authUserId)
   if (direct) return direct.id
-  return MOCK_CURRENT_USER.id
+  return USERS[0]?.id ?? authUserId
 }
 
 // --------------------------------------------------------- Scorecard pulse
