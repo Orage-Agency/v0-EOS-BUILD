@@ -103,7 +103,174 @@ function defaultParticipants(): Participant[] {
   }))
 }
 
-const seedMeetings: Meeting[] = []
+// Monday 17:00 UTC timestamps for Apr 27 – Jun 8 2026
+const T_APR27 = 1777309200000
+const T_MAY04 = 1777914000000
+const T_MAY11 = 1778518800000
+const T_MAY18 = 1779123600000
+const T_MAY25 = 1779728400000
+const T_JUN01 = 1780333200000
+const T_JUN08 = 1780938000000
+
+const seedMeetings: Meeting[] = [
+  /* ── APR 27 — concluded ──────────────────────────────── */
+  {
+    id: "mtg-apr27",
+    name: "L10 LEADERSHIP · MON APR 27",
+    type: "L10",
+    scheduledAt: T_APR27,
+    durationMin: 90,
+    status: "concluded",
+    startedAt: T_APR27,
+    concludedAt: T_APR27 + 95 * MIN * 1000,
+    attendedCount: 3,
+    notesPosted: true,
+    cascadingMessage: "Align on Q2 rock priorities — onboarding checklist becomes the flagship Rock.",
+    agenda: [
+      { id: "a1", segment: "segue",      name: "SEGUE",                        durationSec: 5  * MIN, actualSec: 4  * MIN, status: "done" },
+      { id: "a2", segment: "scorecard",  name: "SCORECARD",                    durationSec: 5  * MIN, actualSec: 7  * MIN, status: "done" },
+      { id: "a3", segment: "rock_review",name: "ROCK REVIEW",                  durationSec: 5  * MIN, actualSec: 5  * MIN, status: "done" },
+      { id: "a4", segment: "headlines",  name: "HEADLINES",                    durationSec: 5  * MIN, actualSec: 8  * MIN, status: "done" },
+      { id: "a5", segment: "todos",      name: "TO-DOS",                       durationSec: 5  * MIN, actualSec: 5  * MIN, status: "done" },
+      { id: "a6", segment: "ids",        name: "IDS · IDENTIFY · DISCUSS · SOLVE", durationSec: 60 * MIN, actualSec: 53 * MIN, status: "done" },
+      { id: "a7", segment: "conclude",   name: "CONCLUDE",                     durationSec: 5  * MIN, actualSec: 4  * MIN, status: "done" },
+    ],
+    participants: [
+      { userId: "u_geo", status: "active", rating: 8 },
+      { userId: "u_bro", status: "active", rating: 9 },
+      { userId: "u_bar", status: "active", rating: 7 },
+      { userId: "u_ivy", status: "away" },
+    ],
+    ids: [
+      {
+        id: "ids-p1", rank: 1,
+        title: "Client onboarding takes too long — losing momentum post-close",
+        context: "Three clients in Q1 went silent during onboarding. Avg time to first deliverable is 14 days.",
+        source: "manual", sourceLabel: "George", ownerId: "u_geo",
+        severity: "high", stage: "solve",
+        notes: "Build a 48-hour fast-track checklist. Brooklyn owns the template by May 2.",
+        resolved: true, resolvedAs: "rock",
+      },
+      {
+        id: "ids-p2", rank: 2,
+        title: "Proposal template doesn't reflect new pricing — two misquotes sent",
+        context: "Sales team still using old deck. Brooklyn caught it but others may not.",
+        source: "manual", sourceLabel: "Brooklyn", ownerId: "u_bro",
+        severity: "med", stage: "solve",
+        notes: "Brooklyn to update and lock proposal template by Friday.",
+        resolved: true, resolvedAs: "task",
+      },
+    ],
+    captures: [
+      { id: "cap-p1", kind: "decision",  text: "Fast-track onboarding checklist is a Q2 Rock — owned by Brooklyn, due June 30.", ownerId: "u_geo", ownerLabel: "GEORGE",   createdAt: T_APR27 + 30 * MIN * 1000 },
+      { id: "cap-p2", kind: "todo",      text: "Brooklyn: update proposal template before Friday EOD.",                           ownerId: "u_bro", ownerLabel: "BROOKLYN", createdAt: T_APR27 + 45 * MIN * 1000 },
+      { id: "cap-p3", kind: "headline",  text: "Closed Verdictly AZ deal — $250 CPL, first leads flowing.",                     ownerId: "u_geo", ownerLabel: "GEORGE",   createdAt: T_APR27 + 20 * MIN * 1000 },
+      { id: "cap-p4", kind: "todo",      text: "Baruc: pull Q1 scorecard actuals and post in Slack by EOW.",                    ownerId: "u_bar", ownerLabel: "BARUC",    createdAt: T_APR27 + 50 * MIN * 1000 },
+      { id: "cap-p5", kind: "note",      text: "Ivy out next week — async Loom for her rock review.",                           ownerId: "u_geo", ownerLabel: "GEORGE",   createdAt: T_APR27 + 80 * MIN * 1000 },
+    ],
+  },
+
+  /* ── MAY 4 — upcoming (pre-loaded IDS from last week's parks) ── */
+  {
+    id: "mtg-may04",
+    name: "L10 LEADERSHIP · MON MAY 4",
+    type: "L10",
+    scheduledAt: T_MAY04,
+    durationMin: 90,
+    status: "scheduled",
+    agenda: defaultAgenda(),
+    participants: defaultParticipants(),
+    ids: [
+      {
+        id: "ids-a1", rank: 1,
+        title: "Organic traffic down 22% since Apr 21 — SEO algo update suspected",
+        context: "Analytics showing a sharp drop. No content changes on our end. May need an agency review.",
+        source: "scorecard", sourceLabel: "Scorecard", ownerId: "u_bar",
+        severity: "high", stage: "identify",
+        resolved: false,
+      },
+      {
+        id: "ids-a2", rank: 2,
+        title: "Onboarding Rock scope still unclear — need a 'done' definition",
+        context: "Carried from last week. Brooklyn hasn't locked the checklist template yet.",
+        source: "rock", sourceLabel: "Q2 Rock", ownerId: "u_bro",
+        severity: "med", stage: "identify",
+        resolved: false,
+      },
+    ],
+    captures: [],
+  },
+
+  /* ── MAY 11 ── */
+  {
+    id: "mtg-may11",
+    name: "L10 LEADERSHIP · MON MAY 11",
+    type: "L10",
+    scheduledAt: T_MAY11,
+    durationMin: 90,
+    status: "scheduled",
+    agenda: defaultAgenda(),
+    participants: defaultParticipants(),
+    ids: [],
+    captures: [],
+  },
+
+  /* ── MAY 18 ── */
+  {
+    id: "mtg-may18",
+    name: "L10 LEADERSHIP · MON MAY 18",
+    type: "L10",
+    scheduledAt: T_MAY18,
+    durationMin: 90,
+    status: "scheduled",
+    agenda: defaultAgenda(),
+    participants: defaultParticipants(),
+    ids: [],
+    captures: [],
+  },
+
+  /* ── MAY 25 ── */
+  {
+    id: "mtg-may25",
+    name: "L10 LEADERSHIP · MON MAY 25",
+    type: "L10",
+    scheduledAt: T_MAY25,
+    durationMin: 90,
+    status: "scheduled",
+    agenda: defaultAgenda(),
+    participants: defaultParticipants(),
+    ids: [],
+    captures: [],
+  },
+
+  /* ── JUN 1 ── */
+  {
+    id: "mtg-jun01",
+    name: "L10 LEADERSHIP · MON JUN 1",
+    type: "L10",
+    scheduledAt: T_JUN01,
+    durationMin: 90,
+    status: "scheduled",
+    agenda: defaultAgenda(),
+    participants: defaultParticipants(),
+    ids: [],
+    captures: [],
+  },
+
+  /* ── JUN 8 ── */
+  {
+    id: "mtg-jun08",
+    name: "L10 LEADERSHIP · MON JUN 8",
+    type: "L10",
+    scheduledAt: T_JUN08,
+    durationMin: 90,
+    status: "scheduled",
+    agenda: defaultAgenda(),
+    participants: defaultParticipants(),
+    ids: [],
+    captures: [],
+  },
+]
 
 type State = {
   meetings: Meeting[]
