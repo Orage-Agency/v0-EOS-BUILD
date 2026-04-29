@@ -13,5 +13,5 @@ export default async function ScorecardPage({
 }) {
   const { workspace } = await params
   const { metrics, cells } = await listScorecardData(workspace)
-  return <ScorecardShell initialMetrics={metrics} initialCells={cells} />
+  return <ScorecardShell initialMetrics={metrics} initialCells={cells} workspaceSlug={workspace} />
 }

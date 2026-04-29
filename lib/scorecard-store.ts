@@ -7,6 +7,7 @@
 
 import { create } from "zustand"
 import { useIssuesStore } from "@/lib/issues-store"
+import { createIssue as createIssueAction } from "@/app/actions/issues"
 
 export type MetricDirection = "up" | "down"
 export type MetricSource = "manual" | "stripe" | "ghl" | "n8n" | "ai"
@@ -194,6 +195,8 @@ type ScorecardState = {
   cells: MetricCell[]
   setMetrics: (metrics: Metric[]) => void
   setCells: (cells: MetricCell[]) => void
+  workspaceSlug: string
+  setWorkspaceSlug: (slug: string) => void
   drawerMetricId: string | null
   newMetricOpen: boolean
   filterRedOnly: boolean
@@ -219,6 +222,8 @@ export const useScorecardStore = create<ScorecardState>((set, get) => ({
   cells: seedCells(),
   setMetrics: (metrics) => set({ metrics }),
   setCells: (cells) => set({ cells }),
+  workspaceSlug: "",
+  setWorkspaceSlug: (slug) => set({ workspaceSlug: slug }),
   drawerMetricId: null,
   newMetricOpen: false,
   filterRedOnly: false,
@@ -269,9 +274,11 @@ export const useScorecardStore = create<ScorecardState>((set, get) => ({
             (i.queue === "open" || i.queue === "this_week"),
         )
       if (!existing) {
+        const title = `${metric.name} red 2 weeks running`
+        const context = `Auto-flagged from Scorecard: ${metric.name} has been red two consecutive weeks. Target ${metric.target}${metric.unit}.`
         const newId = useIssuesStore.getState().createIssue({
-          title: `${metric.name} red 2 weeks running`,
-          context: `Auto-flagged from Scorecard: ${metric.name} has been red two consecutive weeks. Target ${metric.target}${metric.unit}.`,
+          title,
+          context,
           severity: "high",
           ownerId: metric.ownerId,
           authorLabel: "SCORECARD",
@@ -289,6 +296,23 @@ export const useScorecardStore = create<ScorecardState>((set, get) => ({
               : i,
           ),
         }))
+        // Persist to DB and swap temp ID with the real one
+        const slug = get().workspaceSlug
+        if (slug) {
+          createIssueAction(slug, { title, context, severity: "high" })
+            .then((result) => {
+              if (result.ok) {
+                useIssuesStore.setState((s) => ({
+                  issues: s.issues.map((i) =>
+                    i.id === newId
+                      ? { ...i, id: result.id, source: "scorecard" as const, sourceLabel: "SCORECARD AUTO", linkedMetricId: metricId }
+                      : i,
+                  ),
+                }))
+              }
+            })
+            .catch(console.error)
+        }
         void actor
       }
     }

@@ -15,13 +15,19 @@ import { NewMetricModal } from "./new-metric-modal"
 export function ScorecardShell({
   initialMetrics,
   initialCells,
+  workspaceSlug,
 }: {
   initialMetrics?: Metric[]
   initialCells?: MetricCell[]
+  workspaceSlug?: string
 } = {}) {
-  const { metrics, openNewMetric, filterRedOnly, setFilterRedOnly, setMetrics, setCells } =
+  const { metrics, openNewMetric, filterRedOnly, setFilterRedOnly, setMetrics, setCells, setWorkspaceSlug } =
     useScorecardStore()
   const sessionUser = useUIStore((s) => s.currentUser)
+
+  useEffect(() => {
+    if (workspaceSlug) setWorkspaceSlug(workspaceSlug)
+  }, [workspaceSlug, setWorkspaceSlug])
 
   useEffect(() => {
     if (initialMetrics && initialMetrics.length > 0) setMetrics(initialMetrics)

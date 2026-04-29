@@ -112,7 +112,10 @@ export function NotesEditor() {
         <div className="max-w-[760px] mx-auto px-8 py-10">
           <input
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => {
+              setTitle(e.target.value)
+              useNotesStore.getState().updateActiveNoteTitle(e.target.value)
+            }}
             placeholder="Untitled"
             className="w-full bg-transparent border-none outline-none font-display text-[36px] tracking-wide text-text-primary placeholder:text-text-muted/50 mb-2.5"
           />

@@ -7,15 +7,33 @@
  */
 
 import { create } from "zustand"
-import { createNote as createNoteAction, saveNoteContent as saveNoteContentAction } from "@/app/actions/notes"
+import {
+  createNote as createNoteAction,
+  saveNoteContent as saveNoteContentAction,
+  updateNoteTitle as updateNoteTitleAction,
+  fetchNoteBlocks as fetchNoteBlocksAction,
+} from "@/app/actions/notes"
 
 let _autosaveTimer: ReturnType<typeof setTimeout> | null = null
+let _titleSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+function isDbId(id: string) {
+  return !id.startsWith("n_")
+}
 
 function scheduleAutosave(slug: string, noteId: string, blocks: Block[]) {
-  if (!slug || noteId.startsWith("n_")) return // skip seed/temp notes
+  if (!slug || !isDbId(noteId)) return
   if (_autosaveTimer) clearTimeout(_autosaveTimer)
   _autosaveTimer = setTimeout(() => {
     saveNoteContentAction(slug, noteId, blocks).catch(console.error)
+  }, 800)
+}
+
+function scheduleTitleSave(slug: string, noteId: string, title: string) {
+  if (!slug || !isDbId(noteId)) return
+  if (_titleSaveTimer) clearTimeout(_titleSaveTimer)
+  _titleSaveTimer = setTimeout(() => {
+    updateNoteTitleAction(slug, noteId, title).catch(console.error)
   }, 800)
 }
 
@@ -211,6 +229,7 @@ type NotesState = {
   toggleSection: (key: "meetings" | "personal" | "rocks") => void
 
   // editor mutations
+  updateActiveNoteTitle: (title: string) => void
   updateBlockHtml: (blockId: string, html: string) => void
   toggleTodo: (blockId: string) => void
   insertBlock: (afterId: string, type: BlockType, payload?: Partial<Block>) => string
@@ -235,7 +254,19 @@ export const useNotesStore = create<NotesState>((set, get) => ({
   backlinks: BACKLINKS,
 
   activeNoteId: "n_module7",
-  setActiveNote: (id) => set({ activeNoteId: id }),
+  setActiveNote: (id) => {
+    set({ activeNoteId: id })
+    const { workspaceSlug, blocks } = get()
+    if (workspaceSlug && isDbId(id) && !blocks[id]) {
+      fetchNoteBlocksAction(workspaceSlug, id)
+        .then((fetched) => {
+          if (fetched.length > 0) {
+            set((s) => ({ blocks: { ...s.blocks, [id]: fetched } }))
+          }
+        })
+        .catch(console.error)
+    }
+  },
 
   expandedRocks: new Set(["r1"]),
   expandedSections: new Set<"meetings" | "personal" | "rocks">(["rocks", "meetings", "personal"]),
@@ -251,6 +282,14 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       next.has(key) ? next.delete(key) : next.add(key)
       return { expandedSections: next }
     }),
+
+  updateActiveNoteTitle: (title) => {
+    const id = get().activeNoteId
+    set((s) => ({
+      notes: s.notes.map((n) => (n.id === id ? { ...n, title } : n)),
+    }))
+    scheduleTitleSave(get().workspaceSlug, id, title)
+  },
 
   updateBlockHtml: (blockId, html) => {
     set((state) => {

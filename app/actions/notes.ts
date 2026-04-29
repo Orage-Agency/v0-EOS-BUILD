@@ -91,6 +91,28 @@ export async function updateNoteTitle(
   }
 }
 
+export async function fetchNoteBlocks(
+  workspaceSlug: string,
+  noteId: string,
+): Promise<Block[]> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    const sb = supabaseAdmin()
+    const { data, error } = await sb
+      .from("notes")
+      .select("content")
+      .eq("id", noteId)
+      .eq("tenant_id", user.workspaceId)
+      .single()
+    if (error || !data) return []
+    return Array.isArray((data as { content: unknown }).content)
+      ? ((data as { content: Block[] }).content)
+      : []
+  } catch {
+    return []
+  }
+}
+
 export async function deleteNote(
   workspaceSlug: string,
   noteId: string,
