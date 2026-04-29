@@ -103,14 +103,14 @@ function defaultParticipants(): Participant[] {
   }))
 }
 
-// Monday 17:00 UTC timestamps for Apr 27 – Jun 8 2026
-const T_APR27 = 1777309200000
-const T_MAY04 = 1777914000000
-const T_MAY11 = 1778518800000
-const T_MAY18 = 1779123600000
-const T_MAY25 = 1779728400000
-const T_JUN01 = 1780333200000
-const T_JUN08 = 1780938000000
+// Monday 22:00 UTC timestamps for Apr 27 – Jun 8 2026 (= 5:00 PM CDMX / CDT UTC-5)
+const T_APR27 = 1777327200000
+const T_MAY04 = 1777932000000
+const T_MAY11 = 1778536800000
+const T_MAY18 = 1779141600000
+const T_MAY25 = 1779746400000
+const T_JUN01 = 1780351200000
+const T_JUN08 = 1780956000000
 
 const seedMeetings: Meeting[] = [
   /* ── APR 27 — concluded ──────────────────────────────── */
