@@ -11,6 +11,7 @@ import { IcChevronLeft } from "@/components/orage/icons"
 
 export function RunnerShell({ id }: { id: string }) {
   const meeting = useL10Store((s) => s.getMeeting(id))
+  const startMeeting = useL10Store((s) => s.startMeeting)
 
   // Lock body scroll while runner is open
   useEffect(() => {
@@ -20,6 +21,11 @@ export function RunnerShell({ id }: { id: string }) {
       document.body.style.overflow = prev
     }
   }, [])
+
+  // Activate first segment + mark meeting in_session on mount
+  useEffect(() => {
+    startMeeting(id)
+  }, [id, startMeeting])
 
   if (!meeting) {
     return (

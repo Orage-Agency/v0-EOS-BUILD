@@ -314,6 +314,8 @@ type Actions = {
   // Toast
   showToast: (msg: string) => void
   clearToast: () => void
+  // Start
+  startMeeting: (meetingId: string) => void
   // Create
   createMeeting: (when: number) => string
 }
@@ -344,12 +346,44 @@ export const useL10Store = create<State & Actions>((set, get) => ({
   setTimerRunning: (running) => set({ timerRunning: running }),
   addTime: (sec) => set((s) => ({ timerSec: s.timerSec + sec })),
 
+  startMeeting: (meetingId) =>
+    set((s) => ({
+      meetings: s.meetings.map((m) => {
+        if (m.id !== meetingId) return m
+        if (m.status === "in_session") return m
+        return {
+          ...m,
+          status: "in_session" as const,
+          startedAt: Date.now(),
+          agenda: m.agenda.map((a, i) =>
+            i === 0 ? { ...a, status: "active" as const } : a,
+          ),
+        }
+      }),
+      timerSec: (() => {
+        const m = s.meetings.find((mm) => mm.id === meetingId)
+        return m?.agenda[0]?.durationSec ?? s.timerSec
+      })(),
+      timerRunning: true,
+    })),
+
   advanceRound: (meetingId) =>
     set((s) => ({
       meetings: s.meetings.map((m) => {
         if (m.id !== meetingId) return m
         const idx = m.agenda.findIndex((a) => a.status === "active")
-        if (idx < 0 || idx >= m.agenda.length - 1) return m
+        if (idx >= m.agenda.length - 1) return m
+        if (idx < 0) {
+          // No active segment yet — activate the first pending one
+          const firstPending = m.agenda.findIndex((a) => a.status === "pending")
+          if (firstPending < 0) return m
+          return {
+            ...m,
+            agenda: m.agenda.map((a, i) =>
+              i === firstPending ? { ...a, status: "active" as const } : a,
+            ),
+          }
+        }
         const updated = m.agenda.map((a, i) => {
           if (i === idx) return { ...a, status: "done" as const }
           if (i === idx + 1) return { ...a, status: "active" as const }
