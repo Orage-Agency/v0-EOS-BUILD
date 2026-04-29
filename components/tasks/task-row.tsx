@@ -1,0 +1,251 @@
+"use client"
+
+import { useRef, useState } from "react"
+import { useSortable } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
+import { CURRENT_USER, getUser, type MockTask } from "@/lib/mock-data"
+import { useTasksStore } from "@/lib/tasks-store"
+import { OrageAvatar } from "@/components/orage/avatar"
+import { AssignPopover } from "./assign-popover"
+import { dueLabel } from "@/lib/format"
+import { canDragTask } from "@/lib/permissions"
+import { IcArchive, IcCheck, IcGrip, IcMore } from "@/components/orage/icons"
+import { cn } from "@/lib/utils"
+
+const ROCK_LINK_LABEL: Record<string, string> = {
+  r1: "↗ ROCK · OFFER",
+  r2: "↗ ROCK · QUINTESSA",
+  r3: "↗ ROCK · VSL",
+  r6: "↗ ROCK · TOOLKIT",
+  r7: "↗ ROCK · OUTBOUND",
+}
+const ROCK_TAG: Record<string, string> = {
+  r1: "OFFER BUILD",
+  r2: "CLIENT",
+  r3: "VSL",
+  r4: "OFFER BUILD",
+  r6: "PRODUCT",
+  r7: "MARKETING",
+}
+
+const COLS =
+  "30px 24px minmax(0,1fr) 130px 100px 110px 60px 40px"
+
+export function TaskRow({ task }: { task: MockTask }) {
+  const owner = getUser(task.owner)
+  const selected = useTasksStore((s) => s.selected)
+  const toggleSelected = useTasksStore((s) => s.toggleSelected)
+  const openTask = useTasksStore((s) => s.openTask)
+  const toggleStatus = useTasksStore((s) => s.toggleStatus)
+  const startHandoff = useTasksStore((s) => s.startHandoff)
+  const reassign = useTasksStore((s) => s.reassign)
+
+  const [assignOpen, setAssignOpen] = useState(false)
+  const avatarBtnRef = useRef<HTMLButtonElement>(null)
+
+  const isSelected = selected.has(task.id)
+  const isDone = task.status === "done"
+  const due = dueLabel(task.due)
+  const rockTag = task.rockId ? ROCK_TAG[task.rockId] : "—"
+  const rockLink = task.rockId ? ROCK_LINK_LABEL[task.rockId] : null
+  const canDrag = canDragTask(CURRENT_USER, task.owner)
+
+  const sortable = useSortable({ id: task.id, disabled: !canDrag || isDone })
+  const style = {
+    transform: CSS.Transform.toString(sortable.transform),
+    transition: sortable.transition,
+  }
+
+  function onRowClick(e: React.MouseEvent) {
+    if (e.shiftKey) {
+      toggleSelected(task.id, { range: true })
+      return
+    }
+    if (e.metaKey || e.ctrlKey) {
+      toggleSelected(task.id, { toggle: true })
+      return
+    }
+    openTask(task.id)
+  }
+
+  return (
+    <div
+      ref={sortable.setNodeRef}
+      style={style}
+      onClick={onRowClick}
+      className={cn(
+        "task-row group grid items-center gap-3.5 px-4.5 py-2.5 border-b border-border-orage cursor-pointer transition-colors relative bg-bg-3 hover:bg-bg-4",
+        isSelected && "selected",
+        sortable.isDragging && "dragging",
+        !canDrag && "draggable-locked",
+      )}
+      data-id={task.id}
+    >
+      <style jsx>{`
+        .task-row {
+          grid-template-columns: ${COLS};
+          padding-left: 18px;
+          padding-right: 18px;
+        }
+        .task-row.selected {
+          background: rgba(182, 128, 57, 0.08);
+        }
+        .task-row.selected::before {
+          content: "";
+          position: absolute;
+          inset: 0 auto 0 0;
+          width: 2px;
+          background: var(--gold-500);
+        }
+      `}</style>
+
+      <button
+        type="button"
+        aria-label="Drag to reorder"
+        {...(canDrag ? sortable.listeners : {})}
+        {...sortable.attributes}
+        onClick={(e) => e.stopPropagation()}
+        className={cn(
+          "opacity-0 group-hover:opacity-60 text-text-dim flex items-center justify-center",
+          canDrag ? "cursor-grab active:cursor-grabbing" : "cursor-not-allowed",
+        )}
+        disabled={!canDrag}
+      >
+        <IcGrip className="w-3 h-3" />
+      </button>
+
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          toggleSelected(task.id, { toggle: true })
+        }}
+        aria-label={isSelected ? "Unselect" : "Select"}
+        aria-pressed={isSelected}
+        className={cn(
+          "w-3.5 h-3.5 rounded-sm border-[1.5px] cursor-pointer transition-colors flex items-center justify-center",
+          isSelected
+            ? "bg-gold-500 border-gold-500"
+            : "border-border-strong hover:border-gold-500",
+        )}
+      >
+        {isSelected && <IcCheck className="w-2 h-2 text-text-on-gold" />}
+      </button>
+
+      <div
+        className={cn(
+          "text-[13px] text-text-primary flex items-center gap-2 min-w-0",
+          isDone && "line-through text-text-muted",
+        )}
+      >
+        <button
+          type="button"
+          aria-label={isDone ? "Mark open" : "Mark done"}
+          onClick={(e) => {
+            e.stopPropagation()
+            toggleStatus(task.id)
+          }}
+          className={cn(
+            "shrink-0 w-4 h-4 rounded-sm border-[1.5px] cursor-pointer transition-colors flex items-center justify-center mr-1",
+            isDone
+              ? "bg-gold-500 border-gold-500"
+              : "border-border-strong hover:border-gold-500",
+          )}
+        >
+          {isDone && <IcCheck className="w-2.5 h-2.5 text-text-on-gold" />}
+        </button>
+        <span className="truncate">{task.title}</span>
+        {rockLink && (
+          <span className="font-display text-[9px] tracking-[0.15em] text-gold-500 bg-gold-500/10 px-1.5 py-0.5 rounded-sm shrink-0">
+            {rockLink}
+          </span>
+        )}
+      </div>
+
+      <span className="font-display text-[9px] tracking-[0.18em] text-gold-500 bg-bg-active px-1.5 py-0.5 rounded-sm justify-self-start">
+        {rockTag}
+      </span>
+
+      <span
+        className={cn(
+          "priority justify-self-start",
+          task.priority === "high" && "priority-high",
+          task.priority === "med" && "priority-med",
+          task.priority === "low" && "priority-low",
+          isDone && "invisible",
+        )}
+      >
+        {task.priority.toUpperCase()}
+      </span>
+
+      <span
+        className={cn(
+          "text-[11px] font-mono",
+          isDone
+            ? "text-text-muted"
+            : due.tone === "overdue"
+              ? "text-danger font-semibold"
+              : due.tone === "urgent"
+                ? "text-warning font-semibold"
+                : "text-text-muted",
+        )}
+      >
+        {isDone && task.completed
+          ? `DONE ${task.completed.slice(5).replace("-", "/")}`
+          : due.label}
+      </span>
+
+      <div className="relative">
+        {owner && (
+          <OrageAvatar
+            asButton
+            user={owner}
+            size="sm"
+            title={`Click to reassign · ${owner.name}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              setAssignOpen((v) => !v)
+            }}
+          />
+        )}
+        <AssignPopover
+          open={assignOpen}
+          anchorRef={avatarBtnRef as never}
+          currentOwnerId={task.owner}
+          onClose={() => setAssignOpen(false)}
+          onSelect={(u) => {
+            setAssignOpen(false)
+            if (u.id === task.owner) return
+            startHandoff({
+              taskId: task.id,
+              fromUserId: task.owner,
+              toUserId: u.id,
+            })
+            // optimistic reassign happens after handoff confirm; if the
+            // owner is the same, we fast-path with no modal:
+            void reassign
+          }}
+        />
+      </div>
+
+      <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
+        <button
+          type="button"
+          aria-label="Archive"
+          onClick={(e) => e.stopPropagation()}
+          className="w-6 h-6 rounded-sm flex items-center justify-center text-text-muted hover:bg-bg-2 hover:text-gold-400"
+        >
+          <IcArchive className="w-3 h-3" />
+        </button>
+        <button
+          type="button"
+          aria-label="More"
+          onClick={(e) => e.stopPropagation()}
+          className="w-6 h-6 rounded-sm flex items-center justify-center text-text-muted hover:bg-bg-2 hover:text-gold-400"
+        >
+          <IcMore className="w-3 h-3" />
+        </button>
+      </div>
+    </div>
+  )
+}

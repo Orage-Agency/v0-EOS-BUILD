@@ -1,0 +1,165 @@
+/**
+ * Orage Core · Tasks server-side data helpers
+ *
+ * These run inside Server Components and Route Handlers. Anything that
+ * imports this module is server-only — the `supabaseAdmin()` client is
+ * never shipped to the browser.
+ *
+ * Conversions: DB row → `MockTask` shape so the existing client store,
+ * row component, and helpers don't need to change for persistence.
+ */
+import "server-only"
+
+import { requireUser } from "@/lib/auth"
+import { supabaseAdmin } from "@/lib/supabase/admin"
+import {
+  UNASSIGNED_OWNER_ID,
+  type MockTask,
+  type TaskPriority,
+  type TaskStatus,
+} from "@/lib/mock-data"
+import type { DbTask } from "@/lib/db-types"
+
+// ----------------------------------------------------------- conversions
+
+function dbToMockTask(row: DbTask): MockTask {
+  return {
+    id: row.id,
+    title: row.title,
+    owner: row.owner_id ?? UNASSIGNED_OWNER_ID,
+    createdBy: row.created_by ?? undefined,
+    status: row.status,
+    priority: row.priority,
+    due: row.due_date ? row.due_date.slice(0, 10) : "",
+    rockId: row.parent_rock_id ?? undefined,
+    completed: row.completed_at ? row.completed_at.slice(0, 10) : undefined,
+  }
+}
+
+// ----------------------------------------------------------- list tasks
+
+export async function listTasksForWorkspace(
+  workspaceSlug: string,
+): Promise<MockTask[]> {
+  const user = await requireUser(workspaceSlug)
+  try {
+    const sb = supabaseAdmin()
+    const { data, error } = await sb
+      .from("tasks")
+      .select("*")
+      .eq("tenant_id", user.workspaceId)
+      .order("created_at", { ascending: false })
+    if (error) {
+      console.error("[v0] listTasksForWorkspace error", error.message)
+      return []
+    }
+    return ((data as DbTask[] | null) ?? []).map(dbToMockTask)
+  } catch (err) {
+    console.error("[v0] listTasksForWorkspace exception", err)
+    return []
+  }
+}
+
+// ----------------------------------------------------------- list members
+
+export type WorkspaceMember = {
+  id: string
+  name: string
+  email: string
+  avatarUrl: string | null
+  initials: string
+  role: string
+}
+
+function deriveInitials(name: string, email: string): string {
+  const source = name?.trim() || email
+  const parts = source.split(/\s+|@/).filter(Boolean)
+  if (parts.length === 0) return "??"
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[1][0]).toUpperCase()
+}
+
+export async function listWorkspaceMembers(
+  workspaceSlug: string,
+): Promise<WorkspaceMember[]> {
+  const user = await requireUser(workspaceSlug)
+  try {
+    const sb = supabaseAdmin()
+    const { data, error } = await sb
+      .from("workspace_memberships")
+      .select("user_id, role, status, profiles:profiles!inner(id, email, full_name, avatar_url)")
+      .eq("workspace_id", user.workspaceId)
+      .eq("status", "active")
+    if (error) {
+      console.error("[v0] listWorkspaceMembers error", error.message)
+      return []
+    }
+    type Row = {
+      user_id: string
+      role: string
+      status: string | null
+      profiles:
+        | { id: string; email: string; full_name: string | null; avatar_url: string | null }
+        | { id: string; email: string; full_name: string | null; avatar_url: string | null }[]
+        | null
+    }
+    return ((data as unknown as Row[]) ?? []).flatMap((r) => {
+      const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles
+      if (!p) return []
+      const name = p.full_name ?? p.email
+      return [
+        {
+          id: p.id,
+          name,
+          email: p.email,
+          avatarUrl: p.avatar_url,
+          initials: deriveInitials(p.full_name ?? "", p.email),
+          role: r.role,
+        } satisfies WorkspaceMember,
+      ]
+    })
+  } catch (err) {
+    console.error("[v0] listWorkspaceMembers exception", err)
+    return []
+  }
+}
+
+// ----------------------------------------------------------- list rocks
+
+export type RockOption = {
+  id: string
+  title: string
+  quarter: string
+}
+
+export async function listActiveRocks(
+  workspaceSlug: string,
+): Promise<RockOption[]> {
+  const user = await requireUser(workspaceSlug)
+  try {
+    const sb = supabaseAdmin()
+    const { data, error } = await sb
+      .from("rocks")
+      .select("id, title, quarter, status")
+      .eq("tenant_id", user.workspaceId)
+      .neq("status", "done")
+      .order("created_at", { ascending: false })
+    if (error) {
+      console.error("[v0] listActiveRocks error", error.message)
+      return []
+    }
+    type R = { id: string; title: string; quarter: string }
+    return ((data as R[] | null) ?? []).map((r) => ({
+      id: r.id,
+      title: r.title,
+      quarter: r.quarter,
+    }))
+  } catch (err) {
+    console.error("[v0] listActiveRocks exception", err)
+    return []
+  }
+}
+
+// ----------------------------------------------------------- type re-exports
+
+export type { MockTask, TaskPriority, TaskStatus }

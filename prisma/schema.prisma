@@ -1,0 +1,538 @@
+// Orage Core · Prisma Schema
+// Mirror of scripts/00-database-schema.sql (Postgres / Supabase)
+// RLS policies and SQL functions live in raw SQL — Prisma manages structure only.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [uuidOssp(map: "uuid-ossp"), pgTrgm(map: "pg_trgm"), vector]
+}
+
+// ============================================================================
+// TENANTS
+// ============================================================================
+model Tenant {
+  id                  String   @id @default(uuid()) @db.Uuid
+  name                String
+  slug                String   @unique
+  tier                String   @default("trial") // trial | t1 | t2 | t3 | master | partnership
+  status              String   @default("active") // active | trial | suspended | archived
+  masterManaged       Boolean? @default(false) @map("master_managed")
+  brandingLogoUrl     String?  @map("branding_logo_url")
+  brandingAccentHex   String?  @default("#B68039") @map("branding_accent_hex")
+  trialEndsAt         DateTime? @map("trial_ends_at") @db.Timestamptz
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  memberships         TenantMembership[]
+  vtoDocuments        VtoDocument[]
+  accountabilityRoles AccountabilityRole[]
+  rocks               Rock[]
+  tasks               Task[]
+  issues              Issue[]
+  scorecardMetrics    ScorecardMetric[]
+  notes               Note[]
+  meetings            Meeting[]
+  aiNudges            AiNudge[]
+  aiConversations     AiConversation[]
+  aiInsights          AiInsight[]
+  integrations        IntegrationCredential[]
+  calendarEvents      CalendarEvent[]
+  activityLog         ActivityLog[]
+
+  @@map("tenants")
+}
+
+// ============================================================================
+// USERS
+// ============================================================================
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  authId       String?   @unique @map("auth_id") @db.Uuid // references Supabase auth.users(id)
+  email        String    @unique
+  name         String
+  avatarUrl    String?   @map("avatar_url")
+  isMaster     Boolean?  @default(false) @map("is_master")
+  isFieldUser  Boolean?  @default(false) @map("is_field_user")
+  qrTokenHash  String?   @map("qr_token_hash")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  lastActiveAt DateTime? @map("last_active_at") @db.Timestamptz
+
+  memberships         TenantMembership[] @relation("UserMemberships")
+  invitedMemberships  TenantMembership[] @relation("InvitedBy")
+  vtoDocumentsCreated VtoDocument[]
+  accountabilityRoles AccountabilityRole[]
+  rocksOwned          Rock[]               @relation("RockOwner")
+  rocksCreated        Rock[]               @relation("RockCreatedBy")
+  tasksOwned          Task[]               @relation("TaskOwner")
+  tasksCreated        Task[]               @relation("TaskCreatedBy")
+  handoffsFrom        TaskHandoff[]        @relation("HandoffFrom")
+  handoffsTo          TaskHandoff[]        @relation("HandoffTo")
+  issuesOwned         Issue[]              @relation("IssueOwner")
+  issuesCreated       Issue[]              @relation("IssueCreatedBy")
+  scorecardMetrics    ScorecardMetric[]
+  notesCreated        Note[]
+  noteMentions        NoteMention[]
+  meetingsCreated     Meeting[]
+  meetingCaptures     MeetingCapture[]
+  aiNudges            AiNudge[]
+  aiConversations     AiConversation[]
+  activityLog         ActivityLog[]
+
+  @@map("users")
+}
+
+// ============================================================================
+// TENANT MEMBERSHIPS
+// ============================================================================
+model TenantMembership {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  role      String   @default("member") // founder | admin | leader | member | viewer | field
+  invitedBy String?  @map("invited_by") @db.Uuid
+  joinedAt  DateTime @default(now()) @map("joined_at") @db.Timestamptz
+
+  tenant  Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user    User   @relation("UserMemberships", fields: [userId], references: [id], onDelete: Cascade)
+  inviter User?  @relation("InvitedBy", fields: [invitedBy], references: [id])
+
+  @@unique([tenantId, userId])
+  @@index([userId], map: "idx_memberships_user")
+  @@index([tenantId], map: "idx_memberships_tenant")
+  @@map("tenant_memberships")
+}
+
+// ============================================================================
+// VTO · Vision/Traction Organizer (versioned)
+// ============================================================================
+model VtoDocument {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  version         Int
+  payload         Json
+  lockedSections  String[] @default([]) @map("locked_sections")
+  createdBy       String?  @map("created_by") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  isCurrent       Boolean? @default(true) @map("is_current")
+
+  tenant  Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creator User?  @relation(fields: [createdBy], references: [id])
+
+  @@unique([tenantId, version])
+  @@index([tenantId, isCurrent], map: "idx_vto_tenant")
+  @@map("vto_documents")
+}
+
+// ============================================================================
+// ACCOUNTABILITY CHART
+// ============================================================================
+model AccountabilityRole {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  roleName         String   @map("role_name")
+  parentRoleId     String?  @map("parent_role_id") @db.Uuid
+  personId         String?  @map("person_id") @db.Uuid
+  responsibilities String[]
+  displayOrder     Int?     @default(0) @map("display_order")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant     Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parentRole AccountabilityRole?  @relation("RoleHierarchy", fields: [parentRoleId], references: [id])
+  childRoles AccountabilityRole[] @relation("RoleHierarchy")
+  person     User?                @relation(fields: [personId], references: [id])
+  rocks      Rock[]
+
+  @@index([tenantId], map: "idx_roles_tenant")
+  @@map("accountability_roles")
+}
+
+// ============================================================================
+// ROCKS · Quarterly priorities
+// ============================================================================
+model Rock {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  title        String
+  description  String?
+  ownerId      String?   @map("owner_id") @db.Uuid
+  roleId       String?   @map("role_id") @db.Uuid
+  parentRockId String?   @map("parent_rock_id") @db.Uuid
+  quarter      String    // "2026-Q2"
+  startDate    DateTime? @map("start_date") @db.Date
+  dueDate      DateTime  @map("due_date") @db.Date
+  status       String    @default("on_track") // on_track | in_progress | at_risk | off_track | done
+  progress     Int       @default(0)
+  tag          String?
+  createdBy    String?   @map("created_by") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  completedAt  DateTime? @map("completed_at") @db.Timestamptz
+
+  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner      User?               @relation("RockOwner", fields: [ownerId], references: [id])
+  creator    User?               @relation("RockCreatedBy", fields: [createdBy], references: [id])
+  role       AccountabilityRole? @relation(fields: [roleId], references: [id])
+  parentRock Rock?               @relation("RockCascade", fields: [parentRockId], references: [id])
+  childRocks Rock[]              @relation("RockCascade")
+  milestones RockMilestone[]
+  tasks      Task[]
+
+  @@index([tenantId], map: "idx_rocks_tenant")
+  @@index([ownerId], map: "idx_rocks_owner")
+  @@index([tenantId, quarter], map: "idx_rocks_quarter")
+  @@map("rocks")
+}
+
+model RockMilestone {
+  id          String    @id @default(uuid()) @db.Uuid
+  rockId      String    @map("rock_id") @db.Uuid
+  title       String
+  dueDate     DateTime? @map("due_date") @db.Date
+  completedAt DateTime? @map("completed_at") @db.Timestamptz
+  orderIdx    Int?      @default(0) @map("order_idx")
+  aiGenerated Boolean?  @default(false) @map("ai_generated")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  rock Rock @relation(fields: [rockId], references: [id], onDelete: Cascade)
+
+  @@index([rockId], map: "idx_milestones_rock")
+  @@map("rock_milestones")
+}
+
+// ============================================================================
+// TASKS
+// ============================================================================
+model Task {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  title           String
+  description     String?
+  ownerId         String?   @map("owner_id") @db.Uuid
+  parentRockId    String?   @map("parent_rock_id") @db.Uuid
+  parentIssueId   String?   @map("parent_issue_id") @db.Uuid
+  parentNoteId    String?   @map("parent_note_id") @db.Uuid
+  status          String    @default("open") // open | in_progress | done | cancelled
+  priority        String    @default("med") // high | med | low
+  dueDate         DateTime? @map("due_date") @db.Timestamptz
+  completedAt     DateTime? @map("completed_at") @db.Timestamptz
+  calendarEventId String?   @map("calendar_event_id") @db.Uuid
+  createdBy       String?   @map("created_by") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner       User?         @relation("TaskOwner", fields: [ownerId], references: [id])
+  creator     User?         @relation("TaskCreatedBy", fields: [createdBy], references: [id])
+  parentRock  Rock?         @relation(fields: [parentRockId], references: [id])
+  parentIssue Issue?        @relation(fields: [parentIssueId], references: [id])
+  parentNote  Note?         @relation(fields: [parentNoteId], references: [id])
+  handoffs    TaskHandoff[]
+
+  @@index([tenantId], map: "idx_tasks_tenant")
+  @@index([ownerId], map: "idx_tasks_owner")
+  @@index([dueDate], map: "idx_tasks_due")
+  @@map("tasks")
+}
+
+// ============================================================================
+// TASK HANDOFFS · The "Santa" chain
+// ============================================================================
+model TaskHandoff {
+  id              String   @id @default(uuid()) @db.Uuid
+  taskId          String   @map("task_id") @db.Uuid
+  fromUserId      String?  @map("from_user_id") @db.Uuid
+  toUserId        String?  @map("to_user_id") @db.Uuid
+  contextNote     String   @map("context_note")
+  attachedNoteIds String[] @map("attached_note_ids") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  task     Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  fromUser User? @relation("HandoffFrom", fields: [fromUserId], references: [id])
+  toUser   User? @relation("HandoffTo", fields: [toUserId], references: [id])
+
+  @@index([taskId], map: "idx_handoffs_task")
+  @@map("task_handoffs")
+}
+
+// ============================================================================
+// ISSUES · IDS queue
+// ============================================================================
+model Issue {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  title         String
+  description   String?
+  ownerId       String?   @map("owner_id") @db.Uuid
+  rank          Int?
+  status        String    @default("open") // open | discussing | solved | dropped
+  sourceType    String?   @map("source_type")
+  sourceId      String?   @map("source_id") @db.Uuid
+  aiGenerated   Boolean?  @default(false) @map("ai_generated")
+  solvedAt      DateTime? @map("solved_at") @db.Timestamptz
+  solutionNote  String?   @map("solution_note")
+  createdBy     String?   @map("created_by") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant  Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner   User?  @relation("IssueOwner", fields: [ownerId], references: [id])
+  creator User?  @relation("IssueCreatedBy", fields: [createdBy], references: [id])
+  tasks   Task[]
+
+  @@index([tenantId], map: "idx_issues_tenant")
+  @@index([tenantId, status], map: "idx_issues_open")
+  @@map("issues")
+}
+
+// ============================================================================
+// SCORECARD
+// ============================================================================
+model ScorecardMetric {
+  id                 String    @id @default(uuid()) @db.Uuid
+  tenantId           String    @map("tenant_id") @db.Uuid
+  name               String
+  ownerId            String?   @map("owner_id") @db.Uuid
+  goalValue          Decimal   @map("goal_value") @db.Decimal
+  goalOp             String    @map("goal_op") // gte | lte | eq | between
+  goalValueSecondary Decimal?  @map("goal_value_secondary") @db.Decimal
+  unit               String?
+  frequency          String    @default("weekly") // weekly | monthly | daily
+  displayOrder       Int?      @default(0) @map("display_order")
+  archivedAt         DateTime? @map("archived_at") @db.Timestamptz
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant  Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner   User?              @relation(fields: [ownerId], references: [id])
+  entries ScorecardEntry[]
+
+  @@index([tenantId], map: "idx_scorecard_tenant")
+  @@map("scorecard_metrics")
+}
+
+model ScorecardEntry {
+  id             String   @id @default(uuid()) @db.Uuid
+  metricId       String   @map("metric_id") @db.Uuid
+  periodStart    DateTime @map("period_start") @db.Date
+  value          Decimal? @db.Decimal
+  statusOverride String?  @map("status_override") // green | yellow | red
+  notes          String?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  metric ScorecardMetric @relation(fields: [metricId], references: [id], onDelete: Cascade)
+
+  @@unique([metricId, periodStart])
+  @@index([metricId, periodStart(sort: Desc)], map: "idx_entries_metric_period")
+  @@map("scorecard_entries")
+}
+
+// ============================================================================
+// NOTES · The spine
+// ============================================================================
+model Note {
+  id         String                 @id @default(uuid()) @db.Uuid
+  tenantId   String                 @map("tenant_id") @db.Uuid
+  title      String
+  content    Json                   @default("{}")
+  parentType String?                @map("parent_type") // rock | issue | task | meeting | person | null
+  parentId   String?                @map("parent_id") @db.Uuid
+  isPinned   Boolean?               @default(false) @map("is_pinned")
+  folder     String?                // pinned | by_rock | meetings | personal
+  embedding  Unsupported("vector(1536)")?
+  createdBy  String?                @map("created_by") @db.Uuid
+  createdAt  DateTime               @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime               @default(now()) @map("updated_at") @db.Timestamptz
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creator  User?         @relation(fields: [createdBy], references: [id])
+  links    NoteLink[]
+  mentions NoteMention[]
+  tasks    Task[]
+
+  @@index([tenantId], map: "idx_notes_tenant")
+  @@index([parentType, parentId], map: "idx_notes_parent")
+  @@map("notes")
+}
+
+model NoteLink {
+  id           String   @id @default(uuid()) @db.Uuid
+  sourceNoteId String   @map("source_note_id") @db.Uuid
+  targetType   String   @map("target_type") // note | rock | issue | task
+  targetId     String   @map("target_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  sourceNote Note @relation(fields: [sourceNoteId], references: [id], onDelete: Cascade)
+
+  @@index([sourceNoteId], map: "idx_links_source")
+  @@index([targetType, targetId], map: "idx_links_target")
+  @@map("note_links")
+}
+
+model NoteMention {
+  id         String    @id @default(uuid()) @db.Uuid
+  noteId     String    @map("note_id") @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  notifiedAt DateTime? @map("notified_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, notifiedAt], map: "idx_mentions_user")
+  @@map("note_mentions")
+}
+
+// ============================================================================
+// MEETINGS
+// ============================================================================
+model Meeting {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  type            String // l10 | quarterly | annual | one_on_one
+  title           String
+  scheduledAt     DateTime? @map("scheduled_at") @db.Timestamptz
+  startedAt       DateTime? @map("started_at") @db.Timestamptz
+  endedAt         DateTime? @map("ended_at") @db.Timestamptz
+  agenda          Json?
+  summaryText     String?   @map("summary_text")
+  ratingAverage   Decimal?  @map("rating_average") @db.Decimal
+  attendeeIds     String[]  @map("attendee_ids") @db.Uuid
+  calendarEventId String?   @map("calendar_event_id") @db.Uuid
+  createdBy       String?   @map("created_by") @db.Uuid
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creator  User?            @relation(fields: [createdBy], references: [id])
+  captures MeetingCapture[]
+
+  @@index([tenantId, scheduledAt(sort: Desc)], map: "idx_meetings_tenant")
+  @@map("meetings")
+}
+
+model MeetingCapture {
+  id              String   @id @default(uuid()) @db.Uuid
+  meetingId       String   @map("meeting_id") @db.Uuid
+  content         String
+  capturedBy      String?  @map("captured_by") @db.Uuid
+  convertedToType String?  @map("converted_to_type") // task | issue | note | decision
+  convertedToId   String?  @map("converted_to_id") @db.Uuid
+  timestamp       DateTime @default(now()) @db.Timestamptz
+
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  capturer  User?   @relation(fields: [capturedBy], references: [id])
+
+  @@index([meetingId], map: "idx_captures_meeting")
+  @@map("meeting_captures")
+}
+
+// ============================================================================
+// AI IMPLEMENTER
+// ============================================================================
+model AiNudge {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  userId        String?   @map("user_id") @db.Uuid
+  type          String // rock_velocity | scorecard_pattern | handoff_health | milestone_proposal
+  title         String
+  body          String
+  actionPayload Json?     @map("action_payload")
+  status        String    @default("pending") // pending | actioned | dismissed
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  actionedAt    DateTime? @map("actioned_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([userId, status], map: "idx_nudges_user")
+  @@index([tenantId, status], map: "idx_nudges_tenant")
+  @@map("ai_nudges")
+}
+
+model AiConversation {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  userId        String?  @map("user_id") @db.Uuid
+  messages      Json     @default("[]")
+  startedAt     DateTime @default(now()) @map("started_at") @db.Timestamptz
+  lastMessageAt DateTime @default(now()) @map("last_message_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([userId, lastMessageAt(sort: Desc)], map: "idx_conversations_user")
+  @@map("ai_conversations")
+}
+
+model AiInsight {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  period      String // 2026-W17 | 2026-04
+  summary     Json
+  sources     Json?
+  generatedAt DateTime @default(now()) @map("generated_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, period])
+  @@map("ai_insights")
+}
+
+// ============================================================================
+// INTEGRATIONS
+// ============================================================================
+model IntegrationCredential {
+  id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  provider         String // google_calendar | slack | ghl | n8n_webhook
+  encryptedPayload Bytes     @map("encrypted_payload")
+  status           String?   @default("active")
+  connectedAt      DateTime  @default(now()) @map("connected_at") @db.Timestamptz
+  lastSyncedAt     DateTime? @map("last_synced_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider])
+  @@map("integration_credentials")
+}
+
+model CalendarEvent {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  sourceType   String    @map("source_type") // task | meeting | rock_milestone | external
+  sourceId     String?   @map("source_id") @db.Uuid
+  externalId   String?   @map("external_id")
+  provider     String    @default("google")
+  title        String?
+  startsAt     DateTime? @map("starts_at") @db.Timestamptz
+  endsAt       DateTime? @map("ends_at") @db.Timestamptz
+  syncState    String?   @default("pending") @map("sync_state")
+  lastSyncedAt DateTime? @map("last_synced_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([sourceType, sourceId], map: "idx_calendar_source")
+  @@map("calendar_events")
+}
+
+// ============================================================================
+// ACTIVITY LOG
+// ============================================================================
+model ActivityLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  action     String // rock.updated | task.completed | note.created | ...
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id") @db.Uuid
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actor  User?  @relation(fields: [actorId], references: [id])
+
+  @@index([tenantId, createdAt(sort: Desc)], map: "idx_activity_tenant_recent")
+  @@map("activity_log")
+}
