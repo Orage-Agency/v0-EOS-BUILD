@@ -29,6 +29,9 @@ type TasksState = {
   setTasks: (tasks: MockTask[]) => void
   handoffs: Handoff[]
 
+  currentUserId: string | null
+  setCurrentUserId: (id: string) => void
+
   view: View
   setView: (v: View) => void
 
@@ -69,6 +72,9 @@ export const useTasksStore = create<TasksState>((set, get) => ({
   tasks: [],
   setTasks: (tasks) => set({ tasks }),
   handoffs: [],
+
+  currentUserId: null,
+  setCurrentUserId: (id) => set({ currentUserId: id }),
 
   view: "list",
   setView: (view) => set({ view }),

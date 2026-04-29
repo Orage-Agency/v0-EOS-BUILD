@@ -19,7 +19,7 @@ import { useTasksStore } from "@/lib/tasks-store"
 import { TaskRow } from "./task-row"
 import { QuickAddRow, type QuickAddHandle } from "./quick-add-row"
 import { isToday } from "@/lib/format"
-import { CURRENT_USER, type MockTask } from "@/lib/mock-data"
+import type { MockTask } from "@/lib/mock-data"
 import {
   filterTasks,
   isTaskFilter,
@@ -34,13 +34,14 @@ export function TaskListView({
 }) {
   const tasks = useTasksStore((s) => s.tasks)
   const reorder = useTasksStore((s) => s.reorder)
+  const currentUserId = useTasksStore((s) => s.currentUserId) ?? ""
   const params = useSearchParams()
   const raw = params.get("filter")
   const filter: TaskFilter = isTaskFilter(raw) ? raw : "my"
 
   const filteredTasks = useMemo(
-    () => filterTasks(tasks, filter, CURRENT_USER.id),
-    [tasks, filter],
+    () => filterTasks(tasks, filter, currentUserId),
+    [tasks, filter, currentUserId],
   )
 
   const sensors = useSensors(
