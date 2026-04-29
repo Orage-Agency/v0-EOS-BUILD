@@ -1,13 +1,15 @@
 "use client"
 
 import { toast } from "sonner"
-import { useNotesStore } from "@/lib/notes-store"
+import { useNotesStore, type Backlink } from "@/lib/notes-store"
 import { ROCKS, getUser } from "@/lib/mock-data"
 import { OrageAvatar } from "@/components/orage/avatar"
 
+const EMPTY_BACKLINKS: Backlink[] = []
+
 export function NotesMetaPanel() {
   const note = useNotesStore((s) => s.notes.find((n) => n.id === s.activeNoteId))
-  const backlinks = useNotesStore((s) => s.backlinks[s.activeNoteId] ?? [])
+  const backlinks = useNotesStore((s) => s.backlinks[s.activeNoteId] ?? EMPTY_BACKLINKS)
 
   if (!note) return <aside className="hidden xl:block w-[280px] shrink-0 border-l border-border-orage bg-bg-1" />
 

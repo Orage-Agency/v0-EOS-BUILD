@@ -1,19 +1,25 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
-import { useNotesStore } from "@/lib/notes-store"
+import { useNotesStore, type Block } from "@/lib/notes-store"
 import { ROCKS, USERS } from "@/lib/mock-data"
 import { OrageAvatar } from "@/components/orage/avatar"
 import { IcMore } from "@/components/orage/icons"
 import { OrageEmpty } from "@/components/empty/orage-empty"
 import { BlockRenderer } from "./blocks"
 
+const EMPTY_BLOCKS: Block[] = []
+
 export function NotesEditor() {
   const activeNoteId = useNotesStore((s) => s.activeNoteId)
-  const note = useNotesStore((s) => s.notes.find((n) => n.id === activeNoteId))
-  const blocks = useNotesStore((s) => s.blocks[s.activeNoteId] ?? [])
+  const note = useNotesStore((s) => s.notes.find((n) => n.id === s.activeNoteId))
+  const blocks = useNotesStore((s) => s.blocks[s.activeNoteId] ?? EMPTY_BLOCKS)
   const [title, setTitle] = useState(note?.title ?? "")
+
+  useEffect(() => {
+    setTitle(note?.title ?? "")
+  }, [note?.id])
 
   if (!note) {
     const createNote = useNotesStore.getState().createNote
