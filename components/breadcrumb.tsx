@@ -4,6 +4,7 @@ import { usePathname, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
 import { useL10Store } from '@/lib/l10-store';
+import { USERS } from '@/lib/mock-data';
 
 const LABELS: Record<string, string> = {
   '': 'Dashboard',
@@ -43,9 +44,14 @@ export function Breadcrumb({ workspaceName = 'Orage Agency' }: { workspaceName?:
         const href = `/${workspaceSlug}/${moduleSegments.slice(0, i + 1).join('/')}`;
         let label = LABELS[seg];
         if (!label) {
-          // Check if it's an L10 meeting ID
+          // L10 meeting ID
           const meeting = getMeeting(seg);
-          label = meeting ? meeting.name : seg.charAt(0).toUpperCase() + seg.slice(1);
+          if (meeting) { label = meeting.name; }
+          else {
+            // People user ID
+            const user = USERS.find((u) => u.id === seg);
+            label = user ? user.name : seg.charAt(0).toUpperCase() + seg.slice(1);
+          }
         }
         return { label, href };
       });
