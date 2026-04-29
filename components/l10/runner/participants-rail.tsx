@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useL10Store, type LiveCapture, type Participant } from "@/lib/l10-store"
-import { CURRENT_USER, USERS } from "@/lib/mock-data"
+import { USERS } from "@/lib/mock-data"
+import { useUIStore } from "@/lib/store"
 import { OrageAvatar } from "@/components/orage/avatar"
 import { AIOrb } from "@/components/orage/ai-orb"
 import { toast } from "sonner"
@@ -11,6 +12,7 @@ import { cn } from "@/lib/utils"
 export function ParticipantsRail({ meetingId }: { meetingId: string }) {
   const meeting = useL10Store((s) => s.getMeeting(meetingId))
   const addCapture = useL10Store((s) => s.addCapture)
+  const sessionUser = useUIStore((s) => s.currentUser)
 
   const [text, setText] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
@@ -30,7 +32,7 @@ export function ParticipantsRail({ meetingId }: { meetingId: string }) {
       toast("ENTER TEXT FIRST")
       return
     }
-    addCapture(meetingId, kind, text.trim(), CURRENT_USER)
+    addCapture(meetingId, kind, text.trim(), sessionUser ? { id: sessionUser.id, name: sessionUser.name } as import("@/lib/mock-data").MockUser : undefined)
     const labels = {
       todo: "TO-DO ADDED",
       park: "PARKED AS ISSUE",

@@ -3,7 +3,8 @@
 import { useEffect } from "react"
 import { OrageAvatar } from "@/components/orage/avatar"
 import { IcArchive, IcCheck, IcClose, IcRock, IcTask } from "@/components/orage/icons"
-import { CURRENT_USER, getUser } from "@/lib/mock-data"
+import { getUser } from "@/lib/mock-data"
+import { useUIStore } from "@/lib/store"
 import {
   type IssueStage,
   type ResolvePath,
@@ -58,12 +59,13 @@ export function IssueDrawer() {
     openResolve,
   } = useIssuesStore()
 
+  const sessionUser = useUIStore((s) => s.currentUser)
   const issue = issues.find((i) => i.id === drawerIssueId)
   const owner = issue ? getUser(issue.ownerId) : null
   const canResolve = canRunL10({
-    id: CURRENT_USER.id,
-    role: CURRENT_USER.role,
-    isMaster: CURRENT_USER.isMaster,
+    id: sessionUser?.id ?? "",
+    role: sessionUser?.role as import("@/types/permissions").Role ?? "member",
+    isMaster: sessionUser?.isMaster ?? false,
   })
 
   useEffect(() => {

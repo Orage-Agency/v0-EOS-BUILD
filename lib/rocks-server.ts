@@ -13,6 +13,7 @@ function dbToMockRock(row: DbRock): MockRock {
   return {
     id: row.id,
     title: row.title,
+    description: row.description ?? undefined,
     status: row.status,
     progress: row.progress,
     owner: row.owner_id ?? UNASSIGNED_OWNER_ID,

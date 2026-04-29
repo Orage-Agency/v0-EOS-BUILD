@@ -9,7 +9,8 @@ import {
   metricCellsOrdered,
   useScorecardStore,
 } from "@/lib/scorecard-store"
-import { CURRENT_USER, getUser } from "@/lib/mock-data"
+import { getUser } from "@/lib/mock-data"
+import { useUIStore } from "@/lib/store"
 import { OrageAvatar } from "@/components/orage/avatar"
 import { updateMetricValue } from "@/app/actions/scorecard"
 import { useWorkspaceSlug } from "@/hooks/use-workspace-slug"
@@ -30,6 +31,10 @@ export function ScorecardGrid() {
     filterRedOnly,
   } = useScorecardStore()
   const workspaceSlug = useWorkspaceSlug()
+  const sessionUser = useUIStore((s) => s.currentUser)
+  const actor = sessionUser
+    ? { id: sessionUser.id, role: sessionUser.role as import("@/types/permissions").Role, isMaster: sessionUser.isMaster }
+    : { id: "", role: "member" as import("@/types/permissions").Role, isMaster: false }
 
   const groups = metricsByGroup(metrics)
 
@@ -84,11 +89,7 @@ export function ScorecardGrid() {
             metrics={groupMetrics}
             renderMetric={(m) => {
               const ordered = metricCellsOrdered(cells, m.id)
-              const editable = cellEditableBy(m, {
-                id: CURRENT_USER.id,
-                role: CURRENT_USER.role,
-                isMaster: CURRENT_USER.isMaster,
-              })
+              const editable = cellEditableBy(m, actor)
               const owner = getUser(m.ownerId)
               const currentColor = colorForCell(
                 ordered.find((c) => c.week === CURRENT_WEEK)?.value ?? null,
@@ -157,8 +158,8 @@ export function ScorecardGrid() {
                       editable={editable}
                       onSave={async (next) => {
                         setCellValue(m.id, c.week, next, {
-                          id: CURRENT_USER.id,
-                          name: CURRENT_USER.name,
+                          id: actor.id,
+                          name: sessionUser?.name ?? "User",
                         })
                         try {
                           await updateMetricValue(workspaceSlug, {

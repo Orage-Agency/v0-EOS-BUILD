@@ -9,7 +9,7 @@ import { useEffect, useRef, type ReactNode } from "react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { useVTOStore, type VTOTab } from "@/lib/vto-store"
-import { CURRENT_USER } from "@/lib/mock-data"
+import { useUIStore } from "@/lib/store"
 import { canEditVto } from "@/lib/permissions"
 
 const TABS: { id: VTOTab; label: string }[] = [
@@ -31,10 +31,11 @@ export function VTOLayout({ children }: { children: ReactNode }) {
   const openRevisions = useVTOStore((s) => s.openRevisions)
   const saveRevision = useVTOStore((s) => s.saveRevision)
 
+  const sessionUser = useUIStore((s) => s.currentUser)
   const canEdit = canEditVto({
-    id: CURRENT_USER.id,
-    role: CURRENT_USER.role,
-    isMaster: CURRENT_USER.isMaster,
+    id: sessionUser?.id ?? "",
+    role: sessionUser?.role as import("@/types/permissions").Role ?? "member",
+    isMaster: sessionUser?.isMaster ?? false,
   })
 
   // Debounced 8s auto-save after the last keystroke.
@@ -65,7 +66,7 @@ export function VTOLayout({ children }: { children: ReactNode }) {
       "Refined V/TO sections.",
     )
     if (!summary) return
-    saveRevision(summary, CURRENT_USER.name.split(" ")[0].toUpperCase())
+    saveRevision(summary, (sessionUser?.name ?? "USER").split(" ")[0].toUpperCase())
     toast(`SAVED · REV ${rev + 1}`)
   }
 

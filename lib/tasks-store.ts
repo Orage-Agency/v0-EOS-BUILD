@@ -12,6 +12,7 @@
 
 import { create } from "zustand"
 import type { MockTask, TaskStatus } from "@/lib/mock-data"
+import type { RockOption, WorkspaceMember } from "@/lib/tasks-server"
 
 export type Handoff = {
   id: string
@@ -28,6 +29,12 @@ type TasksState = {
   tasks: MockTask[]
   setTasks: (tasks: MockTask[]) => void
   handoffs: Handoff[]
+
+  rockOptions: RockOption[]
+  setRockOptions: (rocks: RockOption[]) => void
+
+  members: WorkspaceMember[]
+  setMembers: (members: WorkspaceMember[]) => void
 
   currentUserId: string | null
   setCurrentUserId: (id: string) => void
@@ -72,6 +79,12 @@ export const useTasksStore = create<TasksState>((set, get) => ({
   tasks: [],
   setTasks: (tasks) => set({ tasks }),
   handoffs: [],
+
+  rockOptions: [],
+  setRockOptions: (rockOptions) => set({ rockOptions }),
+
+  members: [],
+  setMembers: (members) => set({ members }),
 
   currentUserId: null,
   setCurrentUserId: (id) => set({ currentUserId: id }),

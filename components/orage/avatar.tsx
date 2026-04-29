@@ -19,7 +19,7 @@ export function OrageAvatar({
   title,
   asButton,
 }: {
-  user: Pick<MockUser, "initials" | "color" | "name">
+  user: Pick<MockUser, "initials" | "name"> & { color?: string }
   size?: Size
   online?: boolean
   onClick?: (e: React.MouseEvent) => void

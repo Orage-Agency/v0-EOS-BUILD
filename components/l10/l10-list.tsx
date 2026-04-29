@@ -3,7 +3,9 @@
 import { TenantLink as Link } from "@/components/tenant-link"
 import { useTenantPath } from "@/hooks/use-tenant-path"
 import { useL10Store } from "@/lib/l10-store"
-import { CURRENT_USER, USERS } from "@/lib/mock-data"
+import { USERS } from "@/lib/mock-data"
+import { useUIStore } from "@/lib/store"
+import { useUIStore } from "@/lib/store"
 import { OrageAvatar } from "@/components/orage/avatar"
 import { IcCalendar, IcArrowRight } from "@/components/orage/icons"
 import { useRouter } from "next/navigation"
@@ -28,6 +30,7 @@ export function L10List() {
   const router = useRouter()
   const tp = useTenantPath()
   const [creating, setCreating] = useState(false)
+  const sessionUser = useUIStore((s) => s.currentUser)
 
   const active = meetings.find((m) => m.status === "in_session")
   const upcoming = meetings
@@ -145,6 +148,7 @@ export function L10List() {
                 meeting={m}
                 isLast={i === past.length - 1}
                 kind="past"
+                currentUserId={sessionUser?.id}
               />
             ))}
           </div>
@@ -174,15 +178,17 @@ function MeetingRow({
   meeting,
   isLast,
   kind,
+  currentUserId,
 }: {
   meeting: ReturnType<typeof useL10Store.getState>["meetings"][number]
   isLast: boolean
   kind: "upcoming" | "past"
+  currentUserId?: string
 }) {
   const date = new Date(meeting.scheduledAt)
   const myRating =
     kind === "past"
-      ? meeting.participants.find((p) => p.userId === CURRENT_USER.id)?.rating
+      ? meeting.participants.find((p) => p.userId === currentUserId)?.rating
       : undefined
 
   return (

@@ -54,6 +54,7 @@ export function RocksShell({
   const setRocks = useRocksStore((s) => s.setRocks)
   const setCurrentActor = useRocksStore((s) => s.setCurrentActor)
   const setWorkspaceSlug = useRocksStore((s) => s.setWorkspaceSlug)
+  const setMembers = useRocksStore((s) => s.setMembers)
   const openNewRock = useRocksStore((s) => s.openNewRock)
   const close = useRocksStore((s) => s.closeRock)
   const closeNew = useRocksStore((s) => s.closeNewRock)
@@ -62,6 +63,10 @@ export function RocksShell({
   useEffect(() => {
     setRocks(initialRocks)
   }, [initialRocks, setRocks])
+
+  useEffect(() => {
+    setMembers(members)
+  }, [members, setMembers])
 
   useEffect(() => {
     setWorkspaceSlug(workspaceSlug)

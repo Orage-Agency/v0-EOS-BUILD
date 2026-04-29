@@ -2,7 +2,7 @@
 
 import { useScorecardStore } from "@/lib/scorecard-store"
 import { canEditRocks } from "@/lib/permissions"
-import { CURRENT_USER } from "@/lib/mock-data"
+import { useUIStore } from "@/lib/store"
 import { IcPlus } from "@/components/orage/icons"
 import { cn } from "@/lib/utils"
 import { HealthBar } from "./health-bar"
@@ -14,10 +14,11 @@ import { NewMetricModal } from "./new-metric-modal"
 export function ScorecardShell() {
   const { metrics, openNewMetric, filterRedOnly, setFilterRedOnly } =
     useScorecardStore()
+  const sessionUser = useUIStore((s) => s.currentUser)
   const canCreate = canEditRocks({
-    id: CURRENT_USER.id,
-    role: CURRENT_USER.role,
-    isMaster: CURRENT_USER.isMaster,
+    id: sessionUser?.id ?? "",
+    role: sessionUser?.role as import("@/types/permissions").Role ?? "member",
+    isMaster: sessionUser?.isMaster ?? false,
   })
 
   return (

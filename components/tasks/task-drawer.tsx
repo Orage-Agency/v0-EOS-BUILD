@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion"
 import { useTasksStore } from "@/lib/tasks-store"
-import { getUser, ROCKS } from "@/lib/mock-data"
+import { getUser } from "@/lib/mock-data"
 import { OrageAvatar } from "@/components/orage/avatar"
 import { IcClose, IcNote } from "@/components/orage/icons"
 import { dueLabel } from "@/lib/format"
@@ -21,9 +21,13 @@ export function TaskDrawer() {
   const handoffs = useTasksStore((s) => s.handoffs)
   const closeTask = useTasksStore((s) => s.closeTask)
 
+  const rockOptions = useTasksStore((s) => s.rockOptions)
+  const members = useTasksStore((s) => s.members)
   const task = tasks.find((t) => t.id === openTaskId)
-  const owner = task ? getUser(task.owner) : null
-  const rock = task?.rockId ? ROCKS.find((r) => r.id === task.rockId) : null
+  const ownerMock = task ? getUser(task.owner) : null
+  const ownerMember = task ? members.find((m) => m.id === task.owner) : null
+  const owner = ownerMock ?? (ownerMember ? { name: ownerMember.name, initials: ownerMember.initials, color: undefined } : null)
+  const rock = task?.rockId ? rockOptions.find((r) => r.id === task.rockId) : null
   const taskHandoffs = task ? handoffs.filter((h) => h.taskId === task.id) : []
   const due = task ? dueLabel(task.due) : null
   const open = Boolean(task)
@@ -146,8 +150,10 @@ export function TaskDrawer() {
                       .slice()
                       .reverse()
                       .map((h) => {
-                        const from = getUser(h.fromUserId)
-                        const to = getUser(h.toUserId)
+                        const fromMock = getUser(h.fromUserId)
+                        const toMock = getUser(h.toUserId)
+                        const from = fromMock ?? members.find((m) => m.id === h.fromUserId)
+                        const to = toMock ?? members.find((m) => m.id === h.toUserId)
                         return (
                           <div
                             key={h.id}

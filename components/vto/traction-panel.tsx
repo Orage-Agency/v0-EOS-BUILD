@@ -5,17 +5,18 @@ import { useIssuesStore } from "@/lib/issues-store"
 import { OneYearPlanEditor } from "./one-year-plan-editor"
 import { RocksRollup } from "./rocks-rollup"
 import { SectionShell, PermissionBanner } from "./section-shell"
-import { CURRENT_USER } from "@/lib/mock-data"
+import { useUIStore } from "@/lib/store"
 import { canEditVto } from "@/lib/permissions"
 
 export function TractionPanel() {
   const issues = useIssuesStore((s) => s.issues)
   const top = issues.slice(0, 5)
+  const sessionUser = useUIStore((s) => s.currentUser)
 
   const canEdit = canEditVto({
-    id: CURRENT_USER.id,
-    role: CURRENT_USER.role,
-    isMaster: CURRENT_USER.isMaster,
+    id: sessionUser?.id ?? "",
+    role: sessionUser?.role as import("@/types/permissions").Role ?? "member",
+    isMaster: sessionUser?.isMaster ?? false,
   })
 
   return (

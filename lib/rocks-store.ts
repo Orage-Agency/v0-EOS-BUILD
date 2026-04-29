@@ -3,6 +3,7 @@
 import { create } from "zustand"
 import { type MockRock, type RockStatus } from "@/lib/mock-data"
 import type { Role } from "@/types/permissions"
+import type { WorkspaceMember } from "@/lib/tasks-server"
 
 export type RocksActor = {
   id: string
@@ -130,6 +131,9 @@ type RocksState = {
   setRocks: (rocks: MockRock[]) => void
   insertRock: (rock: MockRock) => void
 
+  members: WorkspaceMember[]
+  setMembers: (members: WorkspaceMember[]) => void
+
   milestones: Milestone[]
   updates: RockUpdate[]
   linkedTasks: LinkedTaskRef[]
@@ -156,6 +160,8 @@ type RocksState = {
 export const useRocksStore = create<RocksState>((set) => ({
   rocks: [],
   setRocks: (rocks) => set({ rocks }),
+  members: [],
+  setMembers: (members) => set({ members }),
   insertRock: (rock) =>
     set((state) => {
       const exists = state.rocks.some((r) => r.id === rock.id)

@@ -2,7 +2,7 @@
 
 import { TenantLink as Link } from "@/components/tenant-link"
 import { useTenantsStore } from "@/lib/tenants-store"
-import { CURRENT_USER } from "@/lib/mock-data"
+import { useUIStore } from "@/lib/store"
 import { OrageAvatar } from "@/components/orage/avatar"
 import { MasterBanner } from "./master-banner"
 import { GlobalKPIs } from "./global-kpis"
@@ -14,6 +14,7 @@ import { IcChevronLeft, IcPlus } from "@/components/orage/icons"
 
 export function AdminShell() {
   const openProvision = useTenantsStore((s) => s.openProvision)
+  const sessionUser = useUIStore((s) => s.currentUser)
 
   return (
     <div className="min-h-screen bg-bg-1 text-text-primary atmosphere">
@@ -44,7 +45,12 @@ export function AdminShell() {
               <IcPlus className="w-3.5 h-3.5" />
               Provision tenant
             </button>
-            <OrageAvatar user={CURRENT_USER} size="sm" />
+            {sessionUser && (
+              <OrageAvatar
+                user={{ name: sessionUser.name, initials: sessionUser.name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase() }}
+                size="sm"
+              />
+            )}
           </div>
         </div>
       </header>

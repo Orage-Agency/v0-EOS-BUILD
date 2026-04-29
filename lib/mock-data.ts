@@ -92,6 +92,7 @@ export type RockStatus =
 export type MockRock = {
   id: string
   title: string
+  description?: string
   status: RockStatus
   progress: number
   owner: string

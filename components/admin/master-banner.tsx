@@ -2,7 +2,7 @@
 
 import { TenantLink as Link } from "@/components/tenant-link"
 import { useTenantsStore, getTenant } from "@/lib/tenants-store"
-import { CURRENT_USER } from "@/lib/mock-data"
+import { useUIStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
 
 /**
@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils"
 export function MasterBanner() {
   const impersonatingId = useTenantsStore((s) => s.impersonatingId)
   const endImpersonation = useTenantsStore((s) => s.endImpersonation)
+  const sessionUser = useUIStore((s) => s.currentUser)
   const target = impersonatingId ? getTenant(impersonatingId) : undefined
 
   if (target) {
@@ -68,7 +69,7 @@ export function MasterBanner() {
       </span>
       <span className="flex-1" />
       <span className="font-sans text-[11px] text-text-on-gold/80">
-        Logged in as {CURRENT_USER.name} · master role · all tenants visible
+        Logged in as {sessionUser?.name ?? "Master"} · master role · all tenants visible
       </span>
       <Link
         href="/"

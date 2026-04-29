@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { useUIStore } from "@/lib/store"
-import { CURRENT_USER } from "@/lib/mock-data"
 import { can } from "@/lib/permissions"
 import { IcSearch } from "@/components/orage/icons"
 import { cn } from "@/lib/utils"
@@ -121,6 +120,10 @@ export function CommandPalette() {
   const open = useUIStore((s) => s.commandOpen)
   const close = useUIStore((s) => s.closeCommand)
   const toggleAi = useUIStore((s) => s.toggleAiPanel)
+  const sessionUser = useUIStore((s) => s.currentUser)
+  const actor = sessionUser
+    ? { id: sessionUser.id, role: sessionUser.role as import("@/types/permissions").Role, isMaster: sessionUser.isMaster }
+    : { id: "", role: "member" as import("@/types/permissions").Role, isMaster: false }
   const router = useRouter()
   const tp = useTenantPath()
   const [query, setQuery] = useState("")
@@ -172,7 +175,7 @@ export function CommandPalette() {
   }, [open, filtered, activeIndex])
 
   function runCommand(c: Cmd) {
-    if (c.capability && !can(CURRENT_USER, c.capability)) {
+    if (c.capability && !can(actor, c.capability)) {
       toast("🔒 PERMISSIONS REQUIRED")
       close()
       return
@@ -248,7 +251,7 @@ export function CommandPalette() {
                     const idx = filtered.indexOf(c)
                     const selected = idx === activeIndex
                     const locked =
-                      c.capability && !can(CURRENT_USER, c.capability)
+                      c.capability && !can(actor, c.capability)
                     return (
                       <button
                         key={c.id}

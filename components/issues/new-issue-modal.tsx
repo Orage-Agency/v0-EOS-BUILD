@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { useIssuesStore, type IssueSeverity } from "@/lib/issues-store"
 import { useRocksStore } from "@/lib/rocks-store"
-import { CURRENT_USER } from "@/lib/mock-data"
+import { useUIStore } from "@/lib/store"
 import { createIssue } from "@/app/actions/issues"
 import { useWorkspaceSlug } from "@/hooks/use-workspace-slug"
 import { toast } from "sonner"
@@ -21,6 +21,7 @@ export function NewIssueModal() {
   const { newIssueOpen, closeNewIssue, createIssue: createLocal } = useIssuesStore()
   const rocks = useRocksStore((s) => s.rocks)
   const workspaceSlug = useWorkspaceSlug()
+  const sessionUser = useUIStore((s) => s.currentUser)
 
   const [title, setTitle] = useState("")
   const [context, setContext] = useState("")
@@ -51,8 +52,8 @@ export function NewIssueModal() {
         severity,
         linkedRockId: linkedRockId || undefined,
         pinnedForL10: pin,
-        ownerId: CURRENT_USER.id,
-        authorLabel: CURRENT_USER.name.split(" ")[0],
+        ownerId: sessionUser?.id ?? "",
+        authorLabel: (sessionUser?.name ?? "User").split(" ")[0],
       })
       await createIssue(workspaceSlug, {
         title,

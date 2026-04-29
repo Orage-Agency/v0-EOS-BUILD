@@ -10,6 +10,7 @@ import {
   useRocksStore,
 } from "@/lib/rocks-store"
 import { getUser } from "@/lib/mock-data"
+import type { WorkspaceMember } from "@/lib/tasks-server"
 import { canEditRocks } from "@/lib/permissions"
 import { OrageAvatar } from "@/components/orage/avatar"
 import { TenantLink } from "@/components/tenant-link"
@@ -34,10 +35,13 @@ export function RockDrawer() {
   const updates = useRocksStore((s) => s.updates)
   const toggleMilestone = useRocksStore((s) => s.toggleMilestone)
   const currentActor = useRocksStore((s) => s.currentActor)
+  const members = useRocksStore((s) => s.members)
   const allowed = currentActor ? canEditRocks(currentActor) : false
 
   const rock = rocks.find((r) => r.id === openId)
-  const owner = rock ? getUser(rock.owner) : null
+  const ownerMock = rock ? getUser(rock.owner) : null
+  const ownerMember: WorkspaceMember | undefined = rock ? members.find((m) => m.id === rock.owner) : undefined
+  const owner = ownerMock ?? (ownerMember ? { name: ownerMember.name, initials: ownerMember.initials, color: undefined } : null)
   const ownMs = rock ? milestones.filter((m) => m.rockId === rock.id) : []
   const ownTasks = rock ? linkedTasks.filter((t) => t.rockId === rock.id) : []
   const ownUpdates = rock ? updates.filter((u) => u.rockId === rock.id) : []
@@ -105,7 +109,7 @@ export function RockDrawer() {
                 </dd>
 
                 <dt className="font-mono text-[10px] tracking-[0.1em] text-text-muted self-center">DEPARTMENT</dt>
-                <dd className="text-text-secondary">{ROCK_DEPARTMENTS[rock.id] ?? "—"}</dd>
+                <dd className="text-text-secondary">{ROCK_DEPARTMENTS[rock.id] ?? rock.tag ?? "—"}</dd>
 
                 <dt className="font-mono text-[10px] tracking-[0.1em] text-text-muted self-center">PARENT</dt>
                 <dd>
@@ -120,7 +124,7 @@ export function RockDrawer() {
                   MEASURABLE OUTCOME
                 </div>
                 <div className="rounded-md border border-border-orage bg-bg-3 px-3.5 py-3 text-[13px] leading-relaxed text-text-secondary">
-                  {ROCK_OUTCOMES[rock.id] ?? "Outcome locked at rock creation."}
+                  {rock.description ?? ROCK_OUTCOMES[rock.id] ?? "No outcome set."}
                 </div>
               </section>
 
@@ -202,7 +206,9 @@ export function RockDrawer() {
                   </div>
                   <div className="flex flex-col gap-1.5">
                     {ownTasks.map((t) => {
-                      const o = getUser(t.ownerId)
+                      const oMock = getUser(t.ownerId)
+                      const oMember = members.find((m) => m.id === t.ownerId)
+                      const o = oMock ?? (oMember ? { name: oMember.name, initials: oMember.initials, color: undefined } : null)
                       const due = dueLabel(t.due)
                       return (
                         <div

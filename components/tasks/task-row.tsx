@@ -13,21 +13,6 @@ import { canDragTask } from "@/lib/permissions"
 import { IcArchive, IcCheck, IcGrip, IcMore } from "@/components/orage/icons"
 import { cn } from "@/lib/utils"
 
-const ROCK_LINK_LABEL: Record<string, string> = {
-  r1: "↗ ROCK · OFFER",
-  r2: "↗ ROCK · QUINTESSA",
-  r3: "↗ ROCK · VSL",
-  r6: "↗ ROCK · TOOLKIT",
-  r7: "↗ ROCK · OUTBOUND",
-}
-const ROCK_TAG: Record<string, string> = {
-  r1: "OFFER BUILD",
-  r2: "CLIENT",
-  r3: "VSL",
-  r4: "OFFER BUILD",
-  r6: "PRODUCT",
-  r7: "MARKETING",
-}
 
 const COLS =
   "30px 24px minmax(0,1fr) 130px 100px 110px 60px 40px"
@@ -40,6 +25,7 @@ export function TaskRow({ task }: { task: MockTask }) {
   const toggleStatus = useTasksStore((s) => s.toggleStatus)
   const startHandoff = useTasksStore((s) => s.startHandoff)
   const reassign = useTasksStore((s) => s.reassign)
+  const rockOptions = useTasksStore((s) => s.rockOptions)
 
   const [assignOpen, setAssignOpen] = useState(false)
   const avatarBtnRef = useRef<HTMLButtonElement>(null)
@@ -48,8 +34,9 @@ export function TaskRow({ task }: { task: MockTask }) {
   const isSelected = selected.has(task.id)
   const isDone = task.status === "done"
   const due = dueLabel(task.due)
-  const rockTag = task.rockId ? ROCK_TAG[task.rockId] : "—"
-  const rockLink = task.rockId ? ROCK_LINK_LABEL[task.rockId] : null
+  const rockOpt = task.rockId ? rockOptions.find((r) => r.id === task.rockId) : null
+  const rockTag = rockOpt?.tag?.toUpperCase() ?? (task.rockId ? "ROCK" : "—")
+  const rockLink = rockOpt ? `↗ ROCK · ${rockOpt.title.toUpperCase()}` : null
   const actor = sessionUser
     ? { id: sessionUser.id, role: sessionUser.role as import("@/types/permissions").Role, isMaster: sessionUser.isMaster }
     : { id: "", role: "member" as import("@/types/permissions").Role, isMaster: false }

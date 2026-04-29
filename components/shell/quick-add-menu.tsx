@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { CURRENT_USER } from "@/lib/mock-data"
 import { can } from "@/lib/permissions"
 import { useUIStore } from "@/lib/store"
 import { useNotesStore } from "@/lib/notes-store"
@@ -34,6 +33,10 @@ export function QuickAddMenu() {
   const router = useRouter()
   const tp = useTenantPath()
   const openNewRockModal = useUIStore((s) => s.openNewRockModal)
+  const sessionUser = useUIStore((s) => s.currentUser)
+  const actor = sessionUser
+    ? { id: sessionUser.id, role: sessionUser.role as import("@/types/permissions").Role, isMaster: sessionUser.isMaster }
+    : { id: "", role: "member" as import("@/types/permissions").Role, isMaster: false }
 
   useEffect(() => {
     if (!open) return
@@ -53,7 +56,7 @@ export function QuickAddMenu() {
 
   function trigger(item: Item) {
     setOpen(false)
-    if (item.capability && !can(CURRENT_USER, item.capability)) {
+    if (item.capability && !can(actor, item.capability)) {
       toast(item.capability === "rocks.edit" ? "🔒 PERMISSIONS REQUIRED" : "🔒 LEADERSHIP ONLY")
       return
     }
@@ -109,7 +112,7 @@ export function QuickAddMenu() {
         >
           {ITEMS.map((item, idx) => {
             const locked =
-              item.capability && !can(CURRENT_USER, item.capability)
+              item.capability && !can(actor, item.capability)
             return (
               <div key={item.type}>
                 {idx === 4 && <div className="h-px bg-border-orage my-1" />}

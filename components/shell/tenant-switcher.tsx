@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { TENANTS, getTenant } from "@/lib/tenants"
 import { useUIStore } from "@/lib/store"
-import { CURRENT_USER } from "@/lib/mock-data"
 import { IcChevronDown } from "@/components/orage/icons"
 import { cn } from "@/lib/utils"
 
@@ -13,10 +12,11 @@ export function TenantSwitcher() {
   const ref = useRef<HTMLDivElement>(null)
   const activeTenantId = useUIStore((s) => s.activeTenantId)
   const setActiveTenant = useUIStore((s) => s.setActiveTenant)
+  const sessionUser = useUIStore((s) => s.currentUser)
   const active = getTenant(activeTenantId) ?? TENANTS[0]
 
   // Master users see all tenants; non-masters see only their own.
-  const visible = CURRENT_USER.isMaster
+  const visible = sessionUser?.isMaster
     ? TENANTS
     : TENANTS.filter((t) => t.tier === "master")
 

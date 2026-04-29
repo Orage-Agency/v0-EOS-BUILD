@@ -130,6 +130,7 @@ export type RockOption = {
   id: string
   title: string
   quarter: string
+  tag: string | null
 }
 
 export async function listActiveRocks(
@@ -140,7 +141,7 @@ export async function listActiveRocks(
     const sb = supabaseAdmin()
     const { data, error } = await sb
       .from("rocks")
-      .select("id, title, quarter, status")
+      .select("id, title, quarter, status, tag")
       .eq("tenant_id", user.workspaceId)
       .neq("status", "done")
       .order("created_at", { ascending: false })
@@ -148,11 +149,12 @@ export async function listActiveRocks(
       console.error("[v0] listActiveRocks error", error.message)
       return []
     }
-    type R = { id: string; title: string; quarter: string }
+    type R = { id: string; title: string; quarter: string; tag: string | null }
     return ((data as R[] | null) ?? []).map((r) => ({
       id: r.id,
       title: r.title,
       quarter: r.quarter,
+      tag: r.tag ?? null,
     }))
   } catch (err) {
     console.error("[v0] listActiveRocks exception", err)

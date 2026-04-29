@@ -6,7 +6,7 @@
  * suggestion back into the right slice of the store.
  */
 
-import { CURRENT_USER } from "@/lib/mock-data"
+import { useUIStore } from "@/lib/store"
 import { canEditVto } from "@/lib/permissions"
 import { useVTOStore, type VTOSection } from "@/lib/vto-store"
 import { CoreValuesEditor } from "./core-values-editor"
@@ -33,10 +33,11 @@ export function VisionPanel() {
   const bigPicture = useVTOStore((s) => s.bigPicture)
   const goals = useVTOStore((s) => s.goals)
 
+  const sessionUser = useUIStore((s) => s.currentUser)
   const canEdit = canEditVto({
-    id: CURRENT_USER.id,
-    role: CURRENT_USER.role,
-    isMaster: CURRENT_USER.isMaster,
+    id: sessionUser?.id ?? "",
+    role: sessionUser?.role as import("@/types/permissions").Role ?? "member",
+    isMaster: sessionUser?.isMaster ?? false,
   })
 
   function handleApply(section: VTOSection, value: string) {

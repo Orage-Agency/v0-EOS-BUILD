@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useIssuesStore } from "@/lib/issues-store"
-import { CURRENT_USER } from "@/lib/mock-data"
+import { useUIStore } from "@/lib/store"
 import { createIssue } from "@/app/actions/issues"
 import { useWorkspaceSlug } from "@/hooks/use-workspace-slug"
 import { IcPlus } from "@/components/orage/icons"
@@ -14,6 +14,7 @@ export function QuickAddRow() {
   const [busy, setBusy] = useState(false)
   const create = useIssuesStore((s) => s.createIssue)
   const workspaceSlug = useWorkspaceSlug()
+  const sessionUser = useUIStore((s) => s.currentUser)
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -40,8 +41,8 @@ export function QuickAddRow() {
       create({
         title,
         severity: "normal",
-        ownerId: CURRENT_USER.id,
-        authorLabel: CURRENT_USER.name.split(" ")[0],
+        ownerId: sessionUser?.id ?? "",
+        authorLabel: (sessionUser?.name ?? "User").split(" ")[0],
       })
       await createIssue(workspaceSlug, {
         title,

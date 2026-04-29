@@ -1,6 +1,8 @@
 "use client"
 
+import { useEffect } from "react"
 import { useIssuesStore, queueCounts, type IssueQueue } from "@/lib/issues-store"
+import type { Issue } from "@/lib/issues-seed"
 import { IcPlus } from "@/components/orage/icons"
 import { cn } from "@/lib/utils"
 import { AIIssueSuggestions } from "./ai-issue-suggestions"
@@ -17,7 +19,24 @@ const TABS: { queue: IssueQueue; label: string }[] = [
   { queue: "tabled", label: "Tabled" },
 ]
 
-export function IssuesShell() {
+export function IssuesShell({
+  workspaceSlug,
+  initialIssues,
+}: {
+  workspaceSlug: string
+  initialIssues: Issue[]
+}) {
+  const setIssues = useIssuesStore((s) => s.setIssues)
+  const setWorkspaceSlug = useIssuesStore((s) => s.setWorkspaceSlug)
+
+  useEffect(() => {
+    setIssues(initialIssues)
+  }, [initialIssues, setIssues])
+
+  useEffect(() => {
+    setWorkspaceSlug(workspaceSlug)
+  }, [workspaceSlug, setWorkspaceSlug])
+
   const { issues, activeQueue, setActiveQueue, openNewIssue } = useIssuesStore()
   const counts = queueCounts(issues)
   const open = counts.open

@@ -11,7 +11,8 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { OrageAvatar } from "@/components/orage/avatar"
-import { CURRENT_USER, USERS } from "@/lib/mock-data"
+import { USERS } from "@/lib/mock-data"
+import { useUIStore } from "@/lib/store"
 import { useRocksStore } from "@/lib/rocks-store"
 import {
   type ResolvePath,
@@ -56,6 +57,7 @@ export function ResolveModal() {
   const issue = issues.find((i) => i.id === resolveIssueId)
   const rocks = useRocksStore((s) => s.rocks)
   const workspaceSlug = useWorkspaceSlug()
+  const sessionUser = useUIStore((s) => s.currentUser)
 
   const [path, setPath] = useState<ResolvePath>("rock")
   const [submitting, setSubmitting] = useState(false)
@@ -63,12 +65,12 @@ export function ResolveModal() {
   // Form fields per path
   const [title, setTitle] = useState("")
   const [outcome, setOutcome] = useState("")
-  const [ownerId, setOwnerId] = useState(CURRENT_USER.id)
+  const [ownerId, setOwnerId] = useState(sessionUser?.id ?? "")
   const [due, setDue] = useState("")
   const [notes, setNotes] = useState("")
   const [parentRockId, setParentRockId] = useState<string>("")
   const [decisionText, setDecisionText] = useState("")
-  const [decidedBy, setDecidedBy] = useState(CURRENT_USER.id)
+  const [decidedBy, setDecidedBy] = useState(sessionUser?.id ?? "")
   const [archiveReason, setArchiveReason] = useState<string>(ARCHIVE_REASONS[0])
 
   useEffect(() => {
@@ -81,9 +83,9 @@ export function ResolveModal() {
     setNotes("")
     setParentRockId(issue.linkedRockId ?? "")
     setDecisionText("")
-    setDecidedBy(CURRENT_USER.id)
+    setDecidedBy(sessionUser?.id ?? "")
     setArchiveReason(ARCHIVE_REASONS[0])
-  }, [issue])
+  }, [issue, sessionUser?.id])
 
   if (!issue) return null
 
@@ -110,7 +112,7 @@ export function ResolveModal() {
       resolveLocal(issue.id, {
         path,
         payload,
-        resolvedBy: CURRENT_USER.name.split(" ")[0],
+        resolvedBy: (sessionUser?.name ?? "User").split(" ")[0],
         resolvedAt: new Date().toISOString(),
         reason,
       })

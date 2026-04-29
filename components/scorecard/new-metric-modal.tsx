@@ -11,7 +11,8 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { OrageAvatar } from "@/components/orage/avatar"
-import { CURRENT_USER, USERS } from "@/lib/mock-data"
+import { USERS } from "@/lib/mock-data"
+import { useUIStore } from "@/lib/store"
 import { useScorecardStore, type MetricSource } from "@/lib/scorecard-store"
 import { createMetric } from "@/app/actions/scorecard"
 import { useWorkspaceSlug } from "@/hooks/use-workspace-slug"
@@ -28,12 +29,13 @@ const GROUPS = [
 export function NewMetricModal() {
   const { newMetricOpen, closeNewMetric, createMetric: createLocal } = useScorecardStore()
   const workspaceSlug = useWorkspaceSlug()
+  const sessionUser = useUIStore((s) => s.currentUser)
 
   const [name, setName] = useState("")
   const [unit, setUnit] = useState("")
   const [target, setTarget] = useState("")
   const [direction, setDirection] = useState<"up" | "down">("up")
-  const [ownerId, setOwnerId] = useState(CURRENT_USER.id)
+  const [ownerId, setOwnerId] = useState(sessionUser?.id ?? "")
   const [group, setGroup] = useState(GROUPS[0])
   const [source, setSource] = useState<MetricSource>("manual")
   const [busy, setBusy] = useState(false)
@@ -44,10 +46,10 @@ export function NewMetricModal() {
     setUnit("")
     setTarget("")
     setDirection("up")
-    setOwnerId(CURRENT_USER.id)
+    setOwnerId(sessionUser?.id ?? "")
     setGroup(GROUPS[0])
     setSource("manual")
-  }, [newMetricOpen])
+  }, [newMetricOpen, sessionUser?.id])
 
   async function submit() {
     if (!name.trim()) {

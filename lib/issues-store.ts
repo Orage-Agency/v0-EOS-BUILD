@@ -39,6 +39,9 @@ export type {
 
 type IssuesState = {
   issues: Issue[]
+  setIssues: (issues: Issue[]) => void
+  workspaceSlug: string
+  setWorkspaceSlug: (slug: string) => void
   aiSuggestions: AISuggestion[]
   activeQueue: IssueQueue
   drawerIssueId: string | null
@@ -76,6 +79,9 @@ type IssuesState = {
 
 export const useIssuesStore = create<IssuesState>((set, get) => ({
   issues: [...SEED_ISSUES],
+  setIssues: (issues) => set({ issues }),
+  workspaceSlug: "",
+  setWorkspaceSlug: (slug) => set({ workspaceSlug: slug }),
   aiSuggestions: [...SEED_AI_SUGGESTIONS],
   activeQueue: "open",
   drawerIssueId: null,

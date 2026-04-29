@@ -33,11 +33,11 @@ export function TasksShell({
   const view = useTasksStore((s) => s.view)
   const setTasks = useTasksStore((s) => s.setTasks)
   const setCurrentUserId = useTasksStore((s) => s.setCurrentUserId)
+  const setRockOptions = useTasksStore((s) => s.setRockOptions)
+  const setMembers = useTasksStore((s) => s.setMembers)
   const openNewTask = useTasksStore((s) => s.openNewTask)
   const quickAddRef = useRef<QuickAddHandle | null>(null)
 
-  // Hydrate the client store with the server-fetched tasks and current user.
-  // Re-runs when the server returns a new list (e.g. after `router.refresh()`).
   useEffect(() => {
     setTasks(initialTasks)
   }, [initialTasks, setTasks])
@@ -45,6 +45,14 @@ export function TasksShell({
   useEffect(() => {
     setCurrentUserId(currentUser.id)
   }, [currentUser.id, setCurrentUserId])
+
+  useEffect(() => {
+    setRockOptions(rocks)
+  }, [rocks, setRockOptions])
+
+  useEffect(() => {
+    setMembers(members)
+  }, [members, setMembers])
 
   return (
     <div className="flex h-full flex-col">

@@ -89,6 +89,10 @@ export interface DbIssue {
   owner_id: string | null
   rank: number | null
   status: IssueStatus
+  severity: "critical" | "high" | "normal" | "low"
+  stage: "identify" | "discuss" | "solve"
+  pinned_for_l10: boolean
+  linked_rock_id: string | null
   source_type: string | null
   source_id: string | null
   ai_generated: boolean
@@ -96,6 +100,7 @@ export interface DbIssue {
   solution_note: string | null
   created_by: string | null
   created_at: string
+  updated_at: string | null
 }
 
 export interface DbScorecardMetric {

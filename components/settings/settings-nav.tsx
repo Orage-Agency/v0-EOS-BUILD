@@ -2,7 +2,7 @@
 
 import { TenantLink as Link } from "@/components/tenant-link"
 import { usePathname, useParams } from "next/navigation"
-import { CURRENT_USER } from "@/lib/mock-data"
+import { useUIStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
 import type { ComponentType, SVGProps } from "react"
 
@@ -163,8 +163,9 @@ export function SettingsNav() {
   const pathname = usePathname()
   const params = useParams()
   const workspaceSlug = (params?.workspace as string) ?? "orage"
-  const isMaster = CURRENT_USER.isMaster
-  const isFounder = CURRENT_USER.role === "founder"
+  const sessionUser = useUIStore((s) => s.currentUser)
+  const isMaster = sessionUser?.isMaster ?? false
+  const isFounder = sessionUser?.role === "founder"
 
   function shouldShow(item: NavItem) {
     if (item.masterOnly && !isMaster) return false

@@ -1,7 +1,7 @@
 "use client"
 
 import { useIssuesStore } from "@/lib/issues-store"
-import { CURRENT_USER } from "@/lib/mock-data"
+import { useUIStore } from "@/lib/store"
 import { dismissAISuggestion } from "@/app/actions/issues"
 import { useWorkspaceSlug } from "@/hooks/use-workspace-slug"
 import { toast } from "sonner"
@@ -18,11 +18,12 @@ export function AIIssueSuggestions() {
     dismissAISuggestion: dismissLocal,
   } = useIssuesStore()
   const workspaceSlug = useWorkspaceSlug()
+  const sessionUser = useUIStore((s) => s.currentUser)
   const visible = aiSuggestions.filter((s) => !s.dismissed).slice(0, 3)
   if (visible.length === 0) return null
 
   async function add(id: string, title: string) {
-    promoteAISuggestion(id, CURRENT_USER.id, CURRENT_USER.name.split(" ")[0])
+    promoteAISuggestion(id, sessionUser?.id ?? "", (sessionUser?.name ?? "User").split(" ")[0])
     toast("ADDED TO LIST", { description: title })
   }
 
