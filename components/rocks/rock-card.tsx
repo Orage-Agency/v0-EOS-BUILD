@@ -2,7 +2,7 @@
 
 import { useDraggable } from "@dnd-kit/core"
 import { useRocksStore, rockProgress, PARENT_GOALS } from "@/lib/rocks-store"
-import { CURRENT_USER, getUser, type MockRock } from "@/lib/mock-data"
+import { getUser, type MockRock } from "@/lib/mock-data"
 import { canEditRocks } from "@/lib/permissions"
 import { OrageAvatar } from "@/components/orage/avatar"
 import { cn } from "@/lib/utils"
@@ -11,7 +11,8 @@ export function RockCard({ rock }: { rock: MockRock }) {
   const openRock = useRocksStore((s) => s.openRock)
   const milestones = useRocksStore((s) => s.milestones)
   const linkedTasks = useRocksStore((s) => s.linkedTasks)
-  const allowed = canEditRocks(CURRENT_USER)
+  const currentActor = useRocksStore((s) => s.currentActor)
+  const allowed = currentActor ? canEditRocks(currentActor) : false
 
   const owner = getUser(rock.owner)
   const ownMs = milestones.filter((m) => m.rockId === rock.id)

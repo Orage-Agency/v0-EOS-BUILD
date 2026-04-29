@@ -1,7 +1,7 @@
 "use client"
 
 import { useDroppable } from "@dnd-kit/core"
-import { CURRENT_USER, type MockRock, type RockStatus } from "@/lib/mock-data"
+import { type MockRock, type RockStatus } from "@/lib/mock-data"
 import { canEditRocks } from "@/lib/permissions"
 import { useRocksStore } from "@/lib/rocks-store"
 import { RockCard } from "./rock-card"
@@ -18,7 +18,8 @@ const STATUS_META: Record<RockStatus, { label: string; mark: string; sub: string
 export function RockColumn({ status, rocks }: { status: RockStatus; rocks: MockRock[] }) {
   const meta = STATUS_META[status]
   const openNewRock = useRocksStore((s) => s.openNewRock)
-  const allowed = canEditRocks(CURRENT_USER)
+  const currentActor = useRocksStore((s) => s.currentActor)
+  const allowed = currentActor ? canEditRocks(currentActor) : false
 
   const { setNodeRef, isOver } = useDroppable({
     id: `col-${status}`,

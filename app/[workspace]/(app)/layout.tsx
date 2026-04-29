@@ -7,6 +7,7 @@ import { KeyboardShortcuts } from "@/components/shell/keyboard-shortcuts"
 import { OrageToaster } from "@/components/shell/orage-toaster"
 import { BottomTabBar } from "@/components/shell/bottom-tab-bar"
 import { OnboardingGate } from "@/components/onboarding/onboarding-gate"
+import { SessionInit } from "@/components/shell/session-init"
 import { requireUser } from "@/lib/auth"
 
 /**
@@ -47,6 +48,18 @@ export default async function AppShellLayout({
       <OnboardingGate
         workspaceSlug={workspace}
         onboardingCompleted={user.onboardingCompleted}
+      />
+      <SessionInit
+        user={{
+          id: user.id,
+          name: user.fullName ?? user.email,
+          email: user.email,
+          avatarUrl: user.avatarUrl,
+          role: user.role,
+          isMaster: user.isMaster,
+          workspaceSlug: workspace,
+          workspaceName: user.workspaceName,
+        }}
       />
     </div>
   )

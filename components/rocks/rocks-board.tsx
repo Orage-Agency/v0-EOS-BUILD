@@ -1,11 +1,13 @@
 "use client"
 
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core"
-import { useMemo, useState } from "react"
+import { useMemo, useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { useRocksStore } from "@/lib/rocks-store"
-import { CURRENT_USER, type MockRock, type RockStatus } from "@/lib/mock-data"
+import { type MockRock, type RockStatus } from "@/lib/mock-data"
 import { canEditRocks } from "@/lib/permissions"
+import { updateRockStatus } from "@/app/actions/rocks"
 import { OrageEmpty } from "@/components/empty/orage-empty"
 import { RockColumn } from "./rock-column"
 import { RockCard } from "./rock-card"
@@ -22,8 +24,12 @@ const STATUS_LABEL: Record<RockStatus, string> = {
 export function RocksBoard() {
   const rocks = useRocksStore((s) => s.rocks)
   const updateStatus = useRocksStore((s) => s.updateStatus)
-  const allowed = canEditRocks(CURRENT_USER)
+  const currentActor = useRocksStore((s) => s.currentActor)
+  const workspaceSlug = useRocksStore((s) => s.workspaceSlug)
+  const allowed = currentActor ? canEditRocks(currentActor) : false
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [, startTransition] = useTransition()
+  const router = useRouter()
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
   const grouped = useMemo(() => {
@@ -53,10 +59,14 @@ export function RocksBoard() {
     const overData = over.data.current as { status?: RockStatus } | undefined
     if (!overData?.status) return
     const dragged = rocks.find((r) => r.id === active.id)
-    if (!dragged) return
-    if (overData.status !== dragged.status) {
-      updateStatus(dragged.id, overData.status)
-      toast(`STATUS · ${STATUS_LABEL[overData.status]}`)
+    if (!dragged || overData.status === dragged.status) return
+    updateStatus(dragged.id, overData.status)
+    toast(`STATUS · ${STATUS_LABEL[overData.status]}`)
+    if (workspaceSlug) {
+      startTransition(async () => {
+        await updateRockStatus(workspaceSlug, dragged.id, overData.status!)
+        router.refresh()
+      })
     }
   }
 

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef } from "react"
 import { useSearchParams, useRouter, usePathname } from "next/navigation"
 import { IcPlus } from "@/components/orage/icons"
 import { useTasksStore } from "@/lib/tasks-store"
-import { CURRENT_USER } from "@/lib/mock-data"
 import {
   filterTasks,
   isTaskFilter,
@@ -20,6 +19,7 @@ export function TasksHeader({
   onNewTask: () => void
 }) {
   const tasks = useTasksStore((s) => s.tasks)
+  const currentUserId = useTasksStore((s) => s.currentUserId) ?? ""
   const params = useSearchParams()
   const raw = params.get("filter")
   const isNew = params.get("new") === "1"
@@ -41,7 +41,7 @@ export function TasksHeader({
   }, [isNew, onNewTask, params, pathname, router])
 
   const { headline, openCount, todayCount, weekCount } = useMemo(() => {
-    const scoped = filterTasks(tasks, filter, CURRENT_USER.id)
+    const scoped = filterTasks(tasks, filter, currentUserId)
     const open = scoped.filter((t) => t.status !== "done").length
     const todayKey = new Date().toISOString().slice(0, 10)
     const today = scoped.filter(
@@ -51,7 +51,7 @@ export function TasksHeader({
     const meta = TASK_FILTERS.find((f) => f.id === filter)
     const head = (meta?.label ?? "Tasks").toUpperCase()
     return { headline: head, openCount: open, todayCount: today, weekCount: week }
-  }, [tasks, filter])
+  }, [tasks, filter, currentUserId])
 
   return (
     <div className="px-8 pt-6 flex items-start justify-between gap-5 shrink-0">

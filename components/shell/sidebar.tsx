@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import { TenantSwitcher } from "./tenant-switcher"
 import { AILauncher } from "./ai-launcher"
 import { UserBar } from "./user-bar"
-import { CURRENT_USER } from "@/lib/mock-data"
+import { useUIStore } from "@/lib/store"
 import { can } from "@/lib/permissions"
 import { useWorkspaceSlug } from "@/hooks/use-workspace-slug"
 import {
@@ -148,15 +148,17 @@ function NavGroup({
   pathname,
   workspaceSlug,
   masterOnly,
+  isMaster,
 }: {
   label: string
   items: NavItem[]
   pathname: string
   workspaceSlug: string
   masterOnly?: boolean
+  isMaster?: boolean
 }) {
-  if (masterOnly && !CURRENT_USER.isMaster) return null
-  const visible = items.filter((i) => !i.masterOnly || CURRENT_USER.isMaster)
+  if (masterOnly && !isMaster) return null
+  const visible = items.filter((i) => !i.masterOnly || isMaster)
   if (visible.length === 0) return null
   return (
     <>
@@ -188,7 +190,8 @@ function NavGroup({
 export function Sidebar() {
   const pathname = usePathname()
   const workspaceSlug = useWorkspaceSlug()
-  // Permissions are referenced here in case a future nav row needs to gate.
+  const sessionUser = useUIStore((s) => s.currentUser)
+  const isMaster = sessionUser?.isMaster ?? false
   void can
 
   return (
@@ -220,12 +223,14 @@ export function Sidebar() {
           items={WORKSPACE}
           pathname={pathname}
           workspaceSlug={workspaceSlug}
+          isMaster={isMaster}
         />
         <NavGroup
           label="Vision"
           items={VISION}
           pathname={pathname}
           workspaceSlug={workspaceSlug}
+          isMaster={isMaster}
         />
         <NavGroup
           label="Admin"
@@ -233,6 +238,7 @@ export function Sidebar() {
           pathname={pathname}
           workspaceSlug={workspaceSlug}
           masterOnly
+          isMaster={isMaster}
         />
       </nav>
 

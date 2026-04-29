@@ -9,7 +9,7 @@ import {
   rockProgress,
   useRocksStore,
 } from "@/lib/rocks-store"
-import { CURRENT_USER, getUser } from "@/lib/mock-data"
+import { getUser } from "@/lib/mock-data"
 import { canEditRocks } from "@/lib/permissions"
 import { OrageAvatar } from "@/components/orage/avatar"
 import { TenantLink } from "@/components/tenant-link"
@@ -33,7 +33,8 @@ export function RockDrawer() {
   const linkedTasks = useRocksStore((s) => s.linkedTasks)
   const updates = useRocksStore((s) => s.updates)
   const toggleMilestone = useRocksStore((s) => s.toggleMilestone)
-  const allowed = canEditRocks(CURRENT_USER)
+  const currentActor = useRocksStore((s) => s.currentActor)
+  const allowed = currentActor ? canEditRocks(currentActor) : false
 
   const rock = rocks.find((r) => r.id === openId)
   const owner = rock ? getUser(rock.owner) : null

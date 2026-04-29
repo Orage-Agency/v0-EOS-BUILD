@@ -3,8 +3,9 @@
 import { useRef, useState } from "react"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { CURRENT_USER, getUser, type MockTask } from "@/lib/mock-data"
+import { getUser, type MockTask } from "@/lib/mock-data"
 import { useTasksStore } from "@/lib/tasks-store"
+import { useUIStore } from "@/lib/store"
 import { OrageAvatar } from "@/components/orage/avatar"
 import { AssignPopover } from "./assign-popover"
 import { dueLabel } from "@/lib/format"
@@ -42,13 +43,17 @@ export function TaskRow({ task }: { task: MockTask }) {
 
   const [assignOpen, setAssignOpen] = useState(false)
   const avatarBtnRef = useRef<HTMLButtonElement>(null)
+  const sessionUser = useUIStore((s) => s.currentUser)
 
   const isSelected = selected.has(task.id)
   const isDone = task.status === "done"
   const due = dueLabel(task.due)
   const rockTag = task.rockId ? ROCK_TAG[task.rockId] : "—"
   const rockLink = task.rockId ? ROCK_LINK_LABEL[task.rockId] : null
-  const canDrag = canDragTask(CURRENT_USER, task.owner)
+  const actor = sessionUser
+    ? { id: sessionUser.id, role: sessionUser.role as import("@/types/permissions").Role, isMaster: sessionUser.isMaster }
+    : { id: "", role: "member" as import("@/types/permissions").Role, isMaster: false }
+  const canDrag = canDragTask(actor, task.owner)
 
   const sortable = useSortable({ id: task.id, disabled: !canDrag || isDone })
   const style = {

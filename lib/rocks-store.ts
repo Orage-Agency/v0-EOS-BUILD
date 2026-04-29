@@ -1,13 +1,14 @@
 "use client"
 
-/**
- * Orage Core · Rocks client store
- * Local optimistic state for the Rocks board, drawer, and New Rock modal.
- * Replace with Supabase queries / server actions when wired.
- */
-
 import { create } from "zustand"
-import { ROCKS, type MockRock, type RockStatus } from "@/lib/mock-data"
+import { type MockRock, type RockStatus } from "@/lib/mock-data"
+import type { Role } from "@/types/permissions"
+
+export type RocksActor = {
+  id: string
+  role: Role
+  isMaster: boolean
+}
 
 export type Milestone = {
   id: string
@@ -126,9 +127,18 @@ const LINKED_TASKS: LinkedTaskRef[] = [
 
 type RocksState = {
   rocks: MockRock[]
+  setRocks: (rocks: MockRock[]) => void
+  insertRock: (rock: MockRock) => void
+
   milestones: Milestone[]
   updates: RockUpdate[]
   linkedTasks: LinkedTaskRef[]
+
+  workspaceSlug: string
+  setWorkspaceSlug: (slug: string) => void
+
+  currentActor: RocksActor | null
+  setCurrentActor: (actor: RocksActor) => void
 
   openRockId: string | null
   openRock: (id: string) => void
@@ -141,14 +151,30 @@ type RocksState = {
   updateStatus: (id: string, status: RockStatus) => void
   toggleMilestone: (id: string) => void
   addMilestone: (rockId: string, title: string, due: string) => void
-  createRock: (input: { title: string; outcome: string; owner: string; due: string; tag: string }) => string
 }
 
 export const useRocksStore = create<RocksState>((set) => ({
-  rocks: [...ROCKS],
+  rocks: [],
+  setRocks: (rocks) => set({ rocks }),
+  insertRock: (rock) =>
+    set((state) => {
+      const exists = state.rocks.some((r) => r.id === rock.id)
+      return {
+        rocks: exists
+          ? state.rocks.map((r) => (r.id === rock.id ? rock : r))
+          : [rock, ...state.rocks],
+      }
+    }),
+
   milestones: [...MS],
   updates: [...UPDATES],
   linkedTasks: [...LINKED_TASKS],
+
+  workspaceSlug: "",
+  setWorkspaceSlug: (slug) => set({ workspaceSlug: slug }),
+
+  currentActor: null,
+  setCurrentActor: (actor) => set({ currentActor: actor }),
 
   openRockId: null,
   openRock: (id) => set({ openRockId: id }),
@@ -173,25 +199,6 @@ export const useRocksStore = create<RocksState>((set) => ({
         { id: crypto.randomUUID(), rockId, title, due, done: false },
       ],
     })),
-  createRock: ({ title, outcome, owner, due, tag }) => {
-    const id = crypto.randomUUID()
-    set((state) => ({
-      rocks: [
-        ...state.rocks,
-        {
-          id,
-          title,
-          status: "in_progress",
-          progress: 0,
-          owner,
-          due,
-          tag,
-        },
-      ],
-    }))
-    void outcome
-    return id
-  },
 }))
 
 export function rockProgress(rockId: string, milestones: Milestone[], fallback: number): number {

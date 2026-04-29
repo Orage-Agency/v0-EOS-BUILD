@@ -1,11 +1,13 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useUIStore } from "@/lib/store"
 import { CURRENT_USER } from "@/lib/mock-data"
 import { formatDateChip, shortTime } from "@/lib/format"
 
 export function DashboardHeader() {
   const [time, setTime] = useState<string>("—")
+  const sessionUser = useUIStore((s) => s.currentUser)
 
   useEffect(() => {
     setTime(shortTime(new Date()))
@@ -15,7 +17,8 @@ export function DashboardHeader() {
 
   const today = new Date()
   const chip = formatDateChip(today)
-  const firstName = CURRENT_USER.name.split(" ")[0].toUpperCase()
+  const name = sessionUser?.name ?? CURRENT_USER.name
+  const firstName = name.split(" ")[0].toUpperCase()
   const greeting = greetingFor(today.getHours())
 
   return (

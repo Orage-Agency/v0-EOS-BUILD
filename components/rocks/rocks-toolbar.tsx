@@ -1,8 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { CURRENT_USER } from "@/lib/mock-data"
 import { canEditRocks } from "@/lib/permissions"
+import { useRocksStore } from "@/lib/rocks-store"
 import { IcLock } from "@/components/orage/icons"
 import { cn } from "@/lib/utils"
 
@@ -15,7 +15,8 @@ const CHIPS = [
 ]
 
 export function RocksToolbar() {
-  const allowed = canEditRocks(CURRENT_USER)
+  const currentActor = useRocksStore((s) => s.currentActor)
+  const allowed = currentActor ? canEditRocks(currentActor) : false
   const [active, setActive] = useState<Set<string>>(
     new Set(CHIPS.filter((c) => c.default).map((c) => c.id)),
   )
@@ -52,7 +53,7 @@ export function RocksToolbar() {
           className="ml-auto flex items-center gap-1.5 px-3 py-1 rounded-sm bg-warning/10 border border-warning/40 text-warning text-[11px] font-medium"
         >
           <IcLock className="w-3 h-3" />
-          You&apos;re a {CURRENT_USER.role.toUpperCase()} — Rocks are read-only. Founders/Admins/Leaders can edit.
+          You&apos;re a {(currentActor?.role ?? "member").toUpperCase()} — Rocks are read-only. Founders/Admins/Leaders can edit.
         </div>
       )}
     </div>

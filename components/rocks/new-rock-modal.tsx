@@ -1,13 +1,24 @@
 "use client"
 
 import { AnimatePresence, motion } from "framer-motion"
-import { useState } from "react"
+import { useMemo, useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { useRocksStore } from "@/lib/rocks-store"
-import { USERS } from "@/lib/mock-data"
-import { OrageAvatar } from "@/components/orage/avatar"
+import { createRock } from "@/app/actions/rocks"
 import { tBase, easeOut, easeSpring } from "@/lib/motion"
 import { cn } from "@/lib/utils"
+import type { WorkspaceMember } from "@/lib/tasks-server"
+
+function deriveInitials(name: string, email: string): string {
+  const source = name?.trim() || email
+  const parts = source.split(/\s+|@/).filter(Boolean)
+  if (parts.length === 0) return "??"
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[1][0]).toUpperCase()
+}
+
+const TAGS = ["OFFER", "CLIENT", "VSL", "PARTNER", "INTERNAL", "PRODUCT", "MARKETING"]
 
 const PARENT_OPTIONS = [
   "↑ 7-Figure Agency · $1.2M ARR",
@@ -17,25 +28,59 @@ const PARENT_OPTIONS = [
   "↑ New Client Growth · 12 new clients",
 ]
 
-const TAGS = ["OFFER", "CLIENT", "VSL", "PARTNER", "INTERNAL", "PRODUCT", "MARKETING"]
+type RocksCurrentUser = {
+  id: string
+  name: string
+  email: string
+  avatarUrl: string | null
+  role: string
+  isMaster: boolean
+}
 
-export function NewRockModal() {
+export function NewRockModal({
+  workspaceSlug,
+  members,
+  currentUser,
+}: {
+  workspaceSlug: string
+  members: WorkspaceMember[]
+  currentUser: RocksCurrentUser
+}) {
   const open = useRocksStore((s) => s.newRockOpen)
   const close = useRocksStore((s) => s.closeNewRock)
-  const create = useRocksStore((s) => s.createRock)
+  const insertRock = useRocksStore((s) => s.insertRock)
+  const router = useRouter()
 
   const [title, setTitle] = useState("")
   const [outcome, setOutcome] = useState("")
-  const [ownerId, setOwnerId] = useState(USERS[0].id)
+  const [ownerId, setOwnerId] = useState(currentUser.id)
   const [due, setDue] = useState("2026-06-30")
   const [tag, setTag] = useState(TAGS[0])
   const [parent, setParent] = useState(PARENT_OPTIONS[0])
   const [error, setError] = useState<string | null>(null)
+  const [pending, startTransition] = useTransition()
+
+  // Ensure current user always appears in the picker
+  const memberPool: WorkspaceMember[] = useMemo(() => {
+    const has = members.some((m) => m.id === currentUser.id)
+    if (has) return members
+    return [
+      {
+        id: currentUser.id,
+        name: currentUser.name,
+        email: currentUser.email,
+        avatarUrl: currentUser.avatarUrl,
+        initials: deriveInitials(currentUser.name, currentUser.email),
+        role: currentUser.role,
+      },
+      ...members,
+    ]
+  }, [members, currentUser])
 
   function reset() {
     setTitle("")
     setOutcome("")
-    setOwnerId(USERS[0].id)
+    setOwnerId(currentUser.id)
     setDue("2026-06-30")
     setTag(TAGS[0])
     setParent(PARENT_OPTIONS[0])
@@ -43,13 +88,30 @@ export function NewRockModal() {
   }
 
   function submit() {
-    if (!title.trim()) return setError("Title is required.")
+    const t = title.trim()
+    if (!t) return setError("Title is required.")
     if (!outcome.trim()) return setError("Measurable outcome is required.")
-    create({ title: title.trim(), outcome: outcome.trim(), owner: ownerId, due, tag })
-    toast("ROCK CREATED · DRAFT")
-    close()
-    reset()
-    void parent
+    setError(null)
+    startTransition(async () => {
+      const res = await createRock(workspaceSlug, {
+        title: t,
+        outcome: outcome.trim(),
+        ownerId,
+        due,
+        tag,
+      })
+      if (!res.ok) {
+        toast.error(`Could not save rock — ${res.error}`)
+        setError(res.error)
+        return
+      }
+      insertRock(res.rock)
+      toast("ROCK CREATED")
+      router.refresh()
+      close()
+      reset()
+      void parent
+    })
   }
 
   return (
@@ -62,7 +124,7 @@ export function NewRockModal() {
           exit={{ opacity: 0 }}
           transition={{ duration: tBase, ease: easeOut }}
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget) {
+            if (e.target === e.currentTarget && !pending) {
               close()
               reset()
             }
@@ -97,6 +159,9 @@ export function NewRockModal() {
                     setTitle(e.target.value)
                     if (error) setError(null)
                   }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit()
+                  }}
                   placeholder="e.g. Launch Toolkit T1 · public, paid"
                   className="w-full px-3 py-2 bg-bg-3 border border-border-orage rounded-sm text-text-primary text-[13px] focus:border-gold-500 outline-none"
                 />
@@ -117,22 +182,34 @@ export function NewRockModal() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Field label="Owner" required>
                   <div className="flex flex-wrap gap-1.5">
-                    {USERS.map((u) => (
-                      <button
-                        key={u.id}
-                        type="button"
-                        onClick={() => setOwnerId(u.id)}
-                        className={cn(
-                          "flex items-center gap-1.5 px-2 py-1 rounded-sm border text-[11px] transition-colors",
-                          ownerId === u.id
-                            ? "bg-gold-500/10 border-gold-500 text-gold-400"
-                            : "bg-bg-3 border-border-orage text-text-secondary hover:border-gold-500/50",
-                        )}
-                      >
-                        <OrageAvatar user={u} size="xs" />
-                        {u.name.split(" ")[0]}
-                      </button>
-                    ))}
+                    {memberPool.map((m) => {
+                      const active = ownerId === m.id
+                      const isYou = m.id === currentUser.id
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => setOwnerId(m.id)}
+                          className={cn(
+                            "flex items-center gap-1.5 px-2 py-1 rounded-sm border text-[11px] transition-colors",
+                            active
+                              ? "bg-gold-500/10 border-gold-500 text-gold-400"
+                              : "bg-bg-3 border-border-orage text-text-secondary hover:border-gold-500/50",
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "w-5 h-5 rounded-full flex items-center justify-center font-display text-[9px] tracking-[0.05em] shrink-0",
+                              active ? "bg-gold-500/20 text-gold-300" : "bg-bg-active text-text-muted",
+                            )}
+                          >
+                            {m.initials}
+                          </span>
+                          {m.name.split(" ")[0]}
+                          {isYou && <span className="text-[9px] opacity-60">(you)</span>}
+                        </button>
+                      )
+                    })}
                   </div>
                 </Field>
 
@@ -186,20 +263,22 @@ export function NewRockModal() {
             <div className="px-6 pt-3.5 pb-5 border-t border-border-orage flex justify-end gap-2">
               <button
                 type="button"
+                disabled={pending}
                 onClick={() => {
                   close()
                   reset()
                 }}
-                className="px-3.5 py-1.5 bg-bg-3 border border-border-orage rounded-sm text-xs text-text-secondary hover:border-gold-500"
+                className="px-3.5 py-1.5 bg-bg-3 border border-border-orage rounded-sm text-xs text-text-secondary hover:border-gold-500 disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={submit}
-                className="px-4 py-1.5 bg-gradient-to-br from-gold-500 to-gold-400 text-text-on-gold rounded-sm text-xs font-semibold"
+                disabled={pending}
+                className="px-4 py-1.5 bg-gradient-to-br from-gold-500 to-gold-400 text-text-on-gold rounded-sm text-xs font-semibold disabled:opacity-50"
               >
-                Create Rock
+                {pending ? "Creating…" : "Create Rock"}
               </button>
             </div>
           </motion.div>

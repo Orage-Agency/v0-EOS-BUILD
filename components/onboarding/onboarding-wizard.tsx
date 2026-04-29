@@ -10,8 +10,7 @@ import {
   type OnboardingStepId,
 } from "@/lib/onboarding-store"
 import { useVTOStore } from "@/lib/vto-store"
-import { useRocksStore } from "@/lib/rocks-store"
-import { CURRENT_USER } from "@/lib/mock-data"
+import { createRock as createRockAction } from "@/app/actions/rocks"
 import { completeOnboarding } from "@/app/actions/onboarding"
 import { cn } from "@/lib/utils"
 
@@ -88,8 +87,6 @@ export function OnboardingWizard({
   const setPurpose = useVTOStore((s) => s.setPurpose)
   const setNiche = useVTOStore((s) => s.setNiche)
   const setTenYearTarget = useVTOStore((s) => s.setTenYearTarget)
-  const createRock = useRocksStore((s) => s.createRock)
-
   // ESC closes / tabs the user out — but only if we're past welcome (so the
   // first-ever screen isn't a quick-dismiss footgun).
   useEffect(() => {
@@ -124,10 +121,9 @@ export function OnboardingWizard({
     const validRocks = draft.rocks.filter((r) => r.title.trim().length > 0)
     const due = isoDateInDays(90)
     for (const r of validRocks) {
-      createRock({
+      await createRockAction(workspaceSlug, {
         title: r.title.trim(),
         outcome: r.outcome.trim() || r.title.trim(),
-        owner: CURRENT_USER.id,
         due,
         tag: "Q1",
       })

@@ -9,7 +9,21 @@
 import { create } from "zustand"
 import { DEFAULT_TENANT_ID } from "@/lib/tenants"
 
+export type SessionUser = {
+  id: string
+  name: string
+  email: string
+  avatarUrl: string | null
+  role: string
+  isMaster: boolean
+  workspaceSlug: string
+  workspaceName: string
+}
+
 type UIState = {
+  currentUser: SessionUser | null
+  setCurrentUser: (user: SessionUser) => void
+
   activeTenantId: string
   setActiveTenant: (id: string) => void
 
@@ -32,6 +46,9 @@ type UIState = {
 }
 
 export const useUIStore = create<UIState>((set) => ({
+  currentUser: null,
+  setCurrentUser: (user) => set({ currentUser: user }),
+
   activeTenantId: DEFAULT_TENANT_ID,
   setActiveTenant: (id) => set({ activeTenantId: id }),
 

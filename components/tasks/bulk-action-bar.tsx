@@ -3,17 +3,19 @@
 import { AnimatePresence, motion } from "framer-motion"
 import { toast } from "sonner"
 import { useTasksStore } from "@/lib/tasks-store"
-import { CURRENT_USER } from "@/lib/mock-data"
+import { useUIStore } from "@/lib/store"
 import { tBase, easeOut } from "@/lib/motion"
 import { cn } from "@/lib/utils"
-
-const CAN_DELETE = ["founder", "admin"].includes(CURRENT_USER.role)
 
 export function BulkActionBar() {
   const selected = useTasksStore((s) => s.selected)
   const clear = useTasksStore((s) => s.clearSelection)
   const bulkDelete = useTasksStore((s) => s.bulkDelete)
   const bulkUpdate = useTasksStore((s) => s.bulkUpdate)
+  const sessionUser = useUIStore((s) => s.currentUser)
+  const CAN_DELETE =
+    sessionUser?.isMaster ||
+    ["founder", "admin", "owner", "master"].includes(sessionUser?.role ?? "")
 
   const count = selected.size
 

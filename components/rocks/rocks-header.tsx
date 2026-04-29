@@ -1,6 +1,5 @@
 "use client"
 
-import { CURRENT_USER } from "@/lib/mock-data"
 import { canEditRocks } from "@/lib/permissions"
 import { useRocksStore } from "@/lib/rocks-store"
 import { IcPlus } from "@/components/orage/icons"
@@ -9,7 +8,8 @@ import { cn } from "@/lib/utils"
 export function RocksHeader() {
   const rocks = useRocksStore((s) => s.rocks)
   const openNewRock = useRocksStore((s) => s.openNewRock)
-  const allowed = canEditRocks(CURRENT_USER)
+  const currentActor = useRocksStore((s) => s.currentActor)
+  const allowed = currentActor ? canEditRocks(currentActor) : false
 
   const total = rocks.length
   const onTrack = rocks.filter((r) => r.status === "on_track").length
