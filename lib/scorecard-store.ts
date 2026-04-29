@@ -52,7 +52,100 @@ export const Q_WEEKS: { iso: string; num: number; label: string }[] = [
 
 export const CURRENT_WEEK = "2026-04-25"
 
-const SEED_METRICS: Metric[] = []
+const SEED_METRICS: Metric[] = [
+  // Sales & Growth
+  {
+    id: "m_disco",
+    name: "Discovery Calls",
+    unit: "",
+    target: 8,
+    direction: "up",
+    ownerId: "u_ivy",
+    group: "Sales & Growth",
+    source: "manual",
+    notes: "Weekly qualified discovery calls booked by outbound",
+  },
+  {
+    id: "m_mrr",
+    name: "MRR",
+    unit: "K",
+    target: 15,
+    direction: "up",
+    ownerId: "u_geo",
+    group: "Sales & Growth",
+    source: "stripe",
+    notes: "Monthly recurring revenue in thousands",
+  },
+  {
+    id: "m_cycle",
+    name: "Sales Cycle",
+    unit: "d",
+    target: 21,
+    direction: "down",
+    ownerId: "u_ivy",
+    group: "Sales & Growth",
+    source: "manual",
+    notes: "Average days from first touch to close",
+  },
+  // Client Experience
+  {
+    id: "m_nps",
+    name: "NPS Score",
+    unit: "",
+    target: 75,
+    direction: "up",
+    ownerId: "u_bro",
+    group: "Client Experience",
+    source: "manual",
+    notes: "Net Promoter Score from monthly client pulse",
+  },
+  {
+    id: "m_retain",
+    name: "Retention",
+    unit: "%",
+    target: 95,
+    direction: "up",
+    ownerId: "u_bro",
+    group: "Client Experience",
+    source: "manual",
+    notes: "% of active clients retained week-over-week",
+  },
+  // Product & Execution
+  {
+    id: "m_velocity",
+    name: "Task Velocity",
+    unit: "%",
+    target: 85,
+    direction: "up",
+    ownerId: "u_bar",
+    group: "Product & Execution",
+    source: "manual",
+    notes: "% of committed tasks completed by Friday EOD",
+  },
+  {
+    id: "m_ontime",
+    name: "On-Time Delivery",
+    unit: "%",
+    target: 90,
+    direction: "up",
+    ownerId: "u_bro",
+    group: "Product & Execution",
+    source: "manual",
+    notes: "% of deliverables hitting their committed deadline",
+  },
+  // Boomer AI · Partnership
+  {
+    id: "m_boomer",
+    name: "Boomer Pipeline",
+    unit: "%",
+    target: 100,
+    direction: "up",
+    ownerId: "u_geo",
+    group: "Boomer AI · Partnership",
+    source: "n8n",
+    notes: "QA call transfer pipeline health — Boomer AI partnership",
+  },
+]
 
 function seedCells(): MetricCell[] {
   const cells: MetricCell[] = []
