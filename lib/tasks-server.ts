@@ -86,26 +86,41 @@ export async function listWorkspaceMembers(
   const user = await requireUser(workspaceSlug)
   try {
     const sb = supabaseAdmin()
-    const { data, error } = await sb
+
+    // Two-step query — see lib/people-server.ts for why we don't trust
+    // the PostgREST `profiles:profiles!inner(...)` alias here.
+    const { data: memberships, error: mErr } = await sb
       .from("workspace_memberships")
-      .select("user_id, role, status, profiles:profiles!inner(id, email, full_name, avatar_url)")
+      .select("user_id, role")
       .eq("workspace_id", user.workspaceId)
       .eq("status", "active")
-    if (error) {
-      console.error("[v0] listWorkspaceMembers error", error.message)
+    if (mErr) {
+      console.error("[v0] tasks-server listWorkspaceMembers memberships error", mErr.message)
       return []
     }
-    type Row = {
-      user_id: string
-      role: string
-      status: string | null
-      profiles:
-        | { id: string; email: string; full_name: string | null; avatar_url: string | null }
-        | { id: string; email: string; full_name: string | null; avatar_url: string | null }[]
-        | null
+    const rows = (memberships ?? []) as Array<{ user_id: string; role: string }>
+    if (rows.length === 0) return []
+
+    const ids = rows.map((r) => r.user_id).filter(Boolean)
+    const { data: profiles, error: pErr } = await sb
+      .from("profiles")
+      .select("id, email, full_name, avatar_url")
+      .in("id", ids)
+    if (pErr) {
+      console.error("[v0] tasks-server listWorkspaceMembers profiles error", pErr.message)
+      return []
     }
-    return ((data as unknown as Row[]) ?? []).flatMap((r) => {
-      const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles
+    const byId = new Map(
+      ((profiles ?? []) as Array<{
+        id: string
+        email: string
+        full_name: string | null
+        avatar_url: string | null
+      }>).map((p) => [p.id, p]),
+    )
+
+    return rows.flatMap((m) => {
+      const p = byId.get(m.user_id)
       if (!p) return []
       const name = p.full_name ?? p.email
       return [
@@ -115,7 +130,7 @@ export async function listWorkspaceMembers(
           email: p.email,
           avatarUrl: p.avatar_url,
           initials: deriveInitials(p.full_name ?? "", p.email),
-          role: r.role,
+          role: m.role,
         } satisfies WorkspaceMember,
       ]
     })

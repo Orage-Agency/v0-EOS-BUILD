@@ -53,10 +53,45 @@ export default function MembersPage() {
 
     if (!ws) return
 
-    const { data: m } = await supabase
+    // Two-step query — Supabase's foreign-table alias join
+    // (`user:profiles(...)`) was returning a 400 in production because
+    // the FK relationship between workspace_memberships.user_id and
+    // profiles.id isn't reliably exposed via PostgREST. Fetching memberships
+    // first and then profiles by id IN (...) avoids the dependency.
+    const { data: rawMemberships } = await supabase
       .from("workspace_memberships")
-      .select("id, role, joined_at, user:profiles(id, email, full_name, avatar_url)")
+      .select("id, role, joined_at, user_id")
       .eq("workspace_id", ws.id)
+
+    const memberRows = (rawMemberships ?? []) as Array<{
+      id: string
+      role: string
+      joined_at: string | null
+      user_id: string
+    }>
+
+    let merged: Member[] = []
+    if (memberRows.length > 0) {
+      const ids = memberRows.map((m) => m.user_id).filter(Boolean)
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, email, full_name, avatar_url")
+        .in("id", ids)
+      const byId = new Map(
+        ((profiles ?? []) as Array<{
+          id: string
+          email: string
+          full_name: string | null
+          avatar_url: string | null
+        }>).map((p) => [p.id, p]),
+      )
+      merged = memberRows.map((m) => ({
+        id: m.id,
+        role: m.role,
+        joined_at: m.joined_at,
+        user: byId.get(m.user_id) ?? null,
+      }))
+    }
 
     const { data: i } = await supabase
       .from("workspace_invites")
@@ -65,7 +100,7 @@ export default function MembersPage() {
       .eq("status", "pending")
       .order("created_at", { ascending: false })
 
-    setMembers((m as unknown as Member[]) ?? [])
+    setMembers(merged)
     setInvites((i as unknown as Invite[]) ?? [])
   }, [workspaceSlug])
 

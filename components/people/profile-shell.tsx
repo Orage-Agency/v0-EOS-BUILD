@@ -1,8 +1,8 @@
 "use client"
 
 import { TenantLink as Link } from "@/components/tenant-link"
-import { USERS } from "@/lib/mock-data"
-import { usePeopleStore } from "@/lib/people-store"
+import { USERS, type MockUser } from "@/lib/mock-data"
+import { usePeopleStore, type PersonProfile } from "@/lib/people-store"
 import { ProfileRail } from "./profile-rail"
 import { SeatCard } from "./seat-card"
 import { QuarterlyConversationCard } from "./quarterly-conversation-card"
@@ -13,9 +13,42 @@ import { OneOnOneHistory } from "./one-on-one-history"
 import { OneOnOneDrawer } from "./one-on-one-drawer"
 import { ScheduleModal } from "./schedule-modal"
 
-export function ProfileShell({ userId }: { userId: string }) {
-  const user = USERS.find((u) => u.id === userId)
-  const profile = usePeopleStore((s) => s.profiles[userId])
+/** A blank profile so real DB users with no people-store entry can still
+ * render the page. The cards below show "no data yet" empty states which
+ * is correct for a freshly-onboarded teammate. */
+function emptyProfile(userId: string): PersonProfile {
+  return {
+    userId,
+    title: "—",
+    seatRoles: [],
+    joinedAt: new Date().toISOString().slice(0, 10),
+    timezone: "—",
+    slack: "—",
+    quarterlyConversation: { quarter: "Q2 2026", dueThisWeek: false },
+    gwc: {
+      quarter: "Q2 2026",
+      capturedAt: new Date().toISOString().slice(0, 10),
+      g: { answer: "pending" },
+      w: { answer: "pending" },
+      c: { answer: "pending" },
+    },
+    signals: [],
+    ownedRockIds: [],
+  }
+}
+
+export function ProfileShell({
+  userId,
+  initialUser,
+}: {
+  userId: string
+  initialUser?: MockUser
+}) {
+  // Prefer the server-resolved real DB user; fall back to USERS mock for
+  // legacy seeded ids; otherwise this is genuinely "not found".
+  const user = initialUser ?? USERS.find((u) => u.id === userId)
+  const storedProfile = usePeopleStore((s) => s.profiles[userId])
+  const profile: PersonProfile | undefined = storedProfile ?? (user ? emptyProfile(userId) : undefined)
 
   if (!user || !profile) {
     return (
