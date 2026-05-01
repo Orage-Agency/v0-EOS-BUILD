@@ -10,11 +10,17 @@ import { CalendarButton } from "@/components/calendar-peek"
 
 export function Topbar() {
   const openCommand = useUIStore((s) => s.openCommand)
+  const sessionUser = useUIStore((s) => s.currentUser)
+  // Prefer the real workspace name from auth/session over the TENANT mock,
+  // so multi-tenant tests don't all show "Orage Agency".
+  const workspaceName =
+    sessionUser?.workspaceName?.split(" ").slice(0, 2).join(" ") ??
+    TENANT.name.split(" ").slice(0, 2).join(" ")
 
   return (
     <header className="h-14 bg-[rgba(10,10,10,0.7)] backdrop-blur-md border-b border-border-orage flex items-center px-6 gap-4 relative z-10">
       <div className="flex items-center min-w-0">
-        <Breadcrumb workspaceName={TENANT.name.split(" ").slice(0, 2).join(" ")} />
+        <Breadcrumb workspaceName={workspaceName} />
       </div>
 
       <div className="flex-1 max-w-[400px] relative">
