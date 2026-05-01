@@ -60,7 +60,7 @@ Where most tools are passive databases, Orage Core is an active operating model.
           "AI Implementer — a chief-of-staff that reads everything and nudges drift",
         ],
         related: [
-          { label: "DASHBOARD", href: "/dashboard" },
+          { label: "DASHBOARD", href: "/" },
           { label: "VTO", href: "/vto" },
         ],
         tags: ["overview", "what is", "intro", "purpose", "eos"],
@@ -280,7 +280,7 @@ The dashboard shows your top 5 priorities for the next 3 days. Tasks without due
         ],
         related: [
           { label: "TASKS", href: "/tasks" },
-          { label: "DASHBOARD", href: "/dashboard" },
+          { label: "DASHBOARD", href: "/" },
         ],
         tags: ["tasks", "todo", "today", "priorities"],
       },
