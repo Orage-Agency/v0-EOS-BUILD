@@ -45,9 +45,13 @@ export async function listWorkspaceMembers(workspaceSlug: string): Promise<Works
     if (rows.length === 0) return []
 
     const ids = rows.map((r) => r.user_id).filter(Boolean)
+    // Only select columns we know exist across environments. avatar_url
+    // and is_master have been observed missing on the deployed `profiles`
+    // table — including them caused the whole select to 400 and the page
+    // fell back to the USERS mock. Resolve those fields per-row below.
     const { data: profiles, error: pErr } = await sb
       .from("profiles")
-      .select("id, full_name, email, avatar_url, is_master")
+      .select("id, full_name, email")
       .in("id", ids)
     if (pErr) {
       console.error("[v0] listWorkspaceMembers profiles error", pErr.message)
@@ -58,10 +62,41 @@ export async function listWorkspaceMembers(workspaceSlug: string): Promise<Works
         id: string
         full_name: string | null
         email: string
-        avatar_url: string | null
-        is_master: boolean
       }>).map((p) => [p.id, p]),
     )
+
+    // Best-effort enrichment: try to pull avatar_url + is_master in
+    // separate queries; if the column is missing the request 400s and
+    // we just skip — the row still renders with defaults.
+    let avatarById = new Map<string, string | null>()
+    let masterById = new Map<string, boolean>()
+    try {
+      const { data: avatars } = await sb
+        .from("profiles")
+        .select("id, avatar_url")
+        .in("id", ids)
+      avatarById = new Map(
+        ((avatars ?? []) as Array<{ id: string; avatar_url: string | null }>).map(
+          (r) => [r.id, r.avatar_url],
+        ),
+      )
+    } catch {
+      /* ignore — column missing */
+    }
+    try {
+      const { data: masters } = await sb
+        .from("profiles")
+        .select("id, is_master")
+        .in("id", ids)
+      masterById = new Map(
+        ((masters ?? []) as Array<{ id: string; is_master: boolean }>).map((r) => [
+          r.id,
+          !!r.is_master,
+        ]),
+      )
+    } catch {
+      /* ignore — column missing */
+    }
 
     return rows.flatMap((m) => {
       const p = byId.get(m.user_id)
@@ -72,8 +107,8 @@ export async function listWorkspaceMembers(workspaceSlug: string): Promise<Works
           name: p.full_name ?? p.email,
           email: p.email,
           role: m.role,
-          avatarUrl: p.avatar_url,
-          isMaster: p.is_master,
+          avatarUrl: avatarById.get(p.id) ?? null,
+          isMaster: masterById.get(p.id) ?? false,
           joinedAt: m.created_at,
         },
       ]
