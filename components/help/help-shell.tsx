@@ -218,7 +218,7 @@ function ManualBody({
             END OF MANUAL
           </p>
           <Link
-            href="/dashboard"
+            href="/"
             className="text-[11px] font-mono uppercase tracking-[0.16em] text-text-secondary hover:text-gold-300 transition-colors"
           >
             BACK TO DASHBOARD →
