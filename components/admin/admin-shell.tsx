@@ -25,7 +25,7 @@ export function AdminShell() {
   const target = impersonatingId ? getTenant(impersonatingId) : undefined
 
   return (
-    <div className="atmosphere">
+    <div>
       {/* Compact master indicator + page header. Sits in the body slot
           so it doesn't overlap the sidebar. */}
       <div
