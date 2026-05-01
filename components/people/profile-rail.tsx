@@ -46,7 +46,10 @@ export function ProfileRail({
 
       <ul className="flex flex-col gap-2 text-[11px] font-mono">
         <RailRow label="EMAIL" value={user.email} />
-        <RailRow label="JOINED" value={formatJoined(profile.joinedAt)} />
+        <RailRow
+          label="JOINED"
+          value={<span suppressHydrationWarning>{formatJoined(profile.joinedAt)}</span>}
+        />
         <RailRow
           label="TENURE"
           value={<span suppressHydrationWarning>{`${tenure} DAYS`}</span>}
