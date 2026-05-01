@@ -143,24 +143,40 @@ export function buildTools({
 
     read_issues: tool({
       description:
-        "List the open IDS issues for the current tenant. Returns id, title, severity, stage, owner_id, rank, linkedRockId. Use this when the user asks 'what's on the IDS list' or 'what's blocking us'.",
+        "List the open IDS issues for the current tenant from the live `issues` table. Returns id, title, severity, stage, owner_id, status. Use this when the user asks 'what's on the IDS list' or 'what's blocking us'.",
       inputSchema: z.object({
         limit: z.number().int().min(1).max(50).nullable(),
+        includeSolved: z.boolean().nullable(),
       }),
-      execute: async ({ limit }) => {
-        const issues = SEED_ISSUES.filter((i) => i.queue === "open")
-          .sort((a, b) => a.rank - b.rank)
-          .slice(0, limit ?? 25)
-          .map((i) => ({
-            id: i.id,
-            title: i.title,
-            severity: i.severity,
-            stage: i.stage,
-            owner_id: i.ownerId,
-            rank: i.rank,
-            linked_rock_id: i.linkedRockId ?? null,
-          }))
-        return { issues }
+      execute: async ({ limit, includeSolved }) => {
+        let q = sb
+          .from("issues")
+          .select("id, title, severity, stage, owner_id, status, rank, linked_rock_id, created_at")
+          .eq("tenant_id", tenantId)
+          .order("rank", { ascending: true, nullsFirst: false })
+          .order("created_at", { ascending: false })
+          .limit(limit ?? 25)
+        if (!includeSolved) q = q.neq("status", "solved")
+        const { data, error } = await q
+        if (error) {
+          // Fall back to mock seed if the live table errors so the agent
+          // can still describe what IDS looks like.
+          const issues = SEED_ISSUES.filter((i) => i.queue === "open")
+            .sort((a, b) => a.rank - b.rank)
+            .slice(0, limit ?? 25)
+            .map((i) => ({
+              id: i.id,
+              title: i.title,
+              severity: i.severity,
+              stage: i.stage,
+              owner_id: i.ownerId,
+              rank: i.rank,
+              linked_rock_id: i.linkedRockId ?? null,
+              status: "open" as const,
+            }))
+          return { issues, note: "fallback: live issues query failed" }
+        }
+        return { issues: data ?? [] }
       },
     }),
 
@@ -414,6 +430,168 @@ export function buildTools({
         const { data, error } = await q
         if (error) return { error: error.message, notes: [] }
         return { notes: data ?? [] }
+      },
+    }),
+
+    create_rock: tool({
+      description:
+        "Create a new 90-day Rock for the current tenant. Use this when the user wants to commit to a new quarterly priority. Always include a clear title and a target due date.",
+      inputSchema: z.object({
+        title: z.string().min(2),
+        description: z.string().nullable().describe("The measurable outcome / definition of done"),
+        ownerId: z.string().nullable().describe("User id to own; defaults to caller"),
+        dueDate: z.string().describe("YYYY-MM-DD target completion date"),
+        quarter: z.string().nullable().describe("e.g. Q2-2026"),
+        tag: z.string().nullable().describe("Department/area tag, e.g. SALES, PRODUCT"),
+      }),
+      execute: async ({ title, description, ownerId, dueDate, quarter, tag }) => {
+        const { data, error } = await sb
+          .from("rocks")
+          .insert({
+            tenant_id: tenantId,
+            title,
+            description: description ?? null,
+            owner_id: ownerId ?? userId,
+            quarter: quarter ?? "Q2-2026",
+            due_date: dueDate,
+            status: "in_progress",
+            progress: 0,
+            tag: tag ?? null,
+            created_by: userId,
+          })
+          .select("id, title, owner_id, due_date, quarter, status")
+          .single()
+        if (error) return { error: error.message }
+        return { rock: data, created: true }
+      },
+    }),
+
+    update_rock: tool({
+      description:
+        "Update any of a rock's editable fields: title, description, progress (0–100), owner, due date. Use update_rock_status separately for status changes.",
+      inputSchema: z.object({
+        id: z.string().describe("The rock id (uuid)"),
+        title: z.string().nullable(),
+        description: z.string().nullable(),
+        progress: z.number().int().min(0).max(100).nullable(),
+        ownerId: z.string().nullable(),
+        dueDate: z.string().nullable().describe("YYYY-MM-DD or null"),
+      }),
+      execute: async ({ id, title, description, progress, ownerId, dueDate }) => {
+        const patch: Record<string, unknown> = {}
+        if (title !== null) patch.title = title
+        if (description !== null) patch.description = description
+        if (progress !== null) patch.progress = progress
+        if (ownerId !== null) patch.owner_id = ownerId
+        if (dueDate !== null) patch.due_date = dueDate
+        if (Object.keys(patch).length === 0) {
+          return { error: "Nothing to update — provide at least one field." }
+        }
+        patch.updated_at = new Date().toISOString()
+        const { data, error } = await sb
+          .from("rocks")
+          .update(patch)
+          .eq("id", id)
+          .eq("tenant_id", tenantId)
+          .select("id, title, owner_id, due_date, status, progress")
+          .single()
+        if (error) return { error: error.message }
+        return { rock: data, updated: true }
+      },
+    }),
+
+    update_issue: tool({
+      description:
+        "Update an issue's stage (identify / discuss / solve), status (open / solved), severity, owner, or pin status. Use this to drive an issue through IDS.",
+      inputSchema: z.object({
+        id: z.string().describe("The issue id (uuid)"),
+        stage: z.enum(["identify", "discuss", "solve"]).nullable(),
+        status: z.enum(["open", "solved"]).nullable(),
+        severity: z.enum(["critical", "high", "normal", "low"]).nullable(),
+        ownerId: z.string().nullable(),
+        pinnedForL10: z.boolean().nullable(),
+      }),
+      execute: async ({ id, stage, status, severity, ownerId, pinnedForL10 }) => {
+        const patch: Record<string, unknown> = {}
+        if (stage !== null) patch.stage = stage
+        if (status !== null) {
+          patch.status = status
+          patch.solved_at = status === "solved" ? new Date().toISOString() : null
+        }
+        if (severity !== null) patch.severity = severity
+        if (ownerId !== null) patch.owner_id = ownerId
+        if (pinnedForL10 !== null) patch.pinned_for_l10 = pinnedForL10
+        if (Object.keys(patch).length === 0) {
+          return { error: "Nothing to update." }
+        }
+        const { data, error } = await sb
+          .from("issues")
+          .update(patch)
+          .eq("id", id)
+          .eq("tenant_id", tenantId)
+          .select("id, title, stage, status, severity, owner_id")
+          .single()
+        if (error) return { error: error.message }
+        return { issue: data, updated: true }
+      },
+    }),
+
+    create_note: tool({
+      description:
+        "Create a quick personal note for the caller. Use when the user says 'remember that X', 'jot down Y', or wants to capture a thought without context-switching to /notes.",
+      inputSchema: z.object({
+        title: z.string().min(2),
+        bodyMarkdown: z.string().nullable().describe("Optional initial markdown body"),
+      }),
+      execute: async ({ title, bodyMarkdown }) => {
+        const blocks = bodyMarkdown
+          ? [{ id: "b1", type: "p", html: bodyMarkdown }]
+          : [{ id: "b1", type: "p", html: "" }]
+        const { data, error } = await sb
+          .from("notes")
+          .insert({
+            tenant_id: tenantId,
+            title,
+            content: blocks,
+            parent_type: "personal",
+            parent_id: null,
+            folder: "personal",
+            created_by: userId,
+          })
+          .select("id, title")
+          .single()
+        if (error) return { error: error.message }
+        return { note: data, created: true }
+      },
+    }),
+
+    delete_task: tool({
+      description: "Permanently delete a task by id. Confirm with the user first if it's not obvious they want it gone.",
+      inputSchema: z.object({ id: z.string() }),
+      execute: async ({ id }) => {
+        const { error } = await sb.from("tasks").delete().eq("id", id).eq("tenant_id", tenantId)
+        if (error) return { error: error.message }
+        return { deleted: true, id }
+      },
+    }),
+
+    delete_rock: tool({
+      description: "Permanently delete a rock by id. Always confirm first.",
+      inputSchema: z.object({ id: z.string() }),
+      execute: async ({ id }) => {
+        const { error } = await sb.from("rocks").delete().eq("id", id).eq("tenant_id", tenantId)
+        if (error) return { error: error.message }
+        return { deleted: true, id }
+      },
+    }),
+
+    delete_issue: tool({
+      description: "Permanently delete an issue by id.",
+      inputSchema: z.object({ id: z.string() }),
+      execute: async ({ id }) => {
+        const { error } = await sb.from("issues").delete().eq("id", id).eq("tenant_id", tenantId)
+        if (error) return { error: error.message }
+        return { deleted: true, id }
       },
     }),
   }
