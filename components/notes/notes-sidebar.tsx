@@ -1,10 +1,16 @@
 "use client"
 
+import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { useNotesStore } from "@/lib/notes-store"
 import { ROCKS } from "@/lib/mock-data"
 import { IcPlus, IcSearch } from "@/components/orage/icons"
 import { cn } from "@/lib/utils"
+import {
+  DropdownMenu,
+  MenuItem,
+  MenuDivider,
+} from "@/components/orage/dropdown-menu"
 
 export function NotesSidebar() {
   const notes = useNotesStore((s) => s.notes)
@@ -15,9 +21,19 @@ export function NotesSidebar() {
   const expandedSections = useNotesStore((s) => s.expandedSections)
   const toggleSection = useNotesStore((s) => s.toggleSection)
   const create = useNotesStore((s) => s.createNote)
+  const renameNote = useNotesStore((s) => s.renameNote)
+  const deleteNote = useNotesStore((s) => s.deleteNote)
 
-  const meetingNotes = notes.filter((n) => n.parent.kind === "meetings")
-  const personalNotes = notes.filter((n) => n.parent.kind === "personal")
+  const [search, setSearch] = useState("")
+
+  const filteredNotes = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return notes
+    return notes.filter((n) => n.title.toLowerCase().includes(q))
+  }, [notes, search])
+
+  const meetingNotes = filteredNotes.filter((n) => n.parent.kind === "meetings")
+  const personalNotes = filteredNotes.filter((n) => n.parent.kind === "personal")
 
   return (
     <aside className="w-[260px] shrink-0 border-r border-border-orage bg-bg-1 flex flex-col h-full overflow-hidden">
@@ -41,6 +57,8 @@ export function NotesSidebar() {
           <IcSearch className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-text-muted" />
           <input
             type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             placeholder="Search notes…"
             className="w-full pl-7 pr-2 py-1.5 bg-bg-3 border border-border-orage rounded-sm text-[11px] text-text-primary placeholder:text-text-muted focus:border-gold-500 outline-none"
           />
@@ -78,9 +96,15 @@ export function NotesSidebar() {
                     {rockNotes.map((n) => (
                       <NoteRow
                         key={n.id}
+                        id={n.id}
                         title={n.title}
                         active={n.id === activeNoteId}
                         onClick={() => setActive(n.id)}
+                        onRename={(t) => renameNote(n.id, t)}
+                        onDelete={() => {
+                          deleteNote(n.id)
+                          toast(`Deleted "${n.title}"`)
+                        }}
                       />
                     ))}
                   </div>
@@ -98,10 +122,16 @@ export function NotesSidebar() {
           {meetingNotes.map((n) => (
             <NoteRow
               key={n.id}
+              id={n.id}
               title={n.title}
               badge={n.badge}
               active={n.id === activeNoteId}
               onClick={() => setActive(n.id)}
+              onRename={(t) => renameNote(n.id, t)}
+              onDelete={() => {
+                deleteNote(n.id)
+                toast(`Deleted "${n.title}"`)
+              }}
             />
           ))}
         </Section>
@@ -114,9 +144,15 @@ export function NotesSidebar() {
           {personalNotes.map((n) => (
             <NoteRow
               key={n.id}
+              id={n.id}
               title={n.title}
               active={n.id === activeNoteId}
               onClick={() => setActive(n.id)}
+              onRename={(t) => renameNote(n.id, t)}
+              onDelete={() => {
+                deleteNote(n.id)
+                toast(`Deleted "${n.title}"`)
+              }}
             />
           ))}
         </Section>
@@ -152,34 +188,133 @@ function Section({
 }
 
 function NoteRow({
+  id,
   title,
   badge,
   active,
   onClick,
+  onRename,
+  onDelete,
 }: {
+  id: string
   title: string
   badge?: string
   active?: boolean
   onClick: () => void
+  onRename?: (next: string) => void
+  onDelete?: () => void
 }) {
+  const [renaming, setRenaming] = useState(false)
+  const [draft, setDraft] = useState(title)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <div
       className={cn(
-        "w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-[12px] text-left transition-colors",
+        "group relative flex items-center gap-2 px-2 py-1.5 rounded-sm text-[12px]",
         active
           ? "bg-gold-500/10 text-gold-400"
           : "text-text-secondary hover:bg-bg-3 hover:text-text-primary",
       )}
     >
       <span className="text-text-muted text-[11px]">📄</span>
-      <span className="flex-1 truncate">{title}</span>
-      {badge && (
+      {renaming ? (
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => {
+            const next = draft.trim()
+            if (next && next !== title) onRename?.(next)
+            setRenaming(false)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur()
+            if (e.key === "Escape") {
+              setDraft(title)
+              setRenaming(false)
+            }
+            e.stopPropagation()
+          }}
+          onClick={(e) => e.stopPropagation()}
+          className="flex-1 bg-bg-2 border border-gold-500 rounded-sm px-1 text-[12px] text-text-primary outline-none"
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={onClick}
+          className="flex-1 truncate text-left"
+        >
+          {title}
+        </button>
+      )}
+      {badge && !renaming && (
         <span className="font-mono text-[9px] text-text-muted bg-bg-3 px-1.5 py-0.5 rounded-sm">
           {badge}
         </span>
       )}
-    </button>
+      {!renaming && (onRename || onDelete) && (
+        <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+          <DropdownMenu
+            align="right"
+            width="w-40"
+            trigger={({ toggle }) => (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  toggle()
+                }}
+                aria-label={`Note actions for ${title}`}
+                className="w-5 h-5 rounded-sm flex items-center justify-center text-text-muted hover:text-gold-400 hover:bg-bg-2"
+              >
+                ⋯
+              </button>
+            )}
+          >
+            {(close) => (
+              <>
+                {onRename && (
+                  <MenuItem
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setDraft(title)
+                      setRenaming(true)
+                      close()
+                    }}
+                  >
+                    Rename
+                  </MenuItem>
+                )}
+                {onDelete && (
+                  <>
+                    <MenuDivider />
+                    <MenuItem
+                      danger
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (!confirmDelete) {
+                          setConfirmDelete(true)
+                          setTimeout(() => setConfirmDelete(false), 3500)
+                          return
+                        }
+                        onDelete()
+                        close()
+                        setConfirmDelete(false)
+                      }}
+                    >
+                      {confirmDelete ? "Click again to confirm" : "Delete note…"}
+                    </MenuItem>
+                  </>
+                )}
+              </>
+            )}
+          </DropdownMenu>
+        </div>
+      )}
+      <span aria-hidden hidden>
+        {id}
+      </span>
+    </div>
   )
 }

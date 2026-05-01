@@ -12,6 +12,7 @@ import {
   saveNoteContent as saveNoteContentAction,
   updateNoteTitle as updateNoteTitleAction,
   fetchNoteBlocks as fetchNoteBlocksAction,
+  deleteNote as deleteNoteAction,
 } from "@/app/actions/notes"
 
 let _autosaveTimer: ReturnType<typeof setTimeout> | null = null
@@ -249,6 +250,8 @@ type NotesState = {
   setSlashQuery: (q: string) => void
 
   createNote: (parentType?: "rock" | "meetings" | "personal", parentId?: string) => Promise<string>
+  renameNote: (noteId: string, title: string) => void
+  deleteNote: (noteId: string) => void
 }
 
 export const useNotesStore = create<NotesState>((set, get) => ({
@@ -427,6 +430,37 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       }
     }
     return tempId
+  },
+
+  renameNote: (noteId, title) => {
+    set((s) => ({
+      notes: s.notes.map((n) => (n.id === noteId ? { ...n, title } : n)),
+    }))
+    scheduleTitleSave(get().workspaceSlug, noteId, title)
+  },
+
+  deleteNote: (noteId) => {
+    let nextActiveId = get().activeNoteId
+    set((s) => {
+      const remaining = s.notes.filter((n) => n.id !== noteId)
+      const newActive =
+        s.activeNoteId === noteId
+          ? remaining[0]?.id ?? ""
+          : s.activeNoteId
+      nextActiveId = newActive
+      const blocks = { ...s.blocks }
+      delete blocks[noteId]
+      return {
+        notes: remaining,
+        activeNoteId: newActive,
+        blocks,
+      }
+    })
+    const slug = get().workspaceSlug
+    if (slug && isDbId(noteId)) {
+      deleteNoteAction(slug, noteId).catch(console.error)
+    }
+    void nextActiveId
   },
 }))
 
