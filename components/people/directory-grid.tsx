@@ -34,7 +34,7 @@ export function DirectoryGrid({ initialMembers }: { initialMembers?: WorkspaceMe
   const profiles = usePeopleStore((s) => s.profiles)
   const [sort, setSort] = useState<SortKey>("name")
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all")
-  const [activeOnly, setActiveOnly] = useState(true)
+  const [search, setSearch] = useState("")
 
   // Use real DB members when available, fall back to mock USERS for demo
   const mockUsers: MockUser[] = useMemo(
@@ -48,6 +48,13 @@ export function DirectoryGrid({ initialMembers }: { initialMembers?: WorkspaceMe
   const visible = useMemo(() => {
     let list = mockUsers
     if (roleFilter !== "all") list = list.filter((u) => u.role === roleFilter)
+    const q = search.trim().toLowerCase()
+    if (q) {
+      list = list.filter(
+        (u) =>
+          u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q),
+      )
+    }
     if (sort === "name") list = [...list].sort((a, b) => a.name.localeCompare(b.name))
     if (sort === "role") list = [...list].sort((a, b) => a.role.localeCompare(b.role))
     if (sort === "tenure")
@@ -57,7 +64,7 @@ export function DirectoryGrid({ initialMembers }: { initialMembers?: WorkspaceMe
         return bJ.localeCompare(aJ)
       })
     return list
-  }, [sort, roleFilter, profiles, mockUsers])
+  }, [sort, roleFilter, search, profiles, mockUsers])
 
   return (
     <>
@@ -85,10 +92,12 @@ export function DirectoryGrid({ initialMembers }: { initialMembers?: WorkspaceMe
           label="Members"
         />
         <span className="flex-1" />
-        <Chip
-          active={activeOnly}
-          onClick={() => setActiveOnly((v) => !v)}
-          label={activeOnly ? "Active Only" : "All"}
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search name or email…"
+          className="h-8 w-56 px-3 bg-bg-3 border border-border-orage rounded-sm text-[12px] text-text-primary placeholder:text-text-muted outline-none focus:border-gold-500"
         />
       </div>
 

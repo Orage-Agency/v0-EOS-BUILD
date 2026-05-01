@@ -3,6 +3,7 @@
 import { USERS } from "@/lib/mock-data"
 import { usePeopleStore } from "@/lib/people-store"
 import { IcPlus } from "@/components/orage/icons"
+import { TenantLink } from "@/components/tenant-link"
 
 export function PeopleHeader() {
   const profiles = usePeopleStore((s) => s.profiles)
@@ -26,9 +27,12 @@ export function PeopleHeader() {
         </p>
       </div>
       <div className="flex items-center gap-2">
-        <button className="h-9 px-4 bg-bg-3 border border-border-orage hover:bg-bg-hover text-text-secondary text-xs font-semibold tracking-wider uppercase rounded-sm transition-colors">
+        <TenantLink
+          href="/orgchart"
+          className="h-9 px-4 bg-bg-3 border border-border-orage hover:bg-bg-hover text-text-secondary text-xs font-semibold tracking-wider uppercase rounded-sm transition-colors flex items-center"
+        >
           Org Chart
-        </button>
+        </TenantLink>
         <button
           onClick={openInvite}
           className="h-9 px-4 bg-gold-500 hover:bg-gold-400 text-text-on-gold text-xs font-semibold tracking-wider uppercase rounded-sm transition-colors inline-flex items-center gap-2"

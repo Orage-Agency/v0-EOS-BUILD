@@ -6,7 +6,7 @@ import { USERS } from "@/lib/mock-data"
 import { IcClose } from "@/components/orage/icons"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
-import { sendWorkspaceInvite } from "@/app/actions/people"
+import { sendWorkspaceInvite, generateInviteLink } from "@/app/actions/people"
 import { useWorkspaceSlug } from "@/hooks/use-workspace-slug"
 
 type Role = "founder" | "admin" | "leader" | "member" | "viewer" | "field"
@@ -55,6 +55,8 @@ export function InviteModal() {
   const [reportsToId, setReportsToId] = useState("")
   const [note, setNote] = useState("")
   const [sending, setSending] = useState(false)
+  const [linking, setLinking] = useState(false)
+  const [generatedLink, setGeneratedLink] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -63,6 +65,8 @@ export function InviteModal() {
     setReportsToId("")
     setNote("")
     setSending(false)
+    setLinking(false)
+    setGeneratedLink(null)
     setRole("member")
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close()
@@ -93,6 +97,32 @@ export function InviteModal() {
     }
     toast("INVITE SENT", { description: email.trim() })
     close()
+  }
+
+  async function handleGenerateLink() {
+    if (!email.trim()) {
+      toast("EMAIL REQUIRED to generate a link")
+      return
+    }
+    setLinking(true)
+    setGeneratedLink(null)
+    const result = await generateInviteLink(workspaceSlug, {
+      email: email.trim(),
+      fullName: fullName.trim() || undefined,
+      role,
+    })
+    setLinking(false)
+    if (!result.ok) {
+      toast("LINK FAILED", { description: result.error })
+      return
+    }
+    setGeneratedLink(result.url)
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(result.url).catch(() => {})
+      toast("INVITE LINK COPIED", { description: "Paste it into Slack / DM." })
+    } else {
+      toast("INVITE LINK READY")
+    }
   }
 
   return (
@@ -216,6 +246,31 @@ export function InviteModal() {
             </Field>
           </div>
 
+          {generatedLink && (
+            <div className="px-6 pt-3 pb-1">
+              <div className="rounded-sm border border-gold-500/40 bg-gold-500/5 p-3 flex items-start gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="font-display text-[10px] tracking-[0.18em] text-gold-400 mb-1">
+                    INVITE LINK · COPIED TO CLIPBOARD
+                  </div>
+                  <code className="block text-[11px] text-text-secondary font-mono truncate">
+                    {generatedLink}
+                  </code>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!generatedLink) return
+                    navigator.clipboard.writeText(generatedLink).then(() => toast("Copied"))
+                  }}
+                  className="h-7 px-2 bg-bg-2 border border-border-orage rounded-sm text-[10px] font-mono uppercase text-text-secondary hover:text-gold-400"
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+          )}
+
           <footer className="border-t border-border-orage px-6 py-3 flex items-center justify-between gap-2">
             <p className="text-[11px] font-mono text-text-muted">
               Invite expires in 7 days · revoke anytime from Admin
@@ -229,8 +284,16 @@ export function InviteModal() {
                 Cancel
               </button>
               <button
+                type="button"
+                onClick={handleGenerateLink}
+                disabled={linking || sending}
+                className="h-9 px-4 bg-bg-3 border border-border-orage hover:border-gold-500 hover:text-gold-400 disabled:opacity-50 text-text-secondary text-xs font-semibold tracking-wider uppercase rounded-sm"
+              >
+                {linking ? "Linking..." : "Copy Link"}
+              </button>
+              <button
                 type="submit"
-                disabled={sending}
+                disabled={sending || linking}
                 className="h-9 px-4 bg-gold-500 hover:bg-gold-400 disabled:opacity-50 text-text-on-gold text-xs font-semibold tracking-wider uppercase rounded-sm"
               >
                 {sending ? "Sending..." : "Send Invite"}

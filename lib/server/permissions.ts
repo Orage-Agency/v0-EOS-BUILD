@@ -32,6 +32,11 @@ export type Action =
   | "accountability:write"
   | "tenants:admin"
   | "integrations:write"
+  | "people:invite"
+  | "people:role"
+  | "people:suspend"
+  | "l10:write"
+  | "l10:delete"
 
 /**
  * `master` is the cross-workspace Orage staff role (always full power); it
@@ -56,6 +61,11 @@ const MATRIX: Record<Action, ReadonlyArray<Role>> = {
   "accountability:write": ["founder", "admin"],
   "tenants:admin": ["founder", "admin"],
   "integrations:write": ["founder", "admin"],
+  "people:invite": ["founder", "admin", "leader"],
+  "people:role": ["founder", "admin"],
+  "people:suspend": ["founder", "admin"],
+  "l10:write": ["founder", "admin", "leader"],
+  "l10:delete": ["founder", "admin"],
 }
 
 export class PermissionError extends Error {

@@ -6,6 +6,7 @@ import type { PersonProfile, GWCAnswer } from "@/lib/people-store"
 import { OrageAvatar } from "@/components/orage/avatar"
 import { TASKS } from "@/lib/mock-data"
 import { cn } from "@/lib/utils"
+import { PersonActionsMenu } from "./person-actions-menu"
 
 export function PersonCard({
   user,
@@ -54,6 +55,14 @@ export function PersonCard({
           <GWCDot answer={profile.gwc.c.answer} letter="C" />
         </div>
       )}
+      <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+        <PersonActionsMenu
+          userId={user.id}
+          userName={user.name}
+          currentRole={user.role}
+          isMaster={user.isMaster}
+        />
+      </div>
     </Link>
   )
 }
