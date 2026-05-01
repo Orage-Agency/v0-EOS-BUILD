@@ -103,6 +103,9 @@ export async function POST(req: Request) {
       toolCalls,
     })
   } catch (err) {
+    // requireUser throws a NEXT_REDIRECT to push the caller to /login
+    // when there's no session. Don't swallow it — let Next handle it.
+    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err
     console.error("[v0] /api/ai/chat error:", err)
     const raw = err instanceof Error ? err.message : "Unknown error"
     // Translate the most common provider/credential failures into messages
