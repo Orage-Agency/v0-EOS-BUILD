@@ -81,7 +81,10 @@ export async function POST(req: Request) {
         { role: "user" as const, content: message },
       ],
       tools,
-      stopWhen: stepCountIs(6),
+      // 12 lets the agent chain a few read_* lookups + multiple writes
+      // without truncating mid-task. With the new "no JSON dumps" prompt
+      // each step is small.
+      stopWhen: stepCountIs(12),
     })
 
     // Walk the steps to surface tool calls for the UI.
