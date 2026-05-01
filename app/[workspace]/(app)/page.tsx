@@ -34,10 +34,23 @@ export default async function DashboardPage({
     getUpcoming(workspace),
   ])
 
+  // Priorities = open tasks owned by the user that are due today,
+  // overdue, or due in the next 3 days.
+  const todayKey = new Date().toISOString().slice(0, 10)
+  const horizon = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10)
+  const priorityCount = tasks.filter(
+    (t) =>
+      t.status !== "done" &&
+      t.status !== "cancelled" &&
+      t.due &&
+      t.due <= horizon &&
+      (t.due >= todayKey || t.due < todayKey),
+  ).length
+
   return (
     <div className="relative z-10">
       <MobileHomeRedirect />
-      <DashboardHeader />
+      <DashboardHeader priorityCount={priorityCount} />
       <div className="px-6 md:px-8 pt-5 pb-12">
         <SummaryGrid kpis={kpis} />
 

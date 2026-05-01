@@ -169,22 +169,38 @@ function EmptyState({ filterLabel }: { filterLabel: string }) {
   )
 }
 
+function todayLabel(): string {
+  const d = new Date()
+  const month = d.toLocaleDateString("en-US", { month: "short" }).toUpperCase()
+  return `TODAY · ${month} ${d.getDate()}`
+}
+
 function groupTasks(tasks: MockTask[]): { label: string; items: MockTask[] }[] {
   const today: MockTask[] = []
+  const overdue: MockTask[] = []
   const week: MockTask[] = []
+  const later: MockTask[] = []
   const done: MockTask[] = []
+  const todayKey = new Date().toISOString().slice(0, 10)
+  const sevenOut = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
   for (const t of tasks) {
     if (t.status === "done") {
       done.push(t)
     } else if (isToday(t.due)) {
       today.push(t)
-    } else {
+    } else if (t.due && t.due < todayKey) {
+      overdue.push(t)
+    } else if (t.due && t.due <= sevenOut) {
       week.push(t)
+    } else {
+      later.push(t)
     }
   }
   const groups: { label: string; items: MockTask[] }[] = []
-  if (today.length) groups.push({ label: "TODAY · APR 25", items: today })
+  if (overdue.length) groups.push({ label: `OVERDUE · ${overdue.length}`, items: overdue })
+  if (today.length) groups.push({ label: todayLabel(), items: today })
   if (week.length) groups.push({ label: "THIS WEEK", items: week })
+  if (later.length) groups.push({ label: "LATER", items: later })
   if (done.length) groups.push({ label: "COMPLETED", items: done })
   return groups
 }

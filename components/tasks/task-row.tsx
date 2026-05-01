@@ -20,8 +20,14 @@ import { toast } from "sonner"
 const COLS =
   "30px 24px minmax(0,1fr) 130px 100px 110px 60px 40px"
 
+function deriveInitials(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  if (parts.length === 0) return "??"
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
 export function TaskRow({ task }: { task: MockTask }) {
-  const owner = getUser(task.owner)
   const selected = useTasksStore((s) => s.selected)
   const toggleSelected = useTasksStore((s) => s.toggleSelected)
   const openTask = useTasksStore((s) => s.openTask)
@@ -31,6 +37,22 @@ export function TaskRow({ task }: { task: MockTask }) {
   const rockOptions = useTasksStore((s) => s.rockOptions)
   const updateDue = useTasksStore((s) => s.updateDue)
   const archiveOne = useTasksStore((s) => s.archiveOne)
+  const members = useTasksStore((s) => s.members)
+
+  // Resolve owner: prefer real DB member, fall back to USERS mock for
+  // legacy seeded ids. Display nothing if neither matches (better than
+  // showing a wrong/random avatar).
+  const mockOwner = getUser(task.owner)
+  const memberOwner = members.find((m) => m.id === task.owner)
+  const owner =
+    mockOwner ??
+    (memberOwner
+      ? {
+          id: memberOwner.id,
+          name: memberOwner.name,
+          initials: memberOwner.initials || deriveInitials(memberOwner.name),
+        }
+      : null)
 
   const [assignOpen, setAssignOpen] = useState(false)
   const avatarBtnRef = useRef<HTMLButtonElement>(null)
