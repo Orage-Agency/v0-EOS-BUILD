@@ -271,6 +271,144 @@ export function buildTools({
         return { issue: data, created: true }
       },
     }),
+
+    update_task: tool({
+      description:
+        "Update an existing task's status, priority, due date, or owner. Use when the user asks to mark something done, reassign, change priority, or reschedule.",
+      inputSchema: z.object({
+        id: z.string().describe("The task id (uuid)"),
+        status: z.enum(["open", "in_progress", "done", "cancelled"]).nullable(),
+        priority: z.enum(["high", "med", "low"]).nullable(),
+        dueDate: z.string().nullable().describe("YYYY-MM-DD or null to clear"),
+        ownerId: z.string().nullable(),
+      }),
+      execute: async ({ id, status, priority, dueDate, ownerId }) => {
+        const patch: Record<string, unknown> = {}
+        if (status !== null) {
+          patch.status = status
+          patch.completed_at = status === "done" ? new Date().toISOString() : null
+        }
+        if (priority !== null) patch.priority = priority
+        if (dueDate !== null) patch.due_date = dueDate
+        if (ownerId !== null) patch.owner_id = ownerId
+        if (Object.keys(patch).length === 0) {
+          return { error: "Nothing to update — provide status, priority, dueDate, or ownerId." }
+        }
+        const { data, error } = await sb
+          .from("tasks")
+          .update(patch)
+          .eq("id", id)
+          .eq("tenant_id", tenantId)
+          .select("id, title, status, priority, due_date, owner_id")
+          .single()
+        if (error) return { error: error.message }
+        return { task: data, updated: true }
+      },
+    }),
+
+    update_rock_status: tool({
+      description:
+        "Update a rock's status (on_track / at_risk / off_track / in_progress / done). Use when the user reports a change in confidence on a rock.",
+      inputSchema: z.object({
+        id: z.string().describe("The rock id (uuid)"),
+        status: z.enum(["on_track", "at_risk", "off_track", "in_progress", "done"]),
+      }),
+      execute: async ({ id, status }) => {
+        const completedAt = status === "done" ? new Date().toISOString() : null
+        const { data, error } = await sb
+          .from("rocks")
+          .update({ status, completed_at: completedAt, updated_at: new Date().toISOString() })
+          .eq("id", id)
+          .eq("tenant_id", tenantId)
+          .select("id, title, status, progress")
+          .single()
+        if (error) return { error: error.message }
+        return { rock: data, updated: true }
+      },
+    }),
+
+    read_scorecard: tool({
+      description:
+        "Read the scorecard metrics + the most recent weekly entries for the tenant. Use when the user asks 'show me the scorecard', 'how are our numbers', or about a specific metric.",
+      inputSchema: z.object({
+        weeks: z.number().int().min(1).max(13).nullable().describe("How many recent weeks to include; default 4"),
+      }),
+      execute: async ({ weeks }) => {
+        const limit = weeks ?? 4
+        const { data: metrics, error } = await sb
+          .from("scorecard_metrics")
+          .select("id, name, owner_id, goal_value, goal_op, unit, frequency, archived_at, display_order")
+          .eq("tenant_id", tenantId)
+          .is("archived_at", null)
+          .order("display_order", { ascending: true })
+        if (error) return { error: error.message, metrics: [] }
+        const ids = (metrics ?? []).map((m) => m.id)
+        if (ids.length === 0) return { metrics: [], entries: [] }
+        const { data: entries } = await sb
+          .from("scorecard_entries")
+          .select("id, metric_id, period_start, value, status_override")
+          .in("metric_id", ids)
+          .order("period_start", { ascending: false })
+          .limit(ids.length * limit)
+        return { metrics, entries: entries ?? [] }
+      },
+    }),
+
+    read_people: tool({
+      description:
+        "List the active members of the workspace (real users from the workspace_memberships table). Returns id, name, email, role. Use when the user asks 'who is on the team' or to resolve a name like 'Brooklyn' to a real user id.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const { data, error } = await sb
+          .from("workspace_memberships")
+          .select("user_id, role, status, profiles:profiles!inner(id, email, full_name)")
+          .eq("workspace_id", tenantId)
+          .eq("status", "active")
+        if (error) return { error: error.message, people: [] }
+        type Row = {
+          user_id: string
+          role: string
+          profiles:
+            | { id: string; email: string; full_name: string | null }
+            | { id: string; email: string; full_name: string | null }[]
+            | null
+        }
+        const people = ((data as unknown as Row[]) ?? []).flatMap((r) => {
+          const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles
+          if (!p) return []
+          return [
+            {
+              id: p.id,
+              name: p.full_name ?? p.email,
+              email: p.email,
+              role: r.role,
+            },
+          ]
+        })
+        return { people }
+      },
+    }),
+
+    read_notes: tool({
+      description:
+        "Read the most recently updated notes for the tenant. Returns id, title, updated_at. Use when the user asks 'what notes do I have' or 'find the note about X'.",
+      inputSchema: z.object({
+        query: z.string().nullable().describe("Optional case-insensitive title substring to filter by"),
+        limit: z.number().int().min(1).max(50).nullable(),
+      }),
+      execute: async ({ query, limit }) => {
+        let q = sb
+          .from("notes")
+          .select("id, title, updated_at")
+          .eq("tenant_id", tenantId)
+          .order("updated_at", { ascending: false })
+          .limit(limit ?? 25)
+        if (query) q = q.ilike("title", `%${query}%`)
+        const { data, error } = await q
+        if (error) return { error: error.message, notes: [] }
+        return { notes: data ?? [] }
+      },
+    }),
   }
 }
 

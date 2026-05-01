@@ -2,10 +2,8 @@
 
 import { useAIImplementerStore } from "@/lib/ai-implementer-store"
 import { AIOrb } from "@/components/orage/ai-orb"
-import { IcAt, IcAttach, IcSlash } from "@/components/orage/icons"
 import { useWorkspaceSlug } from "@/hooks/use-workspace-slug"
 import { cn } from "@/lib/utils"
-import { toast } from "sonner"
 
 export function Composer() {
   const draft = useAIImplementerStore((s) => s.composerDraft)
@@ -19,7 +17,6 @@ export function Composer() {
     const text = draft.trim()
     if (!text) return
     sendMessage(text, workspaceSlug)
-    toast("SENDING · STREAMING RESPONSE…")
   }
 
   return (
@@ -39,9 +36,6 @@ export function Composer() {
           className="w-full bg-transparent px-3.5 py-3 text-[13px] text-text-primary placeholder:text-text-dim focus:outline-none resize-none leading-snug"
         />
         <div className="flex items-center gap-2 px-3 py-2 border-t border-border-orage/70">
-          <ToolBtn icon={<IcAt className="w-3 h-3" />} label="MENTION" />
-          <ToolBtn icon={<IcSlash className="w-3 h-3" />} label="COMMANDS" />
-          <ToolBtn icon={<IcAttach className="w-3 h-3" />} label="ATTACH" />
           <button
             onClick={toggleDeep}
             className={cn(
@@ -71,20 +65,3 @@ export function Composer() {
   )
 }
 
-function ToolBtn({
-  icon,
-  label,
-}: {
-  icon: React.ReactNode
-  label: string
-}) {
-  return (
-    <button
-      onClick={() => toast(label)}
-      className="font-display tracking-[0.18em] text-[10px] px-2 py-1 rounded-sm border border-border-orage text-text-muted hover:text-text-primary hover:bg-bg-3 transition inline-flex items-center gap-1"
-    >
-      {icon}
-      {label}
-    </button>
-  )
-}

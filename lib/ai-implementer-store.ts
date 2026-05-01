@@ -604,8 +604,16 @@ export const useAIImplementerStore = create<State>((set, get) => ({
         }),
       })
       if (!res.ok) {
-        const body = await res.text()
-        throw new Error(`HTTP ${res.status}: ${body}`)
+        let detail = ""
+        try {
+          const errBody = (await res.json()) as { error?: string; hint?: string }
+          detail = errBody.hint
+            ? `${errBody.error ?? "request failed"} — ${errBody.hint}`
+            : (errBody.error ?? `HTTP ${res.status}`)
+        } catch {
+          detail = `HTTP ${res.status}`
+        }
+        throw new Error(detail)
       }
       const payload = (await res.json()) as {
         text: string
