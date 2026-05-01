@@ -356,25 +356,32 @@ export function buildTools({
 
     read_people: tool({
       description:
-        "List the active members of the workspace (real users from the workspace_memberships table). Returns id, name, email, role. Use when the user asks 'who is on the team' or to resolve a name like 'Brooklyn' to a real user id.",
+        "List the active members of the workspace. Returns id, name, email, role. Use when the user asks 'who is on the team' or to resolve a name like 'Brooklyn' to a real user id.",
       inputSchema: z.object({}),
       execute: async () => {
-        const { data, error } = await sb
+        // Two-step query — avoids depending on a Supabase FK alias between
+        // workspace_memberships and profiles, which has been flaky in prod.
+        const { data: memberships, error: mErr } = await sb
           .from("workspace_memberships")
-          .select("user_id, role, status, profiles:profiles!inner(id, email, full_name)")
+          .select("user_id, role")
           .eq("workspace_id", tenantId)
           .eq("status", "active")
-        if (error) return { error: error.message, people: [] }
-        type Row = {
-          user_id: string
-          role: string
-          profiles:
-            | { id: string; email: string; full_name: string | null }
-            | { id: string; email: string; full_name: string | null }[]
-            | null
-        }
-        const people = ((data as unknown as Row[]) ?? []).flatMap((r) => {
-          const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles
+        if (mErr) return { error: `workspace_memberships: ${mErr.message}`, people: [] }
+        const rows = (memberships ?? []) as Array<{ user_id: string; role: string }>
+        if (rows.length === 0) return { people: [] }
+        const ids = rows.map((r) => r.user_id)
+        const { data: profiles, error: pErr } = await sb
+          .from("profiles")
+          .select("id, email, full_name")
+          .in("id", ids)
+        if (pErr) return { error: `profiles: ${pErr.message}`, people: [] }
+        const byId = new Map(
+          ((profiles ?? []) as Array<{ id: string; email: string; full_name: string | null }>).map(
+            (p) => [p.id, p],
+          ),
+        )
+        const people = rows.flatMap((r) => {
+          const p = byId.get(r.user_id)
           if (!p) return []
           return [
             {
