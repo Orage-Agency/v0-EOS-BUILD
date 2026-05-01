@@ -4,7 +4,26 @@ import { create } from "zustand"
 import { type MockRock, type RockStatus } from "@/lib/mock-data"
 import type { Role } from "@/types/permissions"
 import type { WorkspaceMember } from "@/lib/tasks-server"
-import { updateRockStatus as updateRockStatusAction } from "@/app/actions/rocks"
+import {
+  updateRockStatus as updateRockStatusAction,
+  updateRockProgress as updateRockProgressAction,
+  updateRockTitle as updateRockTitleAction,
+  updateRockDescription as updateRockDescriptionAction,
+  updateRockOwner as updateRockOwnerAction,
+  updateRockDue as updateRockDueAction,
+  deleteRock as deleteRockAction,
+} from "@/app/actions/rocks"
+
+const _ROCK_DEBOUNCERS: Record<string, ReturnType<typeof setTimeout> | undefined> = {}
+function debounceSave(key: string, fn: () => void, ms = 800) {
+  const existing = _ROCK_DEBOUNCERS[key]
+  if (existing) clearTimeout(existing)
+  _ROCK_DEBOUNCERS[key] = setTimeout(fn, ms)
+}
+
+function isDbId(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+}
 
 export type RocksActor = {
   id: string
@@ -154,8 +173,15 @@ type RocksState = {
   closeNewRock: () => void
 
   updateStatus: (id: string, status: RockStatus) => void
+  updateProgress: (id: string, progress: number) => void
+  updateTitle: (id: string, title: string) => void
+  updateDescription: (id: string, description: string) => void
+  updateOwner: (id: string, ownerId: string) => void
+  updateDue: (id: string, due: string) => void
+  deleteRock: (id: string) => void
   toggleMilestone: (id: string) => void
   addMilestone: (rockId: string, title: string, due: string) => void
+  removeMilestone: (id: string) => void
 }
 
 export const useRocksStore = create<RocksState>((set, get) => ({
@@ -196,8 +222,69 @@ export const useRocksStore = create<RocksState>((set, get) => ({
       rocks: state.rocks.map((r) => (r.id === id ? { ...r, status } : r)),
     }))
     const { workspaceSlug } = get()
-    if (workspaceSlug) {
+    if (workspaceSlug && isDbId(id)) {
       updateRockStatusAction(workspaceSlug, id, status).catch(console.error)
+    }
+  },
+  updateProgress: (id, progress) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(progress)))
+    set((state) => ({
+      rocks: state.rocks.map((r) => (r.id === id ? { ...r, progress: clamped } : r)),
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug && isDbId(id)) {
+      debounceSave(`progress:${id}`, () => {
+        updateRockProgressAction(workspaceSlug, id, clamped).catch(console.error)
+      }, 400)
+    }
+  },
+  updateTitle: (id, title) => {
+    set((state) => ({
+      rocks: state.rocks.map((r) => (r.id === id ? { ...r, title } : r)),
+    }))
+    const { workspaceSlug } = get()
+    if (!workspaceSlug || !isDbId(id)) return
+    debounceSave(`title:${id}`, () => {
+      updateRockTitleAction(workspaceSlug, id, title).catch(console.error)
+    })
+  },
+  updateDescription: (id, description) => {
+    set((state) => ({
+      rocks: state.rocks.map((r) => (r.id === id ? { ...r, description } : r)),
+    }))
+    const { workspaceSlug } = get()
+    if (!workspaceSlug || !isDbId(id)) return
+    debounceSave(`desc:${id}`, () => {
+      updateRockDescriptionAction(workspaceSlug, id, description).catch(console.error)
+    })
+  },
+  updateOwner: (id, ownerId) => {
+    set((state) => ({
+      rocks: state.rocks.map((r) => (r.id === id ? { ...r, owner: ownerId } : r)),
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug && isDbId(id) && isDbId(ownerId)) {
+      updateRockOwnerAction(workspaceSlug, id, ownerId).catch(console.error)
+    }
+  },
+  updateDue: (id, due) => {
+    set((state) => ({
+      rocks: state.rocks.map((r) => (r.id === id ? { ...r, due } : r)),
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug && isDbId(id) && /^\d{4}-\d{2}-\d{2}$/.test(due)) {
+      updateRockDueAction(workspaceSlug, id, due).catch(console.error)
+    }
+  },
+  deleteRock: (id) => {
+    set((state) => ({
+      rocks: state.rocks.filter((r) => r.id !== id),
+      openRockId: state.openRockId === id ? null : state.openRockId,
+      milestones: state.milestones.filter((m) => m.rockId !== id),
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug && isDbId(id)) {
+      deleteRockAction(workspaceSlug, id).catch(console.error)
     }
   },
   toggleMilestone: (id) =>
@@ -210,6 +297,10 @@ export const useRocksStore = create<RocksState>((set, get) => ({
         ...state.milestones,
         { id: crypto.randomUUID(), rockId, title, due, done: false },
       ],
+    })),
+  removeMilestone: (id) =>
+    set((state) => ({
+      milestones: state.milestones.filter((m) => m.id !== id),
     })),
 }))
 

@@ -112,3 +112,146 @@ export async function updateRockStatus(
     return { ok: false, error: msg }
   }
 }
+
+export async function updateRockProgress(
+  workspaceSlug: string,
+  id: string,
+  progress: number,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "rocks:write")
+    const clamped = Math.max(0, Math.min(100, Math.round(progress)))
+    const sb = supabaseAdmin()
+    const { error } = await sb
+      .from("rocks")
+      .update({ progress: clamped, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("tenant_id", user.workspaceId)
+    if (error) return { ok: false, error: error.message }
+    revalidateRockRoutes(workspaceSlug)
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error"
+    return { ok: false, error: msg }
+  }
+}
+
+export async function updateRockTitle(
+  workspaceSlug: string,
+  id: string,
+  title: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "rocks:write")
+    const trimmed = title.trim()
+    if (!trimmed) return { ok: false, error: "Title cannot be empty." }
+    const sb = supabaseAdmin()
+    const { error } = await sb
+      .from("rocks")
+      .update({ title: trimmed, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("tenant_id", user.workspaceId)
+    if (error) return { ok: false, error: error.message }
+    revalidateRockRoutes(workspaceSlug)
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error"
+    return { ok: false, error: msg }
+  }
+}
+
+export async function updateRockDescription(
+  workspaceSlug: string,
+  id: string,
+  description: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "rocks:write")
+    const sb = supabaseAdmin()
+    const { error } = await sb
+      .from("rocks")
+      .update({ description: description.trim() || null, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("tenant_id", user.workspaceId)
+    if (error) return { ok: false, error: error.message }
+    revalidateRockRoutes(workspaceSlug)
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error"
+    return { ok: false, error: msg }
+  }
+}
+
+export async function updateRockOwner(
+  workspaceSlug: string,
+  id: string,
+  ownerId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "rocks:write")
+    if (!isUuid(ownerId)) return { ok: false, error: "Invalid owner id" }
+    const sb = supabaseAdmin()
+    const { error } = await sb
+      .from("rocks")
+      .update({ owner_id: ownerId, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("tenant_id", user.workspaceId)
+    if (error) return { ok: false, error: error.message }
+    revalidateRockRoutes(workspaceSlug)
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error"
+    return { ok: false, error: msg }
+  }
+}
+
+export async function updateRockDue(
+  workspaceSlug: string,
+  id: string,
+  due: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "rocks:write")
+    const sb = supabaseAdmin()
+    const dueDate = /^\d{4}-\d{2}-\d{2}$/.test(due) ? due : null
+    if (!dueDate) return { ok: false, error: "Invalid due date" }
+    const { error } = await sb
+      .from("rocks")
+      .update({ due_date: dueDate, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("tenant_id", user.workspaceId)
+    if (error) return { ok: false, error: error.message }
+    revalidateRockRoutes(workspaceSlug)
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error"
+    return { ok: false, error: msg }
+  }
+}
+
+export async function deleteRock(
+  workspaceSlug: string,
+  id: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "rocks:delete")
+    const sb = supabaseAdmin()
+    const { error } = await sb
+      .from("rocks")
+      .delete()
+      .eq("id", id)
+      .eq("tenant_id", user.workspaceId)
+    if (error) return { ok: false, error: error.message }
+    revalidateRockRoutes(workspaceSlug)
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error"
+    return { ok: false, error: msg }
+  }
+}
