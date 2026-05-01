@@ -2,7 +2,18 @@
 
 import { create } from "zustand"
 import { USERS, type MockUser } from "@/lib/mock-data"
-import { createL10Meeting } from "@/app/actions/l10"
+import {
+  createL10Meeting,
+  renameMeeting as renameMeetingAction,
+  rescheduleMeeting as rescheduleMeetingAction,
+  cancelMeeting as cancelMeetingAction,
+  deleteMeeting as deleteMeetingAction,
+  saveMeetingState as saveMeetingStateAction,
+} from "@/app/actions/l10"
+
+function _isDbId(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+}
 
 export type AgendaSegment =
   | "segue"
@@ -322,6 +333,14 @@ type Actions = {
   startMeeting: (meetingId: string) => void
   // Create
   createMeeting: (when: number) => Promise<string>
+  // Manage meeting from detail page
+  renameMeeting: (meetingId: string, name: string) => void
+  rescheduleMeeting: (meetingId: string, scheduledAt: number) => void
+  cancelMeeting: (meetingId: string) => void
+  deleteMeeting: (meetingId: string) => void
+  addAgendaSegment: (meetingId: string, name: string, durationMin: number) => void
+  updateAgendaSegment: (meetingId: string, segmentId: string, patch: Partial<{ name: string; durationMin: number }>) => void
+  removeAgendaSegment: (meetingId: string, segmentId: string) => void
 }
 
 function uid(prefix: string) {
@@ -565,6 +584,139 @@ export const useL10Store = create<State & Actions>((set, get) => ({
       }
     }
     return tempId
+  },
+
+  renameMeeting: (meetingId, name) => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    set((s) => ({
+      meetings: s.meetings.map((m) =>
+        m.id === meetingId ? { ...m, name: trimmed } : m,
+      ),
+    }))
+    const slug = get().workspaceSlug
+    if (slug && _isDbId(meetingId)) {
+      renameMeetingAction(slug, meetingId, trimmed).catch(console.error)
+    }
+  },
+
+  rescheduleMeeting: (meetingId, scheduledAt) => {
+    set((s) => ({
+      meetings: s.meetings.map((m) =>
+        m.id === meetingId ? { ...m, scheduledAt } : m,
+      ),
+    }))
+    const slug = get().workspaceSlug
+    if (slug && _isDbId(meetingId)) {
+      rescheduleMeetingAction(slug, meetingId, scheduledAt).catch(console.error)
+    }
+  },
+
+  cancelMeeting: (meetingId) => {
+    set((s) => ({
+      meetings: s.meetings.map((m) =>
+        m.id === meetingId
+          ? {
+              ...m,
+              name: m.name.startsWith("[CANCELLED] ") ? m.name : `[CANCELLED] ${m.name}`,
+              status: "concluded" as const,
+              concludedAt: Date.now(),
+            }
+          : m,
+      ),
+    }))
+    const slug = get().workspaceSlug
+    if (slug && _isDbId(meetingId)) {
+      cancelMeetingAction(slug, meetingId).catch(console.error)
+    }
+  },
+
+  deleteMeeting: (meetingId) => {
+    set((s) => ({
+      meetings: s.meetings.filter((m) => m.id !== meetingId),
+    }))
+    const slug = get().workspaceSlug
+    if (slug && _isDbId(meetingId)) {
+      deleteMeetingAction(slug, meetingId).catch(console.error)
+    }
+  },
+
+  addAgendaSegment: (meetingId, name, durationMin) => {
+    const id = uid("seg")
+    let snapshot: Meeting | undefined
+    set((s) => ({
+      meetings: s.meetings.map((m) => {
+        if (m.id !== meetingId) return m
+        const next: Meeting = {
+          ...m,
+          agenda: [
+            ...m.agenda,
+            {
+              id,
+              segment: "segue",
+              name: name.trim() || "New Segment",
+              durationSec: Math.max(60, durationMin * 60),
+              status: "pending",
+            },
+          ],
+        }
+        snapshot = next
+        return next
+      }),
+    }))
+    const slug = get().workspaceSlug
+    if (slug && _isDbId(meetingId) && snapshot) {
+      saveMeetingStateAction(slug, snapshot).catch(console.error)
+    }
+  },
+
+  updateAgendaSegment: (meetingId, segmentId, patch) => {
+    let snapshot: Meeting | undefined
+    set((s) => ({
+      meetings: s.meetings.map((m) => {
+        if (m.id !== meetingId) return m
+        const next: Meeting = {
+          ...m,
+          agenda: m.agenda.map((a) =>
+            a.id === segmentId
+              ? {
+                  ...a,
+                  name: patch.name !== undefined ? patch.name : a.name,
+                  durationSec:
+                    patch.durationMin !== undefined
+                      ? Math.max(60, patch.durationMin * 60)
+                      : a.durationSec,
+                }
+              : a,
+          ),
+        }
+        snapshot = next
+        return next
+      }),
+    }))
+    const slug = get().workspaceSlug
+    if (slug && _isDbId(meetingId) && snapshot) {
+      saveMeetingStateAction(slug, snapshot).catch(console.error)
+    }
+  },
+
+  removeAgendaSegment: (meetingId, segmentId) => {
+    let snapshot: Meeting | undefined
+    set((s) => ({
+      meetings: s.meetings.map((m) => {
+        if (m.id !== meetingId) return m
+        const next: Meeting = {
+          ...m,
+          agenda: m.agenda.filter((a) => a.id !== segmentId),
+        }
+        snapshot = next
+        return next
+      }),
+    }))
+    const slug = get().workspaceSlug
+    if (slug && _isDbId(meetingId) && snapshot) {
+      saveMeetingStateAction(slug, snapshot).catch(console.error)
+    }
   },
 }))
 
