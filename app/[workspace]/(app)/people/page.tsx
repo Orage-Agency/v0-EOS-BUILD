@@ -17,7 +17,7 @@ async function loadMembers(workspaceSlug: string): Promise<WorkspaceMember[]> {
     const sb = supabaseAdmin()
     const { data: memberships, error: mErr } = await sb
       .from("workspace_memberships")
-      .select("user_id, role, status, created_at")
+      .select("user_id, role")
       .eq("workspace_id", me.workspaceId)
       .eq("status", "active")
     if (mErr) {
@@ -27,8 +27,6 @@ async function loadMembers(workspaceSlug: string): Promise<WorkspaceMember[]> {
     const rows = (memberships ?? []) as Array<{
       user_id: string
       role: string
-      status: string
-      created_at: string | null
     }>
     if (rows.length === 0) return []
     const ids = rows.map((r) => r.user_id).filter(Boolean)
@@ -56,7 +54,7 @@ async function loadMembers(workspaceSlug: string): Promise<WorkspaceMember[]> {
           role: m.role,
           avatarUrl: null,
           isMaster: false,
-          joinedAt: m.created_at,
+          joinedAt: null,
         } satisfies WorkspaceMember,
       ]
     })
