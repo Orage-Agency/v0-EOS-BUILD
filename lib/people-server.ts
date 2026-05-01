@@ -27,9 +27,12 @@ export async function listWorkspaceMembers(workspaceSlug: string): Promise<Works
     // workspace_memberships.user_id and profiles.id isn't reliably
     // exposed in the schema cache. Fetch memberships, then profiles
     // by id IN (...) so we don't depend on the alias.
+    // Only select columns we know exist across environments. created_at
+    // has been observed as missing on the deployed workspace_memberships
+    // table — including it 400s the whole query.
     const { data: memberships, error: mErr } = await sb
       .from("workspace_memberships")
-      .select("user_id, role, created_at")
+      .select("user_id, role")
       .eq("workspace_id", user.workspaceId)
       .eq("status", "active")
     if (mErr) {
@@ -40,7 +43,6 @@ export async function listWorkspaceMembers(workspaceSlug: string): Promise<Works
     const rows = (memberships ?? []) as Array<{
       user_id: string
       role: string
-      created_at: string | null
     }>
     if (rows.length === 0) return []
 
@@ -109,7 +111,7 @@ export async function listWorkspaceMembers(workspaceSlug: string): Promise<Works
           role: m.role,
           avatarUrl: avatarById.get(p.id) ?? null,
           isMaster: masterById.get(p.id) ?? false,
-          joinedAt: m.created_at,
+          joinedAt: null,
         },
       ]
     })
