@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
+import { toast } from "sonner"
 import {
   Q_WEEKS,
   colorForCell,
@@ -20,9 +21,14 @@ const COLOR_BG: Record<"green" | "yellow" | "red" | "empty", string> = {
 }
 
 export function MetricDrawer() {
-  const { drawerMetricId, metrics, cells, closeDrawer } = useScorecardStore()
+  const { drawerMetricId, metrics, cells, closeDrawer, deleteMetric } = useScorecardStore()
   const metric = metrics.find((m) => m.id === drawerMetricId)
   const owner = metric ? getUser(metric.ownerId) : null
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  useEffect(() => {
+    setConfirmDelete(false)
+  }, [drawerMetricId])
 
   useEffect(() => {
     if (!drawerMetricId) return
@@ -61,18 +67,46 @@ export function MetricDrawer() {
       >
         {metric ? (
           <>
-            <header className="px-6 py-4 border-b border-border-orage flex justify-between items-center">
+            <header className="px-6 py-4 border-b border-border-orage flex justify-between items-center gap-2">
               <span className="font-display text-[11px] tracking-[0.22em] text-text-muted">
                 METRIC · 13-WEEK TREND
               </span>
-              <button
-                type="button"
-                onClick={closeDrawer}
-                aria-label="Close drawer"
-                className="w-7 h-7 rounded-sm flex items-center justify-center text-text-secondary hover:bg-bg-hover hover:text-gold-400"
-              >
-                <IcClose className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!confirmDelete) {
+                      setConfirmDelete(true)
+                      toast(
+                        `Click delete again to remove "${metric.name}" and all its weekly values.`,
+                        { duration: 3500 },
+                      )
+                      setTimeout(() => setConfirmDelete(false), 3500)
+                      return
+                    }
+                    const name = metric.name
+                    deleteMetric(metric.id)
+                    toast(`Deleted "${name}"`)
+                  }}
+                  title={confirmDelete ? "Click again to confirm" : "Delete metric"}
+                  className={cn(
+                    "h-7 px-2 rounded-sm flex items-center justify-center text-[11px] font-mono tracking-wider transition-colors",
+                    confirmDelete
+                      ? "bg-danger text-white"
+                      : "text-text-muted hover:bg-danger/10 hover:text-danger",
+                  )}
+                >
+                  {confirmDelete ? "CONFIRM DELETE" : "DELETE"}
+                </button>
+                <button
+                  type="button"
+                  onClick={closeDrawer}
+                  aria-label="Close drawer"
+                  className="w-7 h-7 rounded-sm flex items-center justify-center text-text-secondary hover:bg-bg-hover hover:text-gold-400"
+                >
+                  <IcClose className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </header>
 
             <div className="flex-1 overflow-y-auto px-6 py-6">

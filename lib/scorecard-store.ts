@@ -8,6 +8,11 @@
 import { create } from "zustand"
 import { useIssuesStore } from "@/lib/issues-store"
 import { createIssue as createIssueAction } from "@/app/actions/issues"
+import { deleteMetric as deleteMetricAction } from "@/app/actions/scorecard"
+
+function isDbId(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+}
 
 export type MetricDirection = "up" | "down"
 export type MetricSource = "manual" | "stripe" | "ghl" | "n8n" | "ai"
@@ -215,6 +220,7 @@ type ScorecardState = {
   ) => void
 
   createMetric: (input: Omit<Metric, "id">) => string
+  deleteMetric: (id: string) => void
 }
 
 export const useScorecardStore = create<ScorecardState>((set, get) => ({
@@ -322,6 +328,18 @@ export const useScorecardStore = create<ScorecardState>((set, get) => ({
     const id = `m_${Math.random().toString(36).slice(2, 8)}`
     set((s) => ({ metrics: [...s.metrics, { ...input, id }] }))
     return id
+  },
+
+  deleteMetric: (id) => {
+    set((s) => ({
+      metrics: s.metrics.filter((m) => m.id !== id),
+      cells: s.cells.filter((c) => c.metricId !== id),
+      drawerMetricId: s.drawerMetricId === id ? null : s.drawerMetricId,
+    }))
+    const slug = get().workspaceSlug
+    if (slug && isDbId(id)) {
+      deleteMetricAction(slug, id).catch(console.error)
+    }
   },
 }))
 
