@@ -39,19 +39,31 @@ function HealthCard({
   )
 }
 
-export function HealthBar() {
-  const { metrics, cells } = useScorecardStore()
-  const currentColors = metrics.map((m) => {
-    const cell = cells.find((c) => c.metricId === m.id && c.week === CURRENT_WEEK)
+function colorAtWeek(
+  metrics: ReturnType<typeof useScorecardStore.getState>["metrics"],
+  cells: ReturnType<typeof useScorecardStore.getState>["cells"],
+  weekIso: string,
+) {
+  return metrics.map((m) => {
+    const cell = cells.find((c) => c.metricId === m.id && c.week === weekIso)
     return colorForCell(cell?.value ?? null, m.target, m.direction)
   })
+}
+
+export function HealthBar() {
+  const { metrics, cells } = useScorecardStore()
+  const currentColors = colorAtWeek(metrics, cells, CURRENT_WEEK)
   const greens = currentColors.filter((c) => c === "green").length
   const yellows = currentColors.filter((c) => c === "yellow").length
-  const reds = currentColors.filter((c) => c === "red").length
 
-  // 2-week red streak count
+  // Compute the same buckets one week back to give the user a real
+  // delta instead of a hardcoded "↑ 2 from last week".
   const currentIdx = Q_WEEKS.findIndex((w) => w.iso === CURRENT_WEEK)
   const prevWeek = currentIdx > 0 ? Q_WEEKS[currentIdx - 1].iso : null
+  const prevColors = prevWeek ? colorAtWeek(metrics, cells, prevWeek) : []
+  const greensPrev = prevColors.filter((c) => c === "green").length
+
+  // 2-week red streak count
   const redStreak = prevWeek
     ? metrics.filter((m) => {
         const cur = cells.find(
@@ -68,13 +80,34 @@ export function HealthBar() {
   const total = metrics.length
   const score =
     total > 0 ? Math.round(((greens + yellows * 0.5) / total) * 100) : 0
+  const scorePrev =
+    prevColors.length > 0
+      ? Math.round(
+          ((greensPrev + prevColors.filter((c) => c === "yellow").length * 0.5) /
+            prevColors.length) *
+            100,
+        )
+      : 0
+  const scoreDelta = score - scorePrev
+  const greensDelta = greens - greensPrev
+
+  function delta(n: number, suffix = "") {
+    if (n === 0) return <span className="text-text-muted">flat vs last week{suffix}</span>
+    const cls = n > 0 ? "text-success" : "text-danger"
+    const arrow = n > 0 ? "↑" : "↓"
+    return (
+      <>
+        <span className={`${cls} font-semibold`}>{arrow} {Math.abs(n)}{suffix}</span> vs last week
+      </>
+    )
+  }
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 px-8 py-5 border-b border-border-orage">
       <HealthCard
         label="METRICS GREEN"
         value={String(greens)}
-        meta={<><span className="text-success font-semibold">↑ 2</span> from last week</>}
+        meta={prevColors.length > 0 ? delta(greensDelta) : <span className="text-text-muted">first week</span>}
         tone="green"
       />
       <HealthCard
@@ -87,17 +120,21 @@ export function HealthBar() {
         label="RED · 2-WK STREAK"
         value={String(redStreak)}
         meta={
-          <>
-            <span className="text-danger font-semibold">{redStreak}</span> issue
-            {redStreak === 1 ? "" : "s"} auto-created
-          </>
+          redStreak > 0 ? (
+            <>
+              <span className="text-danger font-semibold">{redStreak}</span> issue
+              {redStreak === 1 ? "" : "s"} auto-created
+            </>
+          ) : (
+            <span className="text-text-muted">none — keep it that way</span>
+          )
         }
         tone="red"
       />
       <HealthCard
         label="OVERALL HEALTH"
         value={`${score}%`}
-        meta={<><span className="text-success font-semibold">↑ 4%</span> vs last week</>}
+        meta={prevColors.length > 0 ? delta(scoreDelta, "%") : <span className="text-text-muted">first week</span>}
         tone="gold"
       />
     </div>

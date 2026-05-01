@@ -42,12 +42,25 @@ export function ScorecardShell({
     isMaster: sessionUser?.isMaster ?? false,
   })
 
+  // Live quarter label so the header stays accurate as time passes
+  // instead of being permanently pinned to "Q2 2026 · WEEK 4 OF 13".
+  const today = new Date()
+  const quarter = Math.floor(today.getMonth() / 3) + 1
+  const qStart = new Date(today.getFullYear(), (quarter - 1) * 3, 1)
+  const weekOfQuarter = Math.min(
+    13,
+    Math.max(1, Math.ceil((today.getTime() - qStart.getTime()) / 86400000 / 7)),
+  )
+
   return (
     <div className="relative z-[1] pb-16">
       <header className="px-8 pt-6 flex items-start justify-between gap-5">
         <div>
-          <span className="inline-block px-2.5 py-0.5 bg-[rgba(182,128,57,0.12)] border border-border-strong rounded-sm font-display text-[10px] tracking-[0.2em] text-gold-400 mb-1.5">
-            ● Q2 2026 · WEEK 4 OF 13
+          <span
+            className="inline-block px-2.5 py-0.5 bg-[rgba(182,128,57,0.12)] border border-border-strong rounded-sm font-display text-[10px] tracking-[0.2em] text-gold-400 mb-1.5"
+            suppressHydrationWarning
+          >
+            ● Q{quarter} {today.getFullYear()} · WEEK {weekOfQuarter} OF 13
           </span>
           <h1 className="h-page" style={{ fontSize: 36 }}>
             SCORECARD
@@ -60,7 +73,7 @@ export function ScorecardShell({
         <div className="flex gap-2">
           <button
             type="button"
-            className="px-3.5 py-2 bg-bg-3 text-text-primary border border-border-orage rounded-sm text-[12px] hover:bg-bg-4 hover:border-gold-500 transition-colors"
+            className="px-3.5 py-2 bg-bg-3 text-text-primary border border-border-orage rounded-sm text-[12px] hover:bg-bg-4 hover:border-gold-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
           >
             Export CSV
           </button>
@@ -68,7 +81,7 @@ export function ScorecardShell({
             <button
               type="button"
               onClick={openNewMetric}
-              className="px-4 py-2 rounded-sm text-[12px] font-semibold flex items-center gap-1.5 bg-gradient-to-br from-gold-500 to-gold-400 text-text-on-gold hover:-translate-y-px transition-transform"
+              className="px-4 py-2 rounded-sm text-[12px] font-semibold flex items-center gap-1.5 bg-gradient-to-br from-gold-500 to-gold-400 text-text-on-gold hover:-translate-y-px transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-1"
               style={{ boxShadow: "0 2px 8px rgba(182,128,57,0.3)" }}
             >
               <IcPlus className="w-3 h-3" />
@@ -81,7 +94,7 @@ export function ScorecardShell({
       <HealthBar />
 
       <div className="px-8 py-3.5 border-b border-border-orage bg-bg-1 flex items-center gap-2 flex-wrap">
-        <Chip label="📅 Q2 2026" active />
+        <Chip label={`📅 Q${quarter} ${today.getFullYear()}`} active />
         <Chip label="⌗ Group: Department" />
         <Chip label="👤 Owner: All" />
         <Chip
