@@ -17,9 +17,9 @@ export function SummaryBar() {
   const cards: { label: string; value: number | string; meta: string; tone: string; barClass?: string }[] = [
     { label: "ON TRACK", value: onTrack, meta: `${pct(onTrack, total)}% of total`, tone: "border-l-success", barClass: "bg-success" },
     { label: "IN PROGRESS", value: inProgress, meta: `${pct(inProgress, total)}% of total`, tone: "border-l-info", barClass: "bg-info" },
-    { label: "AT RISK", value: atRisk, meta: `${pct(atRisk, total)}% · attention needed`, tone: "border-l-warning", barClass: "bg-warning" },
-    { label: "OFF TRACK", value: offTrack, meta: `${pct(offTrack, total)}% · escalation`, tone: "border-l-danger", barClass: "bg-danger" },
-    { label: "VELOCITY", value: `${velocity}%`, meta: "↓ from 78% last week", tone: "border-l-gold-500" },
+    { label: "AT RISK", value: atRisk, meta: atRisk > 0 ? `${pct(atRisk, total)}% · attention needed` : "all clear", tone: "border-l-warning", barClass: "bg-warning" },
+    { label: "OFF TRACK", value: offTrack, meta: offTrack > 0 ? `${pct(offTrack, total)}% · escalation` : "none — keep it that way", tone: "border-l-danger", barClass: "bg-danger" },
+    { label: "VELOCITY", value: `${velocity}%`, meta: rocks.length === 0 ? "no rocks committed" : `${onTrack + done} of ${rocks.length} pacing well`, tone: "border-l-gold-500" },
   ]
 
   return (
