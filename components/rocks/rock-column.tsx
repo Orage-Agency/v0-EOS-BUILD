@@ -63,13 +63,21 @@ export function RockColumn({ status, rocks }: { status: RockStatus; rocks: MockR
         {rocks.map((r) => (
           <RockCard key={r.id} rock={r} />
         ))}
-        {allowed && (
+        {/* The page header has the primary "+ New Rock" CTA. Show the
+            inline placeholder only when this column is empty so empty
+            columns still feel actionable, without giving the page 4
+            redundant CTAs. */}
+        {allowed && rocks.length === 0 && (
           <button
             type="button"
             onClick={openNewRock}
-            className="w-full mt-1 px-3 py-2.5 rounded-sm border border-dashed border-border-strong text-[11px] font-display tracking-[0.15em] text-text-muted hover:border-gold-500 hover:text-gold-400 hover:bg-gold-500/5 transition-colors"
+            className={cn(
+              "flex flex-col items-center justify-center gap-1 mt-2 px-4 py-8 rounded-md border border-dashed border-border-strong text-text-muted hover:border-gold-500 hover:text-gold-400 hover:bg-gold-500/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500",
+            )}
           >
-            + NEW ROCK
+            <span className="text-base opacity-70" aria-hidden>+</span>
+            <span className="text-[10px] font-display tracking-[0.2em]">NEW ROCK</span>
+            <span className="text-[10px] text-text-dim">or drag one here</span>
           </button>
         )}
       </div>

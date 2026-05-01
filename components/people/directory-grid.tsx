@@ -101,11 +101,30 @@ export function DirectoryGrid({ initialMembers }: { initialMembers?: WorkspaceMe
         />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-        {visible.map((u) => (
-          <PersonCard key={u.id} user={u} profile={profiles[u.id]} />
-        ))}
-      </div>
+      {visible.length === 0 ? (
+        <div className="rounded-md border border-dashed border-border-orage bg-bg-3/30 px-6 py-12 text-center">
+          <div
+            className="mx-auto mb-3 w-10 h-10 rounded-full bg-bg-3 border border-border-orage flex items-center justify-center text-gold-500 text-base"
+            aria-hidden
+          >
+            ◐
+          </div>
+          <h3 className="font-display text-[13px] tracking-[0.18em] uppercase text-text-primary">
+            No matches
+          </h3>
+          <p className="mt-1.5 text-[12px] leading-relaxed text-text-muted max-w-md mx-auto">
+            {search
+              ? `Nothing matches "${search}". Try a different search.`
+              : `No ${roleFilter === "all" ? "people" : roleFilter + "s"} in this filter yet.`}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {visible.map((u) => (
+            <PersonCard key={u.id} user={u} profile={profiles[u.id]} />
+          ))}
+        </div>
+      )}
     </>
   )
 }

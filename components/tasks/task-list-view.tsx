@@ -158,13 +158,23 @@ export function TaskListView({
 
 function EmptyState({ filterLabel }: { filterLabel: string }) {
   return (
-    <div className="px-8 py-16 text-center">
-      <p className="font-display tracking-[0.22em] text-gold-400 text-sm mb-2">
-        NO TASKS MATCH
-      </p>
-      <p className="text-[12px] text-text-muted">
-        Nothing in <span className="text-text-primary">{filterLabel}</span> right now.
-      </p>
+    <div className="px-8 py-12">
+      <div className="rounded-md border border-dashed border-border-orage bg-bg-3/30 px-6 py-10 text-center max-w-lg mx-auto">
+        <div
+          className="mx-auto mb-3 w-10 h-10 rounded-full bg-bg-3 border border-border-orage flex items-center justify-center text-gold-500 text-base"
+          aria-hidden
+        >
+          ✓
+        </div>
+        <h3 className="font-display text-[13px] tracking-[0.18em] uppercase text-text-primary">
+          {filterLabel === "Tasks" ? "No tasks yet" : `No tasks in ${filterLabel}`}
+        </h3>
+        <p className="mt-1.5 text-[12px] leading-relaxed text-text-muted">
+          {filterLabel === "Tasks"
+            ? "Type below to add your first task — or hit ⌘K to search."
+            : "Try a different filter, or add a task with the row at the bottom."}
+        </p>
+      </div>
     </div>
   )
 }

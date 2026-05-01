@@ -40,17 +40,19 @@ export function TasksHeader({
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
   }, [isNew, onNewTask, params, pathname, router])
 
-  const { headline, openCount, todayCount, weekCount } = useMemo(() => {
+  const { headline, openCount, todayCount, overdueCount } = useMemo(() => {
     const scoped = filterTasks(tasks, filter, currentUserId)
-    const open = scoped.filter((t) => t.status !== "done").length
+    const open = scoped.filter((t) => t.status === "open" || t.status === "in_progress").length
     const todayKey = new Date().toISOString().slice(0, 10)
     const today = scoped.filter(
-      (t) => t.status !== "done" && t.due === todayKey,
+      (t) => (t.status === "open" || t.status === "in_progress") && t.due === todayKey,
     ).length
-    const week = Math.max(open - today, 0)
+    const overdue = scoped.filter(
+      (t) => (t.status === "open" || t.status === "in_progress") && t.due && t.due < todayKey,
+    ).length
     const meta = TASK_FILTERS.find((f) => f.id === filter)
     const head = (meta?.label ?? "Tasks").toUpperCase()
-    return { headline: head, openCount: open, todayCount: today, weekCount: week }
+    return { headline: head, openCount: open, todayCount: today, overdueCount: overdue }
   }, [tasks, filter, currentUserId])
 
   return (
@@ -60,21 +62,32 @@ export function TasksHeader({
           {headline}
         </h1>
         <p className="text-xs text-text-muted">
-          {openCount} open · {todayCount} due today · {weekCount} this week · drag to reorder · drag onto person to reassign
+          <span className="text-text-primary">{openCount}</span> open
+          {overdueCount > 0 && (
+            <>
+              {" "}· <span className="text-danger font-semibold">{overdueCount} overdue</span>
+            </>
+          )}
+          {todayCount > 0 && (
+            <>
+              {" "}· <span className="text-warning font-semibold">{todayCount} due today</span>
+            </>
+          )}
+          {" "}· drag a row to reorder
         </p>
       </div>
       <div className="flex gap-2">
         <button
           type="button"
           onClick={onQuickAddFocus}
-          className="px-3 py-2 bg-bg-3 border border-border-orage text-text-secondary rounded-sm text-xs hover:border-gold-500 hover:text-gold-400 transition-colors"
+          className="px-3 py-2 bg-bg-3 border border-border-orage text-text-secondary rounded-sm text-xs hover:border-gold-500 hover:text-gold-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
         >
           Quick Add
         </button>
         <button
           type="button"
           onClick={onNewTask}
-          className="px-4 py-2 bg-gradient-to-br from-gold-500 to-gold-400 text-text-on-gold rounded-sm text-xs font-semibold flex items-center gap-1.5 hover:-translate-y-px transition-transform shadow-[0_2px_8px_rgba(182,128,57,0.3)]"
+          className="px-4 py-2 bg-gradient-to-br from-gold-500 to-gold-400 text-text-on-gold rounded-sm text-xs font-semibold flex items-center gap-1.5 hover:-translate-y-px transition-transform shadow-[0_2px_8px_rgba(182,128,57,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-1"
         >
           <IcPlus className="w-3 h-3" />
           New Task
