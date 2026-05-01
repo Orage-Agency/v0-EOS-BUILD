@@ -5,6 +5,9 @@ import type { Role } from "@/types/permissions"
 import { requireUser } from "@/lib/auth"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 
+// Cookie-dependent auth via requireUser → render at request time only.
+export const dynamic = "force-dynamic"
+
 const AVATAR_COLORS = ["geo", "bro", "bar", "ivy"] as const
 
 function deriveInitials(name: string): string {
