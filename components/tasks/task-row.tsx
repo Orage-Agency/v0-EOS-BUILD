@@ -8,10 +8,13 @@ import { useTasksStore } from "@/lib/tasks-store"
 import { useUIStore } from "@/lib/store"
 import { OrageAvatar } from "@/components/orage/avatar"
 import { AssignPopover } from "./assign-popover"
+import { InlineDateEditor } from "./inline-date-editor"
+import { RowActionMenu } from "./row-action-menu"
 import { dueLabel } from "@/lib/format"
 import { canDragTask } from "@/lib/permissions"
-import { IcArchive, IcCheck, IcGrip, IcMore } from "@/components/orage/icons"
+import { IcArchive, IcCheck, IcGrip } from "@/components/orage/icons"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 
 
 const COLS =
@@ -26,6 +29,8 @@ export function TaskRow({ task }: { task: MockTask }) {
   const startHandoff = useTasksStore((s) => s.startHandoff)
   const reassign = useTasksStore((s) => s.reassign)
   const rockOptions = useTasksStore((s) => s.rockOptions)
+  const updateDue = useTasksStore((s) => s.updateDue)
+  const archiveOne = useTasksStore((s) => s.archiveOne)
 
   const [assignOpen, setAssignOpen] = useState(false)
   const avatarBtnRef = useRef<HTMLButtonElement>(null)
@@ -170,22 +175,28 @@ export function TaskRow({ task }: { task: MockTask }) {
         {task.priority.toUpperCase()}
       </span>
 
-      <span
-        className={cn(
-          "text-[11px] font-mono",
-          isDone
-            ? "text-text-muted"
-            : due.tone === "overdue"
+      {isDone && task.completed ? (
+        <span className="text-[11px] font-mono text-text-muted px-1.5 py-0.5">
+          {`DONE ${task.completed.slice(5).replace("-", "/")}`}
+        </span>
+      ) : (
+        <InlineDateEditor
+          value={task.due}
+          onChange={(next) => {
+            updateDue(task.id, next)
+            toast(next ? `Due ${next}` : "Due date cleared")
+          }}
+          className={cn(
+            "text-[11px] font-mono",
+            due.tone === "overdue"
               ? "text-danger font-semibold"
               : due.tone === "urgent"
                 ? "text-warning font-semibold"
                 : "text-text-muted",
-        )}
-      >
-        {isDone && task.completed
-          ? `DONE ${task.completed.slice(5).replace("-", "/")}`
-          : due.label}
-      </span>
+          )}
+          display={due.label || <span className="opacity-60">+ date</span>}
+        />
+      )}
 
       <div className="relative">
         {owner && (
@@ -223,20 +234,18 @@ export function TaskRow({ task }: { task: MockTask }) {
       <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
         <button
           type="button"
-          aria-label="Archive"
-          onClick={(e) => e.stopPropagation()}
+          aria-label="Archive task"
+          title="Archive (mark cancelled)"
+          onClick={(e) => {
+            e.stopPropagation()
+            archiveOne(task.id)
+            toast(`Archived "${task.title}"`)
+          }}
           className="w-6 h-6 rounded-sm flex items-center justify-center text-text-muted hover:bg-bg-2 hover:text-gold-400"
         >
           <IcArchive className="w-3 h-3" />
         </button>
-        <button
-          type="button"
-          aria-label="More"
-          onClick={(e) => e.stopPropagation()}
-          className="w-6 h-6 rounded-sm flex items-center justify-center text-text-muted hover:bg-bg-2 hover:text-gold-400"
-        >
-          <IcMore className="w-3 h-3" />
-        </button>
+        <RowActionMenu task={task} />
       </div>
     </div>
   )

@@ -123,6 +123,7 @@ export type MockTask = {
   due: string
   rockId?: string
   completed?: string
+  description?: string
 }
 
 export const UNASSIGNED_OWNER_ID = "u_unassigned"

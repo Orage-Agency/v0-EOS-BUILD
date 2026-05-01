@@ -33,6 +33,7 @@ function dbToMockTask(row: DbTask): MockTask {
     due: row.due_date ? row.due_date.slice(0, 10) : "",
     rockId: row.parent_rock_id ?? undefined,
     completed: row.completed_at ? row.completed_at.slice(0, 10) : undefined,
+    description: row.description ?? undefined,
   }
 }
 

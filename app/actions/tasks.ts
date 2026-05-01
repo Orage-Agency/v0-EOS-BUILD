@@ -54,6 +54,7 @@ function dbToMockTask(row: DbTask): MockTask {
     due: row.due_date ? row.due_date.slice(0, 10) : "",
     rockId: row.parent_rock_id ?? undefined,
     completed: row.completed_at ? row.completed_at.slice(0, 10) : undefined,
+    description: row.description ?? undefined,
   }
 }
 
@@ -159,6 +160,133 @@ export async function updateTaskDueDate(
     const { error } = await sb
       .from("tasks")
       .update({ due_date: toIsoOrNull(due) })
+      .eq("id", id)
+      .eq("tenant_id", user.workspaceId)
+    if (error) return { ok: false, error: error.message }
+    revalidateTaskRoutes(workspaceSlug)
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error"
+    return { ok: false, error: msg }
+  }
+}
+
+// ---------------------------------------------------------- update title
+
+export async function updateTaskTitle(
+  workspaceSlug: string,
+  id: string,
+  title: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "tasks:write")
+    const trimmed = title.trim()
+    if (!trimmed) return { ok: false, error: "Title cannot be empty." }
+    const sb = supabaseAdmin()
+    const { error } = await sb
+      .from("tasks")
+      .update({ title: trimmed })
+      .eq("id", id)
+      .eq("tenant_id", user.workspaceId)
+    if (error) return { ok: false, error: error.message }
+    revalidateTaskRoutes(workspaceSlug)
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error"
+    return { ok: false, error: msg }
+  }
+}
+
+// ---------------------------------------------------------- update description
+
+export async function updateTaskDescription(
+  workspaceSlug: string,
+  id: string,
+  description: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "tasks:write")
+    const sb = supabaseAdmin()
+    const { error } = await sb
+      .from("tasks")
+      .update({ description: description.trim() || null })
+      .eq("id", id)
+      .eq("tenant_id", user.workspaceId)
+    if (error) return { ok: false, error: error.message }
+    revalidateTaskRoutes(workspaceSlug)
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error"
+    return { ok: false, error: msg }
+  }
+}
+
+// ---------------------------------------------------------- update priority
+
+export async function updateTaskPriority(
+  workspaceSlug: string,
+  id: string,
+  priority: TaskPriority,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "tasks:write")
+    const sb = supabaseAdmin()
+    const { error } = await sb
+      .from("tasks")
+      .update({ priority })
+      .eq("id", id)
+      .eq("tenant_id", user.workspaceId)
+    if (error) return { ok: false, error: error.message }
+    revalidateTaskRoutes(workspaceSlug)
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error"
+    return { ok: false, error: msg }
+  }
+}
+
+// ---------------------------------------------------------- update parent rock
+
+export async function updateTaskRock(
+  workspaceSlug: string,
+  id: string,
+  rockId: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "tasks:write")
+    const sb = supabaseAdmin()
+    const parentRockId = isUuid(rockId) ? rockId : null
+    const { error } = await sb
+      .from("tasks")
+      .update({ parent_rock_id: parentRockId })
+      .eq("id", id)
+      .eq("tenant_id", user.workspaceId)
+    if (error) return { ok: false, error: error.message }
+    revalidateTaskRoutes(workspaceSlug)
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error"
+    return { ok: false, error: msg }
+  }
+}
+
+// ---------------------------------------------------------- delete single
+
+export async function deleteTask(
+  workspaceSlug: string,
+  id: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "tasks:delete")
+    const sb = supabaseAdmin()
+    const { error } = await sb
+      .from("tasks")
+      .delete()
       .eq("id", id)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }

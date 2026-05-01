@@ -11,13 +11,18 @@
  */
 
 import { create } from "zustand"
-import type { MockTask, TaskStatus } from "@/lib/mock-data"
+import type { MockTask, TaskPriority, TaskStatus } from "@/lib/mock-data"
 import type { RockOption, WorkspaceMember } from "@/lib/tasks-server"
 import {
   updateTaskStatus as updateTaskStatusAction,
   updateTaskDueDate as updateTaskDueDateAction,
+  updateTaskTitle as updateTaskTitleAction,
+  updateTaskDescription as updateTaskDescriptionAction,
+  updateTaskPriority as updateTaskPriorityAction,
+  updateTaskRock as updateTaskRockAction,
   bulkUpdateTasks as bulkUpdateTasksAction,
   bulkDeleteTasks as bulkDeleteTasksAction,
+  deleteTask as deleteTaskAction,
 } from "@/app/actions/tasks"
 
 export type Handoff = {
@@ -77,11 +82,25 @@ type TasksState = {
   toggleStatus: (id: string) => void
   updateStatus: (id: string, status: TaskStatus) => void
   updateDue: (id: string, due: string) => void
+  updateTitle: (id: string, title: string) => void
+  updateDescription: (id: string, description: string) => void
+  updatePriority: (id: string, priority: TaskPriority) => void
+  updateRock: (id: string, rockId: string | null) => void
   reassign: (id: string, ownerId: string) => void
   reorder: (ids: string[]) => void
   insertTask: (task: MockTask) => void
   bulkUpdate: (ids: string[], patch: Partial<MockTask>) => void
   bulkDelete: (ids: string[]) => void
+  deleteOne: (id: string) => void
+  archiveOne: (id: string) => void
+}
+
+// debounce timers for text fields (module-scoped, mirrors issues store)
+let _titleSaveTimer: ReturnType<typeof setTimeout> | null = null
+let _descSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+function isDbId(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
 }
 
 export const useTasksStore = create<TasksState>((set, get) => ({
@@ -203,12 +222,75 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       updateTaskDueDateAction(workspaceSlug, id, due).catch(console.error)
     }
   },
+  updateTitle: (id, title) => {
+    set((state) => ({
+      tasks: state.tasks.map((t) => (t.id === id ? { ...t, title } : t)),
+    }))
+    const { workspaceSlug } = get()
+    if (!workspaceSlug || !isDbId(id)) return
+    if (_titleSaveTimer) clearTimeout(_titleSaveTimer)
+    _titleSaveTimer = setTimeout(() => {
+      updateTaskTitleAction(workspaceSlug, id, title).catch(console.error)
+    }, 800)
+  },
+  updateDescription: (id, description) => {
+    // description is not currently in MockTask shape; we still persist
+    set((state) => state)
+    const { workspaceSlug } = get()
+    if (!workspaceSlug || !isDbId(id)) return
+    if (_descSaveTimer) clearTimeout(_descSaveTimer)
+    _descSaveTimer = setTimeout(() => {
+      updateTaskDescriptionAction(workspaceSlug, id, description).catch(console.error)
+    }, 800)
+  },
+  updatePriority: (id, priority) => {
+    set((state) => ({
+      tasks: state.tasks.map((t) => (t.id === id ? { ...t, priority } : t)),
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug && isDbId(id)) {
+      updateTaskPriorityAction(workspaceSlug, id, priority).catch(console.error)
+    }
+  },
+  updateRock: (id, rockId) => {
+    set((state) => ({
+      tasks: state.tasks.map((t) =>
+        t.id === id ? { ...t, rockId: rockId ?? undefined } : t,
+      ),
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug && isDbId(id)) {
+      updateTaskRockAction(workspaceSlug, id, rockId).catch(console.error)
+    }
+  },
   reassign: (id, ownerId) =>
     set((state) => ({
       tasks: state.tasks.map((t) =>
         t.id === id ? { ...t, owner: ownerId } : t,
       ),
     })),
+  deleteOne: (id) => {
+    set((state) => ({
+      tasks: state.tasks.filter((t) => t.id !== id),
+      selected: new Set(Array.from(state.selected).filter((s) => s !== id)),
+      openTaskId: state.openTaskId === id ? null : state.openTaskId,
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug && isDbId(id)) {
+      deleteTaskAction(workspaceSlug, id).catch(console.error)
+    }
+  },
+  archiveOne: (id) => {
+    set((state) => ({
+      tasks: state.tasks.map((t) =>
+        t.id === id ? { ...t, status: "cancelled" as TaskStatus } : t,
+      ),
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug && isDbId(id)) {
+      updateTaskStatusAction(workspaceSlug, id, "cancelled" as TaskStatus).catch(console.error)
+    }
+  },
   reorder: (ids) =>
     set((state) => {
       const map = new Map(state.tasks.map((t) => [t.id, t]))

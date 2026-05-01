@@ -26,6 +26,39 @@ import {
   TASK_FILTERS,
   type TaskFilter,
 } from "@/lib/tasks-filter"
+import type { SortKey, StatusKey } from "./tasks-toolbar"
+
+const PRIORITY_RANK: Record<string, number> = { high: 0, med: 1, low: 2 }
+
+function applyStatusFilter(tasks: MockTask[], status: StatusKey): MockTask[] {
+  if (status === "all") return tasks
+  if (status === "open") return tasks.filter((t) => t.status === "open" || t.status === "in_progress")
+  if (status === "done") return tasks.filter((t) => t.status === "done")
+  if (status === "cancelled") return tasks.filter((t) => t.status === "cancelled")
+  return tasks
+}
+
+function applySort(tasks: MockTask[], sort: SortKey): MockTask[] {
+  const list = tasks.slice()
+  switch (sort) {
+    case "priority":
+      return list.sort((a, b) => (PRIORITY_RANK[a.priority] ?? 9) - (PRIORITY_RANK[b.priority] ?? 9))
+    case "due":
+      return list.sort((a, b) => {
+        const aHas = !!a.due
+        const bHas = !!b.due
+        if (!aHas && !bHas) return 0
+        if (!aHas) return 1
+        if (!bHas) return -1
+        return a.due.localeCompare(b.due)
+      })
+    case "title":
+      return list.sort((a, b) => a.title.localeCompare(b.title))
+    case "created":
+    default:
+      return list
+  }
+}
 
 export function TaskListView({
   quickAddRef,
@@ -38,11 +71,14 @@ export function TaskListView({
   const params = useSearchParams()
   const raw = params.get("filter")
   const filter: TaskFilter = isTaskFilter(raw) ? raw : "my"
+  const sort = (params.get("sort") as SortKey) ?? "priority"
+  const status = (params.get("status") as StatusKey) ?? "open"
 
-  const filteredTasks = useMemo(
-    () => filterTasks(tasks, filter, currentUserId),
-    [tasks, filter, currentUserId],
-  )
+  const filteredTasks = useMemo(() => {
+    const scoped = filterTasks(tasks, filter, currentUserId)
+    const statused = applyStatusFilter(scoped, status)
+    return applySort(statused, sort)
+  }, [tasks, filter, currentUserId, sort, status])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
