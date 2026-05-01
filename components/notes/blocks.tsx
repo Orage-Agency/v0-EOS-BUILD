@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { useNotesStore, type Block } from "@/lib/notes-store"
 import { ROCKS, getUser } from "@/lib/mock-data"
 import { OrageAvatar } from "@/components/orage/avatar"
+import { TenantLink } from "@/components/tenant-link"
 import { cn } from "@/lib/utils"
 
 /** A contentEditable block. Calls onCommit on blur with the latest HTML. */
@@ -198,10 +199,9 @@ function EmbedRock({ rockId }: { rockId: string }) {
   if (!rock) return null
   const owner = getUser(rock.owner)
   return (
-    <button
-      type="button"
-      onClick={() => toast("OPENING ROCK")}
-      className="my-3 w-full text-left p-3.5 rounded-md border border-gold-500/30 bg-gradient-to-br from-gold-500/10 to-gold-500/5 hover:border-gold-500 transition-colors"
+    <TenantLink
+      href={`/rocks?focus=${rockId}`}
+      className="my-3 w-full text-left p-3.5 rounded-md border border-gold-500/30 bg-gradient-to-br from-gold-500/10 to-gold-500/5 hover:border-gold-500 transition-colors block"
     >
       <div className="font-display text-[10px] tracking-[0.18em] text-gold-400 mb-1.5">
         ● ROCK · Q2 2026
@@ -218,7 +218,7 @@ function EmbedRock({ rockId }: { rockId: string }) {
         <span className="font-mono text-[10px] text-text-muted">milestones</span>
         {owner && <OrageAvatar user={owner} size="xs" />}
       </div>
-    </button>
+    </TenantLink>
   )
 }
 
@@ -313,13 +313,12 @@ export function BlockRenderer({
       return <EmbedRock rockId={block.rockId} />
     case "embed_task":
       return (
-        <button
-          type="button"
-          onClick={() => toast("OPENING TASK")}
-          className="my-2 w-full text-left p-2.5 rounded-md border border-border-orage bg-bg-3 text-[13px] text-text-secondary hover:border-gold-500/50"
+        <TenantLink
+          href={`/tasks?focus=${block.taskId}`}
+          className="my-2 w-full text-left p-2.5 rounded-md border border-border-orage bg-bg-3 text-[13px] text-text-secondary hover:border-gold-500/50 block"
         >
           ✓ Task embed · {block.taskId}
-        </button>
+        </TenantLink>
       )
     default:
       return null

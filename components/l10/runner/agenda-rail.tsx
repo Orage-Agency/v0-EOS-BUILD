@@ -1,6 +1,7 @@
 "use client"
 
 import { useL10Store, type AgendaItem } from "@/lib/l10-store"
+import { TenantLink } from "@/components/tenant-link"
 import { toast } from "sonner"
 
 function fmtClock(sec: number) {
@@ -61,12 +62,12 @@ export function AgendaRail({ meetingId }: { meetingId: string }) {
         >
           Advance Round →
         </button>
-        <button
-          onClick={() => toast("AGENDA EDITED · NEXT ROUND")}
-          className="w-full h-9 bg-bg-3 border border-border-orage hover:bg-bg-4 text-text-secondary text-xs font-semibold tracking-wider uppercase rounded-sm transition-colors"
+        <TenantLink
+          href={`/l10/${meetingId}`}
+          className="w-full h-9 bg-bg-3 border border-border-orage hover:bg-bg-4 text-text-secondary text-xs font-semibold tracking-wider uppercase rounded-sm transition-colors flex items-center justify-center"
         >
           Customize Agenda
-        </button>
+        </TenantLink>
         <button
           onClick={openConclude}
           className="w-full h-9 bg-bg-3 border border-danger/40 hover:bg-danger/10 text-danger text-xs font-semibold tracking-wider uppercase rounded-sm transition-colors"

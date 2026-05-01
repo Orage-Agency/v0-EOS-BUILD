@@ -5,7 +5,6 @@ import { toast } from "sonner"
 import { useNotesStore, type Block } from "@/lib/notes-store"
 import { ROCKS, USERS } from "@/lib/mock-data"
 import { OrageAvatar } from "@/components/orage/avatar"
-import { IcMore } from "@/components/orage/icons"
 import { OrageEmpty } from "@/components/empty/orage-empty"
 import { BlockRenderer } from "./blocks"
 
@@ -87,23 +86,23 @@ export function NotesEditor() {
           </div>
           <button
             type="button"
-            onClick={() => toast("SHARE LINK COPIED")}
+            onClick={() => {
+              if (typeof window === "undefined") return
+              const url = window.location.href
+              navigator.clipboard
+                .writeText(url)
+                .then(() => toast("Note link copied"))
+                .catch(() => toast("Couldn't copy. Browser blocked clipboard."))
+            }}
             className="flex items-center justify-center w-7 h-7 rounded-sm bg-bg-3 border border-border-orage text-text-muted hover:border-gold-500 hover:text-gold-400 transition-colors"
-            aria-label="Share"
-            title="Share"
+            aria-label="Copy share link"
+            title="Copy share link"
           >
             <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
               <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
               <polyline points="16 6 12 2 8 6" />
               <line x1="12" y1="2" x2="12" y2="15" />
             </svg>
-          </button>
-          <button
-            type="button"
-            className="flex items-center justify-center w-7 h-7 rounded-sm bg-bg-3 border border-border-orage text-text-muted hover:border-gold-500 hover:text-gold-400 transition-colors"
-            aria-label="More"
-          >
-            <IcMore className="w-3.5 h-3.5" />
           </button>
         </div>
       </header>

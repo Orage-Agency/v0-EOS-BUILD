@@ -62,7 +62,10 @@ export function OrgChartShell() {
         <div className="flex items-center gap-2 ml-auto">
           <button
             type="button"
-            onClick={() => toast("EXPORT QUEUED")}
+            onClick={() => {
+              if (typeof window !== "undefined") window.print()
+            }}
+            title="Print or save as PDF (Cmd/Ctrl+P)"
             className="px-3.5 py-2 bg-bg-3 text-text-primary border border-border-orage rounded-sm text-[12px] hover:bg-bg-4 hover:border-gold-500 transition-colors"
           >
             Export Org Chart

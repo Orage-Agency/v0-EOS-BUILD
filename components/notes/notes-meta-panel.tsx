@@ -1,9 +1,9 @@
 "use client"
 
-import { toast } from "sonner"
 import { useNotesStore, type Backlink } from "@/lib/notes-store"
 import { ROCKS, getUser } from "@/lib/mock-data"
 import { OrageAvatar } from "@/components/orage/avatar"
+import { TenantLink } from "@/components/tenant-link"
 
 const EMPTY_BACKLINKS: Backlink[] = []
 
@@ -41,13 +41,12 @@ export function NotesMetaPanel() {
             <Row
               label="PARENT ROCK"
               value={
-                <button
-                  type="button"
-                  onClick={() => toast("OPENING ROCK")}
+                <TenantLink
+                  href={`/rocks?focus=${parentRock.id}`}
                   className="text-gold-400 hover:underline"
                 >
                   ↗ {parentRock.tag}
-                </button>
+                </TenantLink>
               }
             />
           )}
@@ -64,7 +63,7 @@ export function NotesMetaPanel() {
             <button
               key={bl.id}
               type="button"
-              onClick={() => toast(`OPENING NOTE: ${bl.fromTitle}`)}
+              onClick={() => useNotesStore.getState().setActiveNote(bl.id)}
               className="w-full text-left p-2.5 rounded-sm border border-border-orage bg-bg-3 hover:border-gold-500/40 transition-colors mb-1.5"
             >
               <div className="font-display text-[9px] tracking-[0.18em] text-gold-400 mb-1">
