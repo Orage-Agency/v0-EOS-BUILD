@@ -565,6 +565,108 @@ export function buildTools({
       },
     }),
 
+    create_milestone: tool({
+      description:
+        "Add a milestone to a rock. Milestones are intermediate checkpoints that drive a rock's progress %. Use when the user breaks a rock down ('add a milestone for X'), or when you want to scaffold a rock you just created.",
+      inputSchema: z.object({
+        rockId: z.string().describe("The rock id (uuid)"),
+        title: z.string().min(2),
+        dueDate: z
+          .string()
+          .nullable()
+          .describe("YYYY-MM-DD target date, or null"),
+      }),
+      execute: async ({ rockId, title, dueDate }) => {
+        const { data: rock } = await sb
+          .from("rocks")
+          .select("id")
+          .eq("id", rockId)
+          .eq("tenant_id", tenantId)
+          .maybeSingle()
+        if (!rock) return { error: "Rock not found in this workspace" }
+        const validDue = dueDate && /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? dueDate : null
+        const { data, error } = await sb
+          .from("rock_milestones")
+          .insert({
+            rock_id: rockId,
+            title,
+            due_date: validDue,
+            order_idx: Math.floor(Date.now() / 1000),
+            ai_generated: true,
+          })
+          .select("id, rock_id, title, due_date")
+          .single()
+        if (error) return { error: error.message }
+        return { milestone: data, created: true }
+      },
+    }),
+
+    toggle_milestone: tool({
+      description:
+        "Mark a milestone done or not done. Use when the user reports completion of a sub-task on a rock.",
+      inputSchema: z.object({
+        id: z.string().describe("The milestone id (uuid)"),
+        done: z.boolean(),
+      }),
+      execute: async ({ id, done }) => {
+        // Tenant-scope via the parent rock to prevent cross-tenant writes.
+        const { data: ms } = await sb
+          .from("rock_milestones")
+          .select("id, rock_id")
+          .eq("id", id)
+          .maybeSingle()
+        if (!ms) return { error: "Milestone not found" }
+        const { data: rock } = await sb
+          .from("rocks")
+          .select("id")
+          .eq("id", ms.rock_id as string)
+          .eq("tenant_id", tenantId)
+          .maybeSingle()
+        if (!rock) return { error: "Forbidden" }
+        const { error } = await sb
+          .from("rock_milestones")
+          .update({ completed_at: done ? new Date().toISOString() : null })
+          .eq("id", id)
+        if (error) return { error: error.message }
+        return { id, done, updated: true }
+      },
+    }),
+
+    list_milestones: tool({
+      description:
+        "List the milestones of a single rock. Returns id, title, due_date, done. Use before suggesting a status change for a rock so you have grounded data.",
+      inputSchema: z.object({
+        rockId: z.string(),
+      }),
+      execute: async ({ rockId }) => {
+        const { data: rock } = await sb
+          .from("rocks")
+          .select("id")
+          .eq("id", rockId)
+          .eq("tenant_id", tenantId)
+          .maybeSingle()
+        if (!rock) return { error: "Rock not found", milestones: [] }
+        const { data } = await sb
+          .from("rock_milestones")
+          .select("id, title, due_date, completed_at, order_idx")
+          .eq("rock_id", rockId)
+          .order("order_idx", { ascending: true })
+        return {
+          milestones: ((data ?? []) as Array<{
+            id: string
+            title: string
+            due_date: string | null
+            completed_at: string | null
+          }>).map((m) => ({
+            id: m.id,
+            title: m.title,
+            due_date: m.due_date,
+            done: Boolean(m.completed_at),
+          })),
+        }
+      },
+    }),
+
     delete_task: tool({
       description: "Permanently delete a task by id. Confirm with the user first if it's not obvious they want it gone.",
       inputSchema: z.object({ id: z.string() }),

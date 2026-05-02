@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-import { useRocksStore, type RocksActor } from "@/lib/rocks-store"
+import { useRocksStore, type RocksActor, type Milestone, type LinkedTaskRef } from "@/lib/rocks-store"
 import { canEditRocks } from "@/lib/permissions"
 import { RocksHeader } from "./rocks-header"
 import { SummaryBar } from "./summary-bar"
@@ -44,17 +44,23 @@ export function RocksShell({
   workspaceSlug,
   initialRocks,
   members,
+  initialMilestones,
+  initialLinkedTasks,
   currentUser,
 }: {
   workspaceSlug: string
   initialRocks: MockRock[]
   members: WorkspaceMember[]
+  initialMilestones?: Milestone[]
+  initialLinkedTasks?: LinkedTaskRef[]
   currentUser: RocksCurrentUser
 }) {
   const setRocks = useRocksStore((s) => s.setRocks)
   const setCurrentActor = useRocksStore((s) => s.setCurrentActor)
   const setWorkspaceSlug = useRocksStore((s) => s.setWorkspaceSlug)
   const setMembers = useRocksStore((s) => s.setMembers)
+  const setMilestones = useRocksStore((s) => s.setMilestones)
+  const setLinkedTasks = useRocksStore((s) => s.setLinkedTasks)
   const openNewRock = useRocksStore((s) => s.openNewRock)
   const close = useRocksStore((s) => s.closeRock)
   const closeNew = useRocksStore((s) => s.closeNewRock)
@@ -67,6 +73,14 @@ export function RocksShell({
   useEffect(() => {
     setMembers(members)
   }, [members, setMembers])
+
+  useEffect(() => {
+    if (initialMilestones) setMilestones(initialMilestones)
+  }, [initialMilestones, setMilestones])
+
+  useEffect(() => {
+    if (initialLinkedTasks) setLinkedTasks(initialLinkedTasks)
+  }, [initialLinkedTasks, setLinkedTasks])
 
   useEffect(() => {
     setWorkspaceSlug(workspaceSlug)

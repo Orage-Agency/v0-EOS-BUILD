@@ -1,10 +1,41 @@
 import { generateText, stepCountIs } from "ai"
+import { revalidatePath } from "next/cache"
 import { requireUser } from "@/lib/auth"
 import { buildTools } from "@/lib/ai/tools"
 import { manualDigest } from "@/lib/help-manual"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
+
+// Tools that mutate state. After a turn that includes any of these we
+// revalidate every module page so the client sees the AI's writes on the
+// next render without a hard reload.
+const WRITE_TOOLS = new Set([
+  "create_task",
+  "create_rock",
+  "create_issue",
+  "create_note",
+  "create_milestone",
+  "toggle_milestone",
+  "update_task",
+  "update_rock",
+  "update_rock_status",
+  "update_issue",
+  "delete_task",
+  "delete_rock",
+  "delete_issue",
+])
+
+const PAGES_TO_REVALIDATE = [
+  "rocks",
+  "tasks",
+  "issues",
+  "notes",
+  "scorecard",
+  "vto",
+  "people",
+  "l10",
+]
 
 const BASE_PROMPT = `You are the **Orage Implementer** — an AI chief of staff inside Orage Core, the EOS-style operating system for Orage Agency.
 
@@ -24,8 +55,11 @@ const BASE_PROMPT = `You are the **Orage Implementer** — an AI chief of staff 
 
 # What you can do (live DB)
 
-**Read:** read_rocks · read_tasks · read_issues · read_scorecard · read_vto · read_people · read_notes
-**Write:** create_task · create_rock · create_issue · create_note · update_task · update_rock · update_rock_status · update_issue · delete_task · delete_rock · delete_issue
+**Read:** read_rocks · read_tasks · read_issues · read_scorecard · read_vto · read_people · read_notes · list_milestones
+**Write:** create_task · create_rock · create_issue · create_note · create_milestone · toggle_milestone · update_task · update_rock · update_rock_status · update_issue · delete_task · delete_rock · delete_issue
+
+# When the user wants you to "do" something
+You are Orage's chief of staff and an action-taking agent. Behave like Claude Code: read first, plan briefly (one line), then call the tools. Chain reads → writes in one turn whenever it's clear. Don't ask "should I?" — if the user said "make a rock for X with milestones", create the rock, then call create_milestone for each milestone, then confirm in one line.
 
 # Date handling
 
@@ -108,9 +142,28 @@ export async function POST(req: Request) {
       }
     }
 
+    // If the AI wrote anything, revalidate every module page so the user's
+    // next navigation reflects the change without a hard reload.
+    const didWrite = toolCalls.some((c) => WRITE_TOOLS.has(c.name))
+    if (didWrite) {
+      for (const seg of PAGES_TO_REVALIDATE) {
+        try {
+          revalidatePath(`/${workspaceSlug}/${seg}`)
+        } catch {
+          // Best effort: revalidatePath can fail in edge cases (e.g., the
+          // path was never rendered in this process) — the client also
+          // calls router.refresh() so we still recover.
+        }
+      }
+      try {
+        revalidatePath(`/${workspaceSlug}`)
+      } catch { /* see above */ }
+    }
+
     return Response.json({
       text: result.text,
       toolCalls,
+      didWrite,
     })
   } catch (err) {
     // requireUser throws a NEXT_REDIRECT to push the caller to /login

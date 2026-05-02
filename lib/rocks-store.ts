@@ -1,7 +1,7 @@
 "use client"
 
 import { create } from "zustand"
-import { type MockRock, type RockStatus } from "@/lib/mock-data"
+import { type MockRock, type RockStatus, UNASSIGNED_OWNER_ID } from "@/lib/mock-data"
 import type { Role } from "@/types/permissions"
 import type { WorkspaceMember } from "@/lib/tasks-server"
 import {
@@ -12,7 +12,19 @@ import {
   updateRockOwner as updateRockOwnerAction,
   updateRockDue as updateRockDueAction,
   deleteRock as deleteRockAction,
+  createMilestone as createMilestoneAction,
+  toggleMilestone as toggleMilestoneAction,
+  updateMilestone as updateMilestoneAction,
+  deleteMilestone as deleteMilestoneAction,
 } from "@/app/actions/rocks"
+import {
+  createTask as createTaskAction,
+  updateTaskOwner as updateTaskOwnerAction,
+  updateTaskDueDate as updateTaskDueDateAction,
+  updateTaskStatus as updateTaskStatusAction,
+  deleteTask as deleteTaskAction,
+  updateTaskRock as updateTaskRockAction,
+} from "@/app/actions/tasks"
 
 const _ROCK_DEBOUNCERS: Record<string, ReturnType<typeof setTimeout> | undefined> = {}
 function debounceSave(key: string, fn: () => void, ms = 800) {
@@ -87,8 +99,10 @@ export const ROCK_OUTCOMES: Record<string, string> = {
   r7: "OKC outbound: 50 prospect list built, 10 booked discovery calls, 2 closed clients by end of Q2.",
 }
 
-const MS: Milestone[] = [
-  // r6 — at-risk Toolkit T1 (used by drawer demo content)
+// Demo seed milestones — shown only for the seed mock rocks (r1, r2, r6).
+// Real DB rocks load their milestones from `rock_milestones` via the page
+// loader and are persisted on every mutation.
+const SEED_MS: Milestone[] = [
   { id: "m6_1", rockId: "r6", title: "Lock T1 feature scope · 5 core capabilities", due: "2026-04-02", done: true },
   { id: "m6_2", rockId: "r6", title: "Brand identity · landing site visual direction", due: "2026-04-09", done: true },
   { id: "m6_3", rockId: "r6", title: "Build core T1 agent — STACY v1", due: "2026-04-16", done: true },
@@ -98,15 +112,11 @@ const MS: Milestone[] = [
   { id: "m6_7", rockId: "r6", title: "Documentation site live · all 5 capabilities", due: "2026-05-23", done: false },
   { id: "m6_8", rockId: "r6", title: "NPS ≥ 40 from beta cohort", due: "2026-06-06", done: false },
   { id: "m6_9", rockId: "r6", title: "Public launch announcement (LinkedIn, email)", due: "2026-06-24", done: false },
-
-  // r1 — Hormozi offer
   { id: "m1_1", rockId: "r1", title: "Module 1-3 · Hook + 3 objections", due: "2026-04-08", done: true },
   { id: "m1_2", rockId: "r1", title: "Module 4-5 · Risk reversal + bonuses", due: "2026-04-15", done: true },
   { id: "m1_3", rockId: "r1", title: "Module 6 · Pricing + scarcity", due: "2026-04-22", done: true },
   { id: "m1_4", rockId: "r1", title: "Module 7 · Closing + CTA", due: "2026-04-25", done: false },
   { id: "m1_5", rockId: "r1", title: "Sales page wired + checkout live", due: "2026-04-29", done: false },
-
-  // r2 — Quintessa
   { id: "m2_1", rockId: "r2", title: "STACY routing logic · spec locked", due: "2026-04-04", done: true },
   { id: "m2_2", rockId: "r2", title: "Twilio handoff bridge built", due: "2026-04-12", done: true },
   { id: "m2_3", rockId: "r2", title: "QA · 30 transfer test calls", due: "2026-04-26", done: false },
@@ -140,7 +150,7 @@ const UPDATES: RockUpdate[] = [
   },
 ]
 
-const LINKED_TASKS: LinkedTaskRef[] = [
+const SEED_LINKED: LinkedTaskRef[] = [
   { id: "lt1", rockId: "r6", title: "Stripe entitlement gating logic spec", due: "2026-05-01", ownerId: "u_bar", done: false },
   { id: "lt2", rockId: "r6", title: "Doc site IA · Mintlify or Docusaurus decision", due: "2026-04-28", ownerId: "u_bro", done: false },
   { id: "lt3", rockId: "r6", title: "Beta invite copy + landing waitlist gate", due: "2026-05-04", ownerId: "u_ivy", done: false },
@@ -155,8 +165,10 @@ type RocksState = {
   setMembers: (members: WorkspaceMember[]) => void
 
   milestones: Milestone[]
+  setMilestones: (ms: Milestone[]) => void
   updates: RockUpdate[]
   linkedTasks: LinkedTaskRef[]
+  setLinkedTasks: (tasks: LinkedTaskRef[]) => void
 
   workspaceSlug: string
   setWorkspaceSlug: (slug: string) => void
@@ -180,8 +192,23 @@ type RocksState = {
   updateDue: (id: string, due: string) => void
   deleteRock: (id: string) => void
   toggleMilestone: (id: string) => void
-  addMilestone: (rockId: string, title: string, due: string) => void
+  addMilestone: (rockId: string, title: string, due: string) => Promise<void>
   removeMilestone: (id: string) => void
+  updateMilestoneTitle: (id: string, title: string) => void
+  updateMilestoneDue: (id: string, due: string) => void
+
+  // Linked tasks
+  addLinkedTask: (
+    rockId: string,
+    title: string,
+    ownerId: string,
+    due: string,
+  ) => Promise<void>
+  toggleLinkedTask: (id: string) => void
+  removeLinkedTask: (id: string) => void
+  updateLinkedTaskOwner: (id: string, ownerId: string) => void
+  updateLinkedTaskDue: (id: string, due: string) => void
+  unlinkTaskFromRock: (id: string) => void
 }
 
 export const useRocksStore = create<RocksState>((set, get) => ({
@@ -199,9 +226,25 @@ export const useRocksStore = create<RocksState>((set, get) => ({
       }
     }),
 
-  milestones: [...MS],
+  // Milestones list is a merge of seed (for r1/r2/r6 demo) and DB rows for
+  // real rocks. The page loader hands DB rows in via setMilestones.
+  milestones: [...SEED_MS],
+  setMilestones: (ms) =>
+    set((state) => {
+      // Replace any non-seed milestones with the fresh DB list, keep seed
+      // milestones for the demo rocks intact.
+      const seedById = new Set(SEED_MS.map((m) => m.id))
+      const nextDb = ms.filter((m) => !seedById.has(m.id))
+      return { milestones: [...SEED_MS, ...nextDb] }
+    }),
   updates: [...UPDATES],
-  linkedTasks: [...LINKED_TASKS],
+  linkedTasks: [...SEED_LINKED],
+  setLinkedTasks: (tasks) =>
+    set((state) => {
+      const seedIds = new Set(SEED_LINKED.map((t) => t.id))
+      const nextDb = tasks.filter((t) => !seedIds.has(t.id))
+      return { linkedTasks: [...SEED_LINKED, ...nextDb] }
+    }),
 
   workspaceSlug: "",
   setWorkspaceSlug: (slug) => set({ workspaceSlug: slug }),
@@ -287,21 +330,182 @@ export const useRocksStore = create<RocksState>((set, get) => ({
       deleteRockAction(workspaceSlug, id).catch(console.error)
     }
   },
-  toggleMilestone: (id) =>
+
+  // ───── milestones ────────────────────────────────────────────────────
+  toggleMilestone: (id) => {
+    let nextDone = false
     set((state) => ({
-      milestones: state.milestones.map((m) => (m.id === id ? { ...m, done: !m.done } : m)),
-    })),
-  addMilestone: (rockId, title, due) =>
+      milestones: state.milestones.map((m) => {
+        if (m.id !== id) return m
+        nextDone = !m.done
+        return { ...m, done: nextDone }
+      }),
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug && isDbId(id)) {
+      toggleMilestoneAction(workspaceSlug, id, nextDone).catch(console.error)
+    }
+  },
+  addMilestone: async (rockId, title, due) => {
+    const { workspaceSlug } = get()
+    // Optimistic insert with a temp id; for DB rocks, swap to the server id.
+    const tempId = `tmp_${Math.random().toString(36).slice(2, 10)}`
     set((state) => ({
       milestones: [
         ...state.milestones,
-        { id: crypto.randomUUID(), rockId, title, due, done: false },
+        { id: tempId, rockId, title, due, done: false },
       ],
-    })),
-  removeMilestone: (id) =>
+    }))
+    if (!workspaceSlug || !isDbId(rockId)) return
+    const res = await createMilestoneAction(workspaceSlug, rockId, title, due).catch(
+      (e) => ({ ok: false as const, error: e instanceof Error ? e.message : "save failed" }),
+    )
+    if (res.ok) {
+      set((state) => ({
+        milestones: state.milestones.map((m) => (m.id === tempId ? res.milestone : m)),
+      }))
+    } else {
+      // Roll back on failure so the UI doesn't lie.
+      set((state) => ({
+        milestones: state.milestones.filter((m) => m.id !== tempId),
+      }))
+      console.error("[v0] addMilestone failed:", res.error)
+    }
+  },
+  removeMilestone: (id) => {
+    const prev = get().milestones.find((m) => m.id === id)
     set((state) => ({
       milestones: state.milestones.filter((m) => m.id !== id),
-    })),
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug && isDbId(id)) {
+      deleteMilestoneAction(workspaceSlug, id).catch((err) => {
+        console.error("[v0] removeMilestone failed:", err)
+        if (prev) {
+          set((state) => ({ milestones: [...state.milestones, prev] }))
+        }
+      })
+    }
+  },
+  updateMilestoneTitle: (id, title) => {
+    set((state) => ({
+      milestones: state.milestones.map((m) => (m.id === id ? { ...m, title } : m)),
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug && isDbId(id)) {
+      debounceSave(`ms_title:${id}`, () => {
+        updateMilestoneAction(workspaceSlug, id, { title }).catch(console.error)
+      })
+    }
+  },
+  updateMilestoneDue: (id, due) => {
+    set((state) => ({
+      milestones: state.milestones.map((m) => (m.id === id ? { ...m, due } : m)),
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug && isDbId(id)) {
+      updateMilestoneAction(workspaceSlug, id, { due }).catch(console.error)
+    }
+  },
+
+  // ───── linked tasks ──────────────────────────────────────────────────
+  addLinkedTask: async (rockId, title, ownerId, due) => {
+    const { workspaceSlug } = get()
+    const tempId = `tmp_${Math.random().toString(36).slice(2, 10)}`
+    set((state) => ({
+      linkedTasks: [
+        ...state.linkedTasks,
+        {
+          id: tempId,
+          rockId,
+          title,
+          ownerId: ownerId || UNASSIGNED_OWNER_ID,
+          due,
+          done: false,
+        },
+      ],
+    }))
+    if (!workspaceSlug || !isDbId(rockId)) return
+    const res = await createTaskAction(workspaceSlug, {
+      title,
+      rockId,
+      ownerId: isDbId(ownerId) ? ownerId : undefined,
+      due: /^\d{4}-\d{2}-\d{2}$/.test(due) ? due : undefined,
+    }).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : "save failed" }))
+    if (res.ok) {
+      set((state) => ({
+        linkedTasks: state.linkedTasks.map((t) =>
+          t.id === tempId
+            ? {
+                id: res.id,
+                rockId,
+                title: res.task.title,
+                ownerId: res.task.owner,
+                due: res.task.due,
+                done: res.task.status === "done",
+              }
+            : t,
+        ),
+      }))
+    } else {
+      set((state) => ({ linkedTasks: state.linkedTasks.filter((t) => t.id !== tempId) }))
+      console.error("[v0] addLinkedTask failed:", res.error)
+    }
+  },
+  toggleLinkedTask: (id) => {
+    let nextDone = false
+    set((state) => ({
+      linkedTasks: state.linkedTasks.map((t) => {
+        if (t.id !== id) return t
+        nextDone = !t.done
+        return { ...t, done: nextDone }
+      }),
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug && isDbId(id)) {
+      updateTaskStatusAction(workspaceSlug, id, nextDone ? "done" : "open").catch(console.error)
+    }
+  },
+  removeLinkedTask: (id) => {
+    const prev = get().linkedTasks.find((t) => t.id === id)
+    set((state) => ({
+      linkedTasks: state.linkedTasks.filter((t) => t.id !== id),
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug && isDbId(id)) {
+      deleteTaskAction(workspaceSlug, id).catch((err) => {
+        console.error("[v0] removeLinkedTask failed:", err)
+        if (prev) set((state) => ({ linkedTasks: [...state.linkedTasks, prev] }))
+      })
+    }
+  },
+  updateLinkedTaskOwner: (id, ownerId) => {
+    set((state) => ({
+      linkedTasks: state.linkedTasks.map((t) => (t.id === id ? { ...t, ownerId } : t)),
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug && isDbId(id) && isDbId(ownerId)) {
+      updateTaskOwnerAction(workspaceSlug, id, ownerId).catch(console.error)
+    }
+  },
+  updateLinkedTaskDue: (id, due) => {
+    set((state) => ({
+      linkedTasks: state.linkedTasks.map((t) => (t.id === id ? { ...t, due } : t)),
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug && isDbId(id) && /^\d{4}-\d{2}-\d{2}$/.test(due)) {
+      updateTaskDueDateAction(workspaceSlug, id, due).catch(console.error)
+    }
+  },
+  unlinkTaskFromRock: (id) => {
+    set((state) => ({
+      linkedTasks: state.linkedTasks.filter((t) => t.id !== id),
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug && isDbId(id)) {
+      updateTaskRockAction(workspaceSlug, id, null).catch(console.error)
+    }
+  },
 }))
 
 export function rockProgress(rockId: string, milestones: Milestone[], fallback: number): number {

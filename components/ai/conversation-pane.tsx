@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { useAIImplementerStore } from "@/lib/ai-implementer-store"
 import { AIOrb } from "@/components/orage/ai-orb"
 import { IcMore, IcPin, IcShare, IcSpark } from "@/components/orage/icons"
@@ -30,7 +31,20 @@ export function ConversationPane({
   const allMessages = useAIImplementerStore((s) => s.messages)
   const setDraft = useAIImplementerStore((s) => s.setComposerDraft)
   const sendMessage = useAIImplementerStore((s) => s.sendMessage)
+  const writeTick = useAIImplementerStore((s) => s.writeTick)
   const workspaceSlug = useWorkspaceSlug()
+  const router = useRouter()
+
+  // After the AI writes anything, the route handler revalidates the affected
+  // segments. Calling router.refresh() here pulls the new RSC payload so any
+  // open module page (Rocks, Tasks, …) reflects the change without a hard
+  // reload.
+  useEffect(() => {
+    if (writeTick > 0) {
+      router.refresh()
+      toast("WORKSPACE UPDATED")
+    }
+  }, [writeTick, router])
 
   const thread = useMemo(
     () => allThreads.find((t) => t.id === activeId),

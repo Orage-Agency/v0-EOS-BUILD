@@ -368,6 +368,10 @@ type State = {
   newThread: () => string
     sendMessage: (text: string, workspaceSlug: string) => void | Promise<void>
   prependAudit: (row: Omit<AuditRow, "id" | "time">) => void
+  // Bumped every time a sendMessage round trip completes with a write.
+  // The /ai page subscribes to this and triggers router.refresh() so the
+  // rest of the workspace picks up the AI's writes without a full reload.
+  writeTick: number
 }
 
 // ----- Helpers shared by sendMessage ----------------------------------------
@@ -444,6 +448,7 @@ export const useAIImplementerStore = create<State>((set, get) => ({
   threadSearch: "",
   composerDraft: "",
   deepMode: true,
+  writeTick: 0,
 
   setActiveThread: (id) => set({ activeThreadId: id }),
   setRightTab: (tab) => set({ rightTab: tab }),
@@ -623,6 +628,7 @@ export const useAIImplementerStore = create<State>((set, get) => ({
           args: Record<string, unknown>
           result: unknown
         }[]
+        didWrite?: boolean
       }
 
       // Build blocks: tool calls first, then the assistant's narration.
@@ -672,6 +678,10 @@ export const useAIImplementerStore = create<State>((set, get) => ({
           text: `${tc.name}(${Object.keys(tc.args).join(", ") || "—"})`,
           status: "auto",
         })
+      }
+
+      if (payload.didWrite) {
+        set((s) => ({ writeTick: s.writeTick + 1 }))
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error"

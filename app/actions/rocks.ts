@@ -255,3 +255,209 @@ export async function deleteRock(
     return { ok: false, error: msg }
   }
 }
+
+// ───────────────────────────── milestones ──────────────────────────────
+//
+// rock_milestones is a real table; the rocks-store used to keep them only in
+// memory. These actions wire the drawer "Add milestone / toggle / remove"
+// flow to the database so changes survive a refresh and other members see
+// them immediately.
+
+export type DbMilestone = {
+  id: string
+  rockId: string
+  title: string
+  due: string // YYYY-MM-DD or ""
+  done: boolean
+}
+
+async function rockBelongsToTenant(
+  sb: ReturnType<typeof supabaseAdmin>,
+  rockId: string,
+  tenantId: string,
+): Promise<boolean> {
+  const { data } = await sb
+    .from("rocks")
+    .select("id")
+    .eq("id", rockId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle()
+  return Boolean(data)
+}
+
+export async function listMilestonesForWorkspace(
+  workspaceSlug: string,
+): Promise<DbMilestone[]> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    const sb = supabaseAdmin()
+    const { data: rocks } = await sb
+      .from("rocks")
+      .select("id")
+      .eq("tenant_id", user.workspaceId)
+    const rockIds = ((rocks ?? []) as Array<{ id: string }>).map((r) => r.id)
+    if (rockIds.length === 0) return []
+    const { data, error } = await sb
+      .from("rock_milestones")
+      .select("id, rock_id, title, due_date, completed_at, order_idx")
+      .in("rock_id", rockIds)
+      .order("order_idx", { ascending: true })
+    if (error || !data) return []
+    return (data as Array<{
+      id: string
+      rock_id: string
+      title: string
+      due_date: string | null
+      completed_at: string | null
+    }>).map((m) => ({
+      id: m.id,
+      rockId: m.rock_id,
+      title: m.title,
+      due: m.due_date ? m.due_date.slice(0, 10) : "",
+      done: Boolean(m.completed_at),
+    }))
+  } catch {
+    return []
+  }
+}
+
+export async function createMilestone(
+  workspaceSlug: string,
+  rockId: string,
+  title: string,
+  due: string,
+): Promise<{ ok: true; milestone: DbMilestone } | { ok: false; error: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "rocks:write")
+    if (!isUuid(rockId)) return { ok: false, error: "Invalid rock id" }
+    const trimmed = title.trim()
+    if (!trimmed) return { ok: false, error: "Title required" }
+    const sb = supabaseAdmin()
+    if (!(await rockBelongsToTenant(sb, rockId, user.workspaceId))) {
+      return { ok: false, error: "Rock not found in this workspace" }
+    }
+    const dueDate = /^\d{4}-\d{2}-\d{2}$/.test(due) ? due : null
+    const { data, error } = await sb
+      .from("rock_milestones")
+      .insert({
+        rock_id: rockId,
+        title: trimmed,
+        due_date: dueDate,
+        order_idx: Math.floor(Date.now() / 1000),
+      })
+      .select("id, rock_id, title, due_date, completed_at")
+      .single()
+    if (error || !data) return { ok: false, error: error?.message ?? "Insert failed" }
+    revalidateRockRoutes(workspaceSlug)
+    return {
+      ok: true,
+      milestone: {
+        id: data.id as string,
+        rockId: data.rock_id as string,
+        title: data.title as string,
+        due: data.due_date ? (data.due_date as string).slice(0, 10) : "",
+        done: Boolean(data.completed_at),
+      },
+    }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" }
+  }
+}
+
+export async function toggleMilestone(
+  workspaceSlug: string,
+  milestoneId: string,
+  done: boolean,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "rocks:write")
+    if (!isUuid(milestoneId)) return { ok: false, error: "Invalid milestone id" }
+    const sb = supabaseAdmin()
+    // Confirm the milestone belongs to a rock in this tenant before writing.
+    const { data: ms } = await sb
+      .from("rock_milestones")
+      .select("id, rock_id")
+      .eq("id", milestoneId)
+      .maybeSingle()
+    if (!ms) return { ok: false, error: "Milestone not found" }
+    if (!(await rockBelongsToTenant(sb, ms.rock_id as string, user.workspaceId))) {
+      return { ok: false, error: "Forbidden" }
+    }
+    const { error } = await sb
+      .from("rock_milestones")
+      .update({ completed_at: done ? new Date().toISOString() : null })
+      .eq("id", milestoneId)
+    if (error) return { ok: false, error: error.message }
+    revalidateRockRoutes(workspaceSlug)
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" }
+  }
+}
+
+export async function updateMilestone(
+  workspaceSlug: string,
+  milestoneId: string,
+  patch: { title?: string; due?: string },
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "rocks:write")
+    if (!isUuid(milestoneId)) return { ok: false, error: "Invalid milestone id" }
+    const sb = supabaseAdmin()
+    const { data: ms } = await sb
+      .from("rock_milestones")
+      .select("id, rock_id")
+      .eq("id", milestoneId)
+      .maybeSingle()
+    if (!ms) return { ok: false, error: "Milestone not found" }
+    if (!(await rockBelongsToTenant(sb, ms.rock_id as string, user.workspaceId))) {
+      return { ok: false, error: "Forbidden" }
+    }
+    const next: Record<string, unknown> = {}
+    if (typeof patch.title === "string") {
+      const t = patch.title.trim()
+      if (!t) return { ok: false, error: "Title required" }
+      next.title = t
+    }
+    if (typeof patch.due === "string") {
+      next.due_date = /^\d{4}-\d{2}-\d{2}$/.test(patch.due) ? patch.due : null
+    }
+    if (Object.keys(next).length === 0) return { ok: true }
+    const { error } = await sb.from("rock_milestones").update(next).eq("id", milestoneId)
+    if (error) return { ok: false, error: error.message }
+    revalidateRockRoutes(workspaceSlug)
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" }
+  }
+}
+
+export async function deleteMilestone(
+  workspaceSlug: string,
+  milestoneId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "rocks:write")
+    if (!isUuid(milestoneId)) return { ok: false, error: "Invalid milestone id" }
+    const sb = supabaseAdmin()
+    const { data: ms } = await sb
+      .from("rock_milestones")
+      .select("id, rock_id")
+      .eq("id", milestoneId)
+      .maybeSingle()
+    if (!ms) return { ok: false, error: "Milestone not found" }
+    if (!(await rockBelongsToTenant(sb, ms.rock_id as string, user.workspaceId))) {
+      return { ok: false, error: "Forbidden" }
+    }
+    const { error } = await sb.from("rock_milestones").delete().eq("id", milestoneId)
+    if (error) return { ok: false, error: error.message }
+    revalidateRockRoutes(workspaceSlug)
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" }
+  }
+}

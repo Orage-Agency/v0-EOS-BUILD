@@ -250,6 +250,30 @@ export async function updateTaskPriority(
 
 // ---------------------------------------------------------- update parent rock
 
+export async function updateTaskOwner(
+  workspaceSlug: string,
+  id: string,
+  ownerId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "tasks:write")
+    if (!isUuid(ownerId)) return { ok: false, error: "Invalid owner id" }
+    const sb = supabaseAdmin()
+    const { error } = await sb
+      .from("tasks")
+      .update({ owner_id: ownerId })
+      .eq("id", id)
+      .eq("tenant_id", user.workspaceId)
+    if (error) return { ok: false, error: error.message }
+    revalidateTaskRoutes(workspaceSlug)
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error"
+    return { ok: false, error: msg }
+  }
+}
+
 export async function updateTaskRock(
   workspaceSlug: string,
   id: string,

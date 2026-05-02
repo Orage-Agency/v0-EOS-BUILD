@@ -1,5 +1,9 @@
 import { requireUser } from "@/lib/auth"
-import { listRocksForWorkspace } from "@/lib/rocks-server"
+import {
+  listLinkedTasksForWorkspace,
+  listMilestonesForWorkspace,
+  listRocksForWorkspace,
+} from "@/lib/rocks-server"
 import { listWorkspaceMembers } from "@/lib/tasks-server"
 import { RocksShell } from "@/components/rocks/rocks-shell"
 
@@ -11,10 +15,12 @@ export default async function RocksPage({
   params: Promise<{ workspace: string }>
 }) {
   const { workspace } = await params
-  const [user, initialRocks, members] = await Promise.all([
+  const [user, initialRocks, members, milestones, linkedTasks] = await Promise.all([
     requireUser(workspace),
     listRocksForWorkspace(workspace),
     listWorkspaceMembers(workspace),
+    listMilestonesForWorkspace(workspace),
+    listLinkedTasksForWorkspace(workspace),
   ])
 
   return (
@@ -22,6 +28,8 @@ export default async function RocksPage({
       workspaceSlug={workspace}
       initialRocks={initialRocks}
       members={members}
+      initialMilestones={milestones}
+      initialLinkedTasks={linkedTasks}
       currentUser={{
         id: user.id,
         name: user.fullName ?? user.email,

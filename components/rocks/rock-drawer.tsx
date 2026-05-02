@@ -46,6 +46,11 @@ export function RockDrawer() {
   const updateOwner = useRocksStore((s) => s.updateOwner)
   const updateDue = useRocksStore((s) => s.updateDue)
   const deleteRock = useRocksStore((s) => s.deleteRock)
+  const addLinkedTask = useRocksStore((s) => s.addLinkedTask)
+  const toggleLinkedTask = useRocksStore((s) => s.toggleLinkedTask)
+  const removeLinkedTask = useRocksStore((s) => s.removeLinkedTask)
+  const updateLinkedTaskOwner = useRocksStore((s) => s.updateLinkedTaskOwner)
+  const updateLinkedTaskDue = useRocksStore((s) => s.updateLinkedTaskDue)
   const currentActor = useRocksStore((s) => s.currentActor)
   const members = useRocksStore((s) => s.members)
   const allowed = currentActor ? canEditRocks(currentActor) : false
@@ -72,6 +77,12 @@ export function RockDrawer() {
   const [newMsTitle, setNewMsTitle] = useState("")
   const [newMsDue, setNewMsDue] = useState("")
   const newMsTitleRef = useRef<HTMLInputElement>(null)
+  const [taskFormOpen, setTaskFormOpen] = useState(false)
+  const [newTaskTitle, setNewTaskTitle] = useState("")
+  const [newTaskOwner, setNewTaskOwner] = useState("")
+  const [newTaskDue, setNewTaskDue] = useState("")
+  const newTaskTitleRef = useRef<HTMLInputElement>(null)
+  const [taskOwnerOpenFor, setTaskOwnerOpenFor] = useState<string | null>(null)
 
   useEffect(() => {
     if (rock) {
@@ -84,12 +95,21 @@ export function RockDrawer() {
       setMilestoneFormOpen(false)
       setNewMsTitle("")
       setNewMsDue("")
+      setTaskFormOpen(false)
+      setNewTaskTitle("")
+      setNewTaskOwner("")
+      setNewTaskDue("")
+      setTaskOwnerOpenFor(null)
     }
   }, [rock?.id])
 
   useEffect(() => {
     if (milestoneFormOpen) newMsTitleRef.current?.focus()
   }, [milestoneFormOpen])
+
+  useEffect(() => {
+    if (taskFormOpen) newTaskTitleRef.current?.focus()
+  }, [taskFormOpen])
 
   if (!rock) {
     return (
@@ -121,6 +141,18 @@ export function RockDrawer() {
     setNewMsTitle("")
     setNewMsDue("")
     toast(`Added "${t}"`)
+  }
+
+  async function handleAddTask() {
+    if (!rock) return
+    const t = newTaskTitle.trim()
+    if (!t) return
+    await addLinkedTask(rock.id, t, newTaskOwner, newTaskDue)
+    setNewTaskTitle("")
+    setNewTaskOwner("")
+    setNewTaskDue("")
+    setTaskFormOpen(false)
+    toast(`Added task "${t}"`)
   }
 
   return (
@@ -469,14 +501,73 @@ export function RockDrawer() {
                 </div>
               </section>
 
-              {ownTasks.length > 0 && (
-                <section className="mb-6">
-                  <div className="mb-2 flex items-center justify-between font-mono text-[10px] tracking-[0.1em] text-text-muted">
-                    <span>LINKED TASKS · {ownTasks.length}</span>
+              <section className="mb-6">
+                <div className="mb-2 flex items-center justify-between font-mono text-[10px] tracking-[0.1em] text-text-muted">
+                  <span>LINKED TASKS · {ownTasks.length}</span>
+                  <div className="flex items-center gap-3">
+                    {allowed && (
+                      <button
+                        type="button"
+                        onClick={() => setTaskFormOpen((v) => !v)}
+                        className="text-gold-400 hover:text-gold-500 transition-colors"
+                      >
+                        {taskFormOpen ? "Cancel" : "+ Add task"}
+                      </button>
+                    )}
                     <TenantLink href="/tasks" className="text-gold-400 hover:text-gold-500 transition-colors">
-                      View all in Tasks →
+                      All →
                     </TenantLink>
                   </div>
+                </div>
+
+                {taskFormOpen && allowed && (
+                  <div className="mb-2 rounded-md border border-gold-500/30 bg-bg-3 px-3 py-2.5 flex flex-col gap-2">
+                    <input
+                      ref={newTaskTitleRef}
+                      value={newTaskTitle}
+                      onChange={(e) => setNewTaskTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleAddTask()
+                        if (e.key === "Escape") setTaskFormOpen(false)
+                      }}
+                      placeholder="Task title"
+                      className="bg-bg-2 border border-border-orage rounded-sm px-2 py-1.5 text-[13px] text-text-primary outline-none focus:border-gold-500"
+                    />
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select
+                        value={newTaskOwner}
+                        onChange={(e) => setNewTaskOwner(e.target.value)}
+                        className="bg-bg-2 border border-border-orage rounded-sm px-2 py-1 text-[12px] outline-none focus:border-gold-500"
+                      >
+                        <option value="">Owner: choose…</option>
+                        {members.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="date"
+                        value={newTaskDue}
+                        onChange={(e) => setNewTaskDue(e.target.value)}
+                        className="bg-bg-2 border border-border-orage rounded-sm px-2 py-1 text-[12px] outline-none focus:border-gold-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddTask}
+                        className="px-3 py-1 bg-gold-500 text-text-on-gold rounded-sm text-[11px] font-semibold hover:bg-gold-400 ml-auto"
+                      >
+                        ADD
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {ownTasks.length === 0 && !taskFormOpen ? (
+                  <div className="rounded-md border border-dashed border-border-orage bg-bg-3 px-3 py-4 text-center text-[12px] text-text-muted">
+                    No tasks linked to this rock yet.
+                  </div>
+                ) : (
                   <div className="flex flex-col gap-1.5">
                     {ownTasks.map((t) => {
                       const oMock = getUser(t.ownerId)
@@ -486,18 +577,104 @@ export function RockDrawer() {
                       return (
                         <div
                           key={t.id}
-                          className="flex items-center gap-2.5 rounded-md border border-border-orage bg-bg-3 px-3 py-2.5"
+                          className="group relative flex items-center gap-2.5 rounded-md border border-border-orage bg-bg-3 px-3 py-2.5"
                         >
-                          <span className="w-3.5 h-3.5 rounded-sm border-[1.5px] border-border-strong shrink-0" />
-                          <span className="flex-1 text-[12px] text-text-secondary truncate">{t.title}</span>
-                          <span className="font-mono text-[10px] text-text-muted shrink-0">{due.label}</span>
-                          {o && <OrageAvatar user={o} size="xs" />}
+                          <button
+                            type="button"
+                            onClick={() => allowed && toggleLinkedTask(t.id)}
+                            disabled={!allowed}
+                            aria-label={t.done ? "Mark not done" : "Mark done"}
+                            className={cn(
+                              "w-3.5 h-3.5 rounded-sm border-[1.5px] flex items-center justify-center shrink-0",
+                              t.done
+                                ? "bg-gold-500 border-gold-500"
+                                : "border-border-strong hover:border-gold-500",
+                            )}
+                          >
+                            {t.done && <IcCheck className="w-2 h-2 text-text-on-gold" />}
+                          </button>
+                          <span
+                            className={cn(
+                              "flex-1 text-[12px] text-text-secondary truncate",
+                              t.done && "line-through text-text-muted",
+                            )}
+                          >
+                            {t.title}
+                          </span>
+                          {allowed ? (
+                            <input
+                              type="date"
+                              value={t.due || ""}
+                              onChange={(e) => updateLinkedTaskDue(t.id, e.target.value)}
+                              className="bg-bg-2 border border-border-orage rounded-sm px-1.5 py-0.5 text-[10px] font-mono text-text-muted outline-none focus:border-gold-500"
+                              aria-label="Task due date"
+                            />
+                          ) : (
+                            <span className="font-mono text-[10px] text-text-muted shrink-0">{due.label}</span>
+                          )}
+                          {allowed ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setTaskOwnerOpenFor(taskOwnerOpenFor === t.id ? null : t.id)
+                              }
+                              className="flex items-center gap-1.5 hover:text-gold-400"
+                              aria-label="Reassign task"
+                            >
+                              {o ? (
+                                <OrageAvatar user={o} size="xs" />
+                              ) : (
+                                <span className="w-4 h-4 rounded-full border border-border-orage" />
+                              )}
+                            </button>
+                          ) : (
+                            o && <OrageAvatar user={o} size="xs" />
+                          )}
+                          {taskOwnerOpenFor === t.id && allowed && (
+                            <ul className="absolute right-2 top-9 z-30 w-56 rounded-md border border-border-orage bg-bg-2 shadow-orage-lg py-1 text-[12px] max-h-72 overflow-y-auto">
+                              {members.map((m) => (
+                                <li key={m.id}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      updateLinkedTaskOwner(t.id, m.id)
+                                      setTaskOwnerOpenFor(null)
+                                      toast(`Task → ${m.name}`)
+                                    }}
+                                    className={cn(
+                                      "w-full text-left px-3 py-1.5 hover:bg-bg-3 flex items-center gap-2",
+                                      t.ownerId === m.id ? "text-gold-400" : "text-text-secondary",
+                                    )}
+                                  >
+                                    <span className="w-5 h-5 rounded-full bg-bg-3 border border-border-orage flex items-center justify-center text-[9px]">
+                                      {m.initials}
+                                    </span>
+                                    {m.name}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          {allowed && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                removeLinkedTask(t.id)
+                                toast(`Removed "${t.title}"`)
+                              }}
+                              className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-danger text-[10px] font-mono ml-1 transition-opacity"
+                              aria-label="Remove task"
+                            >
+                              ✕
+                            </button>
+                          )}
                         </div>
                       )
                     })}
                   </div>
-                </section>
-              )}
+                )}
+              </section>
+
 
               {ownUpdates.length > 0 && (
                 <section>
