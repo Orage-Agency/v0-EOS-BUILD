@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache"
 import { requireUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/server/permissions"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { logAudit } from "@/lib/audit"
 import { UNASSIGNED_OWNER_ID, type MockRock, type RockStatus } from "@/lib/mock-data"
 import type { DbRock } from "@/lib/db-types"
 
@@ -80,6 +81,13 @@ export async function createRock(
       return { ok: false, error: error?.message ?? "Insert failed" }
     }
 
+    await logAudit({
+      user,
+      action: "create",
+      entityType: "rock",
+      entityId: data.id as string,
+      metadata: { title, ownerId, due: input.due ?? null },
+    })
     revalidateRockRoutes(workspaceSlug)
     return { ok: true, id: data.id as string, rock: dbToMockRock(data as DbRock) }
   } catch (err) {
@@ -105,6 +113,13 @@ export async function updateRockStatus(
       .eq("id", id)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: status === "done" ? "complete" : "update",
+      entityType: "rock",
+      entityId: id,
+      metadata: { field: "status", value: status },
+    })
     revalidateRockRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -129,6 +144,13 @@ export async function updateRockProgress(
       .eq("id", id)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "update",
+      entityType: "rock",
+      entityId: id,
+      metadata: { field: "progress", value: clamped },
+    })
     revalidateRockRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -154,6 +176,13 @@ export async function updateRockTitle(
       .eq("id", id)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "update",
+      entityType: "rock",
+      entityId: id,
+      metadata: { field: "title", value: trimmed },
+    })
     revalidateRockRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -177,6 +206,13 @@ export async function updateRockDescription(
       .eq("id", id)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "update",
+      entityType: "rock",
+      entityId: id,
+      metadata: { field: "description" },
+    })
     revalidateRockRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -201,6 +237,13 @@ export async function updateRockOwner(
       .eq("id", id)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "update",
+      entityType: "rock",
+      entityId: id,
+      metadata: { field: "owner_id", value: ownerId },
+    })
     revalidateRockRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -226,6 +269,13 @@ export async function updateRockDue(
       .eq("id", id)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "update",
+      entityType: "rock",
+      entityId: id,
+      metadata: { field: "due_date", value: dueDate },
+    })
     revalidateRockRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -248,6 +298,12 @@ export async function deleteRock(
       .eq("id", id)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "delete",
+      entityType: "rock",
+      entityId: id,
+    })
     revalidateRockRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -349,6 +405,13 @@ export async function createMilestone(
       .select("id, rock_id, title, due_date, completed_at")
       .single()
     if (error || !data) return { ok: false, error: error?.message ?? "Insert failed" }
+    await logAudit({
+      user,
+      action: "create",
+      entityType: "rock_milestone",
+      entityId: data.id as string,
+      metadata: { rockId, title: trimmed, due: dueDate },
+    })
     revalidateRockRoutes(workspaceSlug)
     return {
       ok: true,
@@ -390,6 +453,13 @@ export async function toggleMilestone(
       .update({ completed_at: done ? new Date().toISOString() : null })
       .eq("id", milestoneId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: done ? "complete" : "reopen",
+      entityType: "rock_milestone",
+      entityId: milestoneId,
+      metadata: { rockId: ms.rock_id },
+    })
     revalidateRockRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -428,6 +498,13 @@ export async function updateMilestone(
     if (Object.keys(next).length === 0) return { ok: true }
     const { error } = await sb.from("rock_milestones").update(next).eq("id", milestoneId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "update",
+      entityType: "rock_milestone",
+      entityId: milestoneId,
+      metadata: { rockId: ms.rock_id, fields: Object.keys(next) },
+    })
     revalidateRockRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -455,6 +532,13 @@ export async function deleteMilestone(
     }
     const { error } = await sb.from("rock_milestones").delete().eq("id", milestoneId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "delete",
+      entityType: "rock_milestone",
+      entityId: milestoneId,
+      metadata: { rockId: ms.rock_id },
+    })
     revalidateRockRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {

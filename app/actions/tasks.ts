@@ -18,6 +18,7 @@ import { revalidatePath } from "next/cache"
 import { requireUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/server/permissions"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { logAudit } from "@/lib/audit"
 import {
   UNASSIGNED_OWNER_ID,
   type MockTask,
@@ -110,6 +111,13 @@ export async function createTask(
       return { ok: false, error: error?.message ?? "Insert failed" }
     }
 
+    await logAudit({
+      user,
+      action: "create",
+      entityType: "task",
+      entityId: data.id as string,
+      metadata: { title, ownerId, rockId, priority: data.priority, due: data.due_date },
+    })
     revalidateTaskRoutes(workspaceSlug)
     return { ok: true, id: data.id as string, task: dbToMockTask(data as DbTask) }
   } catch (err) {
@@ -138,6 +146,13 @@ export async function updateTaskStatus(
       .eq("id", id)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: status === "done" ? "complete" : status === "open" ? "reopen" : "update",
+      entityType: "task",
+      entityId: id,
+      metadata: { field: "status", value: status },
+    })
     revalidateTaskRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -163,6 +178,13 @@ export async function updateTaskDueDate(
       .eq("id", id)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "update",
+      entityType: "task",
+      entityId: id,
+      metadata: { field: "due_date", value: due },
+    })
     revalidateTaskRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -190,6 +212,13 @@ export async function updateTaskTitle(
       .eq("id", id)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "update",
+      entityType: "task",
+      entityId: id,
+      metadata: { field: "title", value: trimmed },
+    })
     revalidateTaskRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -215,6 +244,13 @@ export async function updateTaskDescription(
       .eq("id", id)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "update",
+      entityType: "task",
+      entityId: id,
+      metadata: { field: "description" },
+    })
     revalidateTaskRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -240,6 +276,13 @@ export async function updateTaskPriority(
       .eq("id", id)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "update",
+      entityType: "task",
+      entityId: id,
+      metadata: { field: "priority", value: priority },
+    })
     revalidateTaskRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -266,6 +309,13 @@ export async function updateTaskOwner(
       .eq("id", id)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "update",
+      entityType: "task",
+      entityId: id,
+      metadata: { field: "owner_id", value: ownerId },
+    })
     revalidateTaskRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -290,6 +340,13 @@ export async function updateTaskRock(
       .eq("id", id)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "update",
+      entityType: "task",
+      entityId: id,
+      metadata: { field: "parent_rock_id", value: parentRockId },
+    })
     revalidateTaskRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -314,6 +371,12 @@ export async function deleteTask(
       .eq("id", id)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "delete",
+      entityType: "task",
+      entityId: id,
+    })
     revalidateTaskRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -352,6 +415,17 @@ export async function reassignTaskWithHandoff(
       .eq("id", input.taskId)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "handoff",
+      entityType: "task",
+      entityId: input.taskId,
+      metadata: {
+        from: input.fromUserId,
+        to: input.toUserId,
+        context: input.context.slice(0, 500),
+      },
+    })
     revalidateTaskRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -391,6 +465,17 @@ export async function bulkUpdateTasks(
       .in("id", ids)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, count: 0, error: error.message }
+    await Promise.all(
+      ids.map((tid) =>
+        logAudit({
+          user,
+          action: "update",
+          entityType: "task",
+          entityId: tid,
+          metadata: { bulk: true, fields: Object.keys(dbPatch) },
+        }),
+      ),
+    )
     revalidateTaskRoutes(workspaceSlug)
     return { ok: true, count: ids.length }
   } catch (err) {
@@ -416,6 +501,17 @@ export async function bulkDeleteTasks(
       .in("id", ids)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, count: 0, error: error.message }
+    await Promise.all(
+      ids.map((tid) =>
+        logAudit({
+          user,
+          action: "delete",
+          entityType: "task",
+          entityId: tid,
+          metadata: { bulk: true },
+        }),
+      ),
+    )
     revalidateTaskRoutes(workspaceSlug)
     return { ok: true, count: ids.length }
   } catch (err) {

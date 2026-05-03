@@ -7,6 +7,7 @@
 import { requireUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/server/permissions"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { logAudit } from "@/lib/audit"
 import { upsertScorecardEntry } from "@/lib/scorecard-server"
 
 export type CreateMetricInput = {
@@ -45,6 +46,13 @@ export async function createMetric(
       .single()
 
     if (error || !data) return { ok: false, id: "", error: error?.message ?? "Insert failed" }
+    await logAudit({
+      user,
+      action: "create",
+      entityType: "scorecard_metric",
+      entityId: (data as { id: string }).id,
+      metadata: { name, unit: input.unit, target: input.target, direction: input.direction },
+    })
     return { ok: true, id: (data as { id: string }).id }
   } catch (err) {
     return { ok: false, id: "", error: err instanceof Error ? err.message : "Unknown error" }
@@ -91,6 +99,12 @@ export async function deleteMetric(
       .eq("id", metricId)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "archive",
+      entityType: "scorecard_metric",
+      entityId: metricId,
+    })
     return { ok: true }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Unknown error" }

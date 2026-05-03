@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { requireUser } from "@/lib/auth"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { logAudit } from "@/lib/audit"
 import type { Block } from "@/lib/notes-store"
 
 function revalidateNoteRoutes(workspaceSlug: string) {
@@ -39,6 +40,13 @@ export async function createNote(
       console.error("[v0] createNote error", error?.message)
       return { ok: false, error: error?.message ?? "Insert failed" }
     }
+    await logAudit({
+      user,
+      action: "create",
+      entityType: "note",
+      entityId: (data as { id: string }).id,
+      metadata: { title: input.title ?? null, parentType: input.parentType ?? "personal" },
+    })
     revalidateNoteRoutes(workspaceSlug)
     return { ok: true, id: (data as { id: string }).id }
   } catch (err) {
@@ -84,6 +92,13 @@ export async function updateNoteTitle(
       .eq("id", noteId)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "update",
+      entityType: "note",
+      entityId: noteId,
+      metadata: { field: "title", value: title.trim() || "Untitled" },
+    })
     revalidateNoteRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -126,6 +141,12 @@ export async function deleteNote(
       .eq("id", noteId)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "delete",
+      entityType: "note",
+      entityId: noteId,
+    })
     revalidateNoteRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {

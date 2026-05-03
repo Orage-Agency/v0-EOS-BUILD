@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache"
 import { requireUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/server/permissions"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { logAudit } from "@/lib/audit"
 
 function revalidateIssueRoutes(workspaceSlug: string) {
   revalidatePath(`/${workspaceSlug}/issues`)
@@ -58,6 +59,13 @@ export async function createIssue(
       return { ok: false, error: error?.message ?? "Insert failed" }
     }
 
+    await logAudit({
+      user,
+      action: "create",
+      entityType: "issue",
+      entityId: data.id as string,
+      metadata: { title, severity: input.severity },
+    })
     revalidateIssueRoutes(workspaceSlug)
     return { ok: true, id: data.id as string }
   } catch (err) {
@@ -126,6 +134,13 @@ export async function resolveIssue(
       .eq("tenant_id", user.workspaceId)
 
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: input.path === "archive" ? "archive" : "complete",
+      entityType: "issue",
+      entityId: input.issueId,
+      metadata: { path: input.path, reason: input.reason ?? null },
+    })
     revalidateIssueRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -149,6 +164,13 @@ export async function togglePinForL10(
       .eq("id", issueId)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "update",
+      entityType: "issue",
+      entityId: issueId,
+      metadata: { field: "pinned_for_l10", value: pinned },
+    })
     revalidateIssueRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -192,6 +214,13 @@ export async function updateIssue(
       .eq("id", issueId)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "update",
+      entityType: "issue",
+      entityId: issueId,
+      metadata: { fields: Object.keys(patch) },
+    })
     revalidateIssueRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
