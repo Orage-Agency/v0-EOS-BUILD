@@ -28,6 +28,7 @@ const FILES_TO_APPLY = [
   "20260502000001_notifications.sql",
   "20260502000002_realtime.sql",
   "20260502000003_workspace_sso.sql",
+  "20260503000000_workspaces_vto_data.sql",
 ]
 
 async function main() {
