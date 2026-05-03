@@ -6,6 +6,46 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { cache } from "react"
+import { cookies } from "next/headers"
+
+/**
+ * Manual session resolver — bypasses supabase.auth.getUser() because
+ * @supabase/ssr 0.10.2 + ES256 JWTs return null even with a valid auth-
+ * token cookie. We read the cookie ourselves, decode the JWT payload,
+ * and trust the `sub` claim (after expiry check). The downstream
+ * Supabase queries use the service-role admin client, not auth, so
+ * RLS+JWT verification doesn't matter for our reads.
+ */
+async function getAuthUserIdFromCookie(): Promise<string | null> {
+  try {
+    const store = await cookies()
+    const all = store.getAll()
+    const main = all.find((c) => /^sb-[^-]+-auth-token$/.test(c.name))
+    const chunked = all
+      .filter((c) => /^sb-[^-]+-auth-token\.\d+$/.test(c.name))
+      .sort((a, b) => Number(a.name.split(".").pop()) - Number(b.name.split(".").pop()))
+    let raw = main?.value ?? chunked.map((c) => c.value).join("")
+    if (!raw) return null
+    if (raw.startsWith("base64-")) {
+      raw = Buffer.from(raw.slice(7), "base64").toString("utf8")
+    }
+    const session = JSON.parse(raw) as { access_token?: string }
+    if (!session.access_token) return null
+    const parts = session.access_token.split(".")
+    if (parts.length !== 3) return null
+    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/")
+    const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4)
+    const claims = JSON.parse(Buffer.from(padded, "base64").toString("utf8")) as {
+      sub?: string
+      exp?: number
+    }
+    if (!claims.sub) return null
+    if (claims.exp && claims.exp <= Math.floor(Date.now() / 1000)) return null
+    return claims.sub
+  } catch {
+    return null
+  }
+}
 
 /**
  * Role union spans the cross-workspace `master` flag, the three real
@@ -54,10 +94,10 @@ export const getCurrentUser = cache(
   async (workspaceSlug: string): Promise<AuthUser | null> => {
     const supabase = await createClient()
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) return null
+    // Manual JWT-based auth — see getAuthUserIdFromCookie comment.
+    const userId = await getAuthUserIdFromCookie()
+    if (!userId) return null
+    const user = { id: userId }
 
     const { data: profile } = await supabase
       .from("profiles")

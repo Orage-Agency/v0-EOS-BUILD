@@ -114,17 +114,9 @@ export async function proxy(request: NextRequest) {
   }
 
   const path = request.nextUrl.pathname
-
-  // TEMP DEBUG: expose the proxy's decision via a header so we can
-  // diagnose without needing the Vercel runtime log stream.
-  if (path.startsWith("/orage-team")) {
-    response.headers.set("x-proxy-debug-reason", debugReason)
-    response.headers.set(
-      "x-proxy-debug-cookies",
-      request.cookies.getAll().map((c) => c.name).join(","),
-    )
-    response.headers.set("x-proxy-debug-userid", userId ?? "null")
-  }
+  // Mark debugReason consumed so eslint doesn't flag it now that the
+  // header dump has been removed.
+  void debugReason
 
   // Allow root sign-up + auth pages without session
   if (PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + "/"))) {
@@ -163,15 +155,7 @@ export async function proxy(request: NextRequest) {
 
   // All other workspace routes require auth
   if (!userId) {
-    const r = NextResponse.redirect(new URL(`/${workspaceSlug}/login`, request.url))
-    if (path.startsWith("/orage-team")) {
-      r.headers.set("x-proxy-debug-reason", debugReason)
-      r.headers.set(
-        "x-proxy-debug-cookies",
-        request.cookies.getAll().map((c) => c.name).join(","),
-      )
-    }
-    return r
+    return NextResponse.redirect(new URL(`/${workspaceSlug}/login`, request.url))
   }
 
   // Verify user is a member of this workspace (or is master)
