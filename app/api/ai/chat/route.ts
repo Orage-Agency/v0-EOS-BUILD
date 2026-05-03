@@ -1,4 +1,4 @@
-import { generateText, stepCountIs } from "ai"
+import { generateText, streamText, stepCountIs } from "ai"
 import { revalidatePath } from "next/cache"
 import { requireUser } from "@/lib/auth"
 import { buildTools } from "@/lib/ai/tools"
@@ -7,6 +7,7 @@ import { manualDigest } from "@/lib/help-manual"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
+export const maxDuration = 60
 
 // Tools that mutate state. After a turn that includes any of these we
 // revalidate every module page so the client sees the AI's writes on the
@@ -70,6 +71,42 @@ Today is provided in the user's local timezone via the system. When the user say
 
 When the user asks "how does X work?" or for definitions (rocks, scorecard, L10, IDS, V/TO, GWC, accountability chart), answer from the MANUAL DIGEST below — that's the canon for this product.`
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function collectToolCalls(steps: any[]): Array<{
+  id: string
+  name: string
+  args: Record<string, unknown>
+  result: unknown
+}> {
+  const out: Array<{ id: string; name: string; args: Record<string, unknown>; result: unknown }> = []
+  for (const step of steps ?? []) {
+    for (const call of step.toolCalls ?? []) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const matched = (step.toolResults ?? []).find((r: any) => r.toolCallId === call.toolCallId)
+      out.push({
+        id: call.toolCallId,
+        name: call.toolName,
+        args: (call.input as Record<string, unknown>) ?? {},
+        result: matched?.output,
+      })
+    }
+  }
+  return out
+}
+
+function revalidateAll(workspaceSlug: string) {
+  for (const seg of PAGES_TO_REVALIDATE) {
+    try {
+      revalidatePath(`/${workspaceSlug}/${seg}`)
+    } catch {
+      /* best-effort */
+    }
+  }
+  try {
+    revalidatePath(`/${workspaceSlug}`)
+  } catch { /* best-effort */ }
+}
+
 function buildSystemPrompt(): string {
   const today = new Date()
   const todayStr = today.toISOString().slice(0, 10)
@@ -84,8 +121,26 @@ Today is **${dayOfWeek}, ${todayStr}**. Use this when resolving relative dates (
 ${manualDigest()}`
 }
 
+/**
+ * The chat route streams a Server-Sent Events response with three
+ * frame types so the client can render progressively:
+ *
+ *   data: {"kind":"tool","name":"read_rocks","args":{...}}
+ *   data: {"kind":"text","delta":"..."}
+ *   data: {"kind":"done","didWrite":true}
+ *
+ * The final "done" frame carries metadata the client needs after the
+ * stream closes (didWrite triggers a router.refresh).
+ *
+ * `?stream=false` falls back to the old single-shot JSON response — keeps
+ * backwards compatibility with tooling and lets the e2e tests assert on
+ * the final text without an SSE parser.
+ */
+
 export async function POST(req: Request) {
   try {
+    const url = new URL(req.url)
+    const wantsStream = url.searchParams.get("stream") !== "false"
     const { message, history, workspaceSlug } = (await req.json()) as {
       message: string
       history?: { role: "user" | "assistant"; content: string }[]
@@ -98,9 +153,6 @@ export async function POST(req: Request) {
       return Response.json({ error: "Missing workspaceSlug" }, { status: 400 })
     }
 
-    // requireUser asserts the caller is authenticated AND a member of the
-    // workspace identified by `workspaceSlug` — it redirects on failure, so
-    // by the time we have `me`, the tenant scoping below is already safe.
     const me = await requireUser(workspaceSlug)
 
     const limit = await checkAndRecordAIRequest({
@@ -116,67 +168,94 @@ export async function POST(req: Request) {
     }
 
     const tools = buildTools({ tenantId: me.workspaceId, userId: me.id })
+    const messages = [
+      ...(history ?? []).map((m) => ({ role: m.role, content: m.content })),
+      { role: "user" as const, content: message },
+    ]
 
-    const result = await generateText({
+    if (!wantsStream) {
+      const result = await generateText({
+        model: "openai/gpt-5-mini",
+        system: buildSystemPrompt(),
+        messages,
+        tools,
+        stopWhen: stepCountIs(12),
+      })
+      const toolCalls = collectToolCalls(result.steps ?? [])
+      const didWrite = toolCalls.some((c) => WRITE_TOOLS.has(c.name))
+      if (didWrite) revalidateAll(workspaceSlug)
+      return Response.json({ text: result.text, toolCalls, didWrite })
+    }
+
+    // ---------- streaming path ----------
+    const result = streamText({
       model: "openai/gpt-5-mini",
       system: buildSystemPrompt(),
-      messages: [
-        ...(history ?? []).map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
-        { role: "user" as const, content: message },
-      ],
+      messages,
       tools,
-      // 12 lets the agent chain a few read_* lookups + multiple writes
-      // without truncating mid-task. With the new "no JSON dumps" prompt
-      // each step is small.
       stopWhen: stepCountIs(12),
     })
 
-    // Walk the steps to surface tool calls for the UI.
-    const toolCalls: {
-      id: string
-      name: string
-      args: Record<string, unknown>
-      result: unknown
-    }[] = []
-    for (const step of result.steps ?? []) {
-      for (const call of step.toolCalls ?? []) {
-        const matched = step.toolResults?.find(
-          (r) => r.toolCallId === call.toolCallId,
-        )
-        toolCalls.push({
-          id: call.toolCallId,
-          name: call.toolName,
-          args: (call.input as Record<string, unknown>) ?? {},
-          result: matched?.output,
-        })
-      }
-    }
-
-    // If the AI wrote anything, revalidate every module page so the user's
-    // next navigation reflects the change without a hard reload.
-    const didWrite = toolCalls.some((c) => WRITE_TOOLS.has(c.name))
-    if (didWrite) {
-      for (const seg of PAGES_TO_REVALIDATE) {
-        try {
-          revalidatePath(`/${workspaceSlug}/${seg}`)
-        } catch {
-          // Best effort: revalidatePath can fail in edge cases (e.g., the
-          // path was never rendered in this process) — the client also
-          // calls router.refresh() so we still recover.
+    const encoder = new TextEncoder()
+    const sse = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const send = (frame: unknown) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`))
         }
-      }
-      try {
-        revalidatePath(`/${workspaceSlug}`)
-      } catch { /* see above */ }
-    }
+        try {
+          for await (const chunk of result.fullStream) {
+            switch (chunk.type) {
+              case "text-delta":
+                send({ kind: "text", delta: chunk.text })
+                break
+              case "tool-call":
+                send({
+                  kind: "tool",
+                  id: chunk.toolCallId,
+                  name: chunk.toolName,
+                  args: chunk.input ?? {},
+                })
+                break
+              case "tool-result":
+                send({
+                  kind: "tool-result",
+                  id: chunk.toolCallId,
+                  ok: !(
+                    chunk.output &&
+                    typeof chunk.output === "object" &&
+                    "error" in (chunk.output as Record<string, unknown>)
+                  ),
+                })
+                break
+              case "error":
+                send({ kind: "error", message: String(chunk.error) })
+                break
+            }
+          }
+          // Compute didWrite from the final step list.
+          const steps = await result.steps
+          const toolCalls = collectToolCalls(steps ?? [])
+          const didWrite = toolCalls.some((c) => WRITE_TOOLS.has(c.name))
+          if (didWrite) revalidateAll(workspaceSlug)
+          send({ kind: "done", didWrite })
+        } catch (err) {
+          send({
+            kind: "error",
+            message: err instanceof Error ? err.message : "Stream failed",
+          })
+        } finally {
+          controller.close()
+        }
+      },
+    })
 
-    return Response.json({
-      text: result.text,
-      toolCalls,
-      didWrite,
+    return new Response(sse, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      },
     })
   } catch (err) {
     // requireUser throws a NEXT_REDIRECT to push the caller to /login

@@ -598,89 +598,140 @@ export const useAIImplementerStore = create<State>((set, get) => ({
       }))
       .filter((m) => m.content.length > 0)
 
+    // Streaming consumer. The route emits SSE frames:
+    //   { kind: "tool", id, name, args }
+    //   { kind: "tool-result", id, ok }
+    //   { kind: "text", delta }
+    //   { kind: "done", didWrite }
+    //   { kind: "error", message }
+    // We accumulate blocks in order and patch the message live so the user
+    // sees the agent's plan as it executes.
+    let accumulatedText = ""
+    const blocks: MessageBlock[] = []
+    const toolBlockById = new Map<string, MessageBlock & { kind: "tool-call" }>()
+
+    function patch(updater: (b: MessageBlock[]) => MessageBlock[]) {
+      const nextBlocks = updater(blocks.slice())
+      blocks.splice(0, blocks.length, ...nextBlocks)
+      set((s) => ({
+        messages: s.messages.map((m) =>
+          m.id === aiMsg.id ? { ...m, blocks: blocks.slice() } : m,
+        ),
+      }))
+    }
+
     try {
       const res = await fetch("/api/ai/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
         body: JSON.stringify({
           message: trimmed,
           history: priorHistory,
           workspaceSlug,
         }),
       })
-      if (!res.ok) {
-        let detail = ""
+      if (!res.ok || !res.body) {
+        let detail = `HTTP ${res.status}`
         try {
-          const errBody = (await res.json()) as { error?: string; hint?: string }
+          const errBody = (await res.clone().json()) as { error?: string; hint?: string }
           detail = errBody.hint
             ? `${errBody.error ?? "request failed"} — ${errBody.hint}`
-            : (errBody.error ?? `HTTP ${res.status}`)
+            : (errBody.error ?? detail)
         } catch {
-          detail = `HTTP ${res.status}`
+          /* not JSON */
         }
         throw new Error(detail)
       }
-      const payload = (await res.json()) as {
-        text: string
-        toolCalls: {
-          id: string
-          name: string
-          args: Record<string, unknown>
-          result: unknown
-        }[]
-        didWrite?: boolean
-      }
 
-      // Build blocks: tool calls first, then the assistant's narration.
-      const newBlocks: MessageBlock[] = []
-      for (const tc of payload.toolCalls) {
-        const argsAsStrings: Record<string, string> = {}
-        for (const [k, v] of Object.entries(tc.args ?? {})) {
-          argsAsStrings[k] =
-            typeof v === "string" ? `"${v}"` : JSON.stringify(v)
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder("utf-8")
+      let buffer = ""
+      let didWrite = false
+      let textBlockId: string | null = null
+
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        // SSE frames are separated by blank lines. Each `data:` line
+        // carries one JSON frame.
+        let sep
+        while ((sep = buffer.indexOf("\n\n")) !== -1) {
+          const raw = buffer.slice(0, sep)
+          buffer = buffer.slice(sep + 2)
+          const dataLine = raw.split("\n").find((l) => l.startsWith("data:"))
+          if (!dataLine) continue
+          const json = dataLine.slice(5).trim()
+          if (!json) continue
+          let frame: { kind: string; [k: string]: unknown }
+          try {
+            frame = JSON.parse(json)
+          } catch {
+            continue
+          }
+
+          if (frame.kind === "tool") {
+            const id = (frame.id as string) ?? newMsgId()
+            const name = (frame.name as string) ?? ""
+            const args = (frame.args as Record<string, unknown>) ?? {}
+            const argsAsStrings: Record<string, string> = {}
+            for (const [k, v] of Object.entries(args)) {
+              argsAsStrings[k] = typeof v === "string" ? `"${v}"` : JSON.stringify(v)
+            }
+            const block: MessageBlock & { kind: "tool-call" } = {
+              kind: "tool-call",
+              id,
+              name,
+              status: "auto-executed",
+              args: argsAsStrings,
+            }
+            toolBlockById.set(id, block)
+            patch((bs) => [...bs, block])
+            get().prependAudit({
+              action: name.toUpperCase(),
+              text: `${name}(${Object.keys(args).join(", ") || "—"})`,
+              status: "auto",
+            })
+          } else if (frame.kind === "tool-result") {
+            const id = frame.id as string
+            const ok = frame.ok as boolean | undefined
+            const block = toolBlockById.get(id)
+            if (block && ok === false) {
+              block.status = "error"
+              patch((bs) => bs.slice())
+            }
+          } else if (frame.kind === "text") {
+            const delta = (frame.delta as string) ?? ""
+            accumulatedText += delta
+            if (!textBlockId) {
+              textBlockId = newMsgId()
+              patch((bs) => [
+                ...bs,
+                { kind: "text", id: textBlockId!, html: renderMarkdownLite(accumulatedText) },
+              ])
+            } else {
+              patch((bs) =>
+                bs.map((b) =>
+                  b.kind === "text" && b.id === textBlockId
+                    ? { ...b, html: renderMarkdownLite(accumulatedText) }
+                    : b,
+                ),
+              )
+            }
+          } else if (frame.kind === "done") {
+            didWrite = Boolean(frame.didWrite)
+          } else if (frame.kind === "error") {
+            throw new Error((frame.message as string) ?? "Stream error")
+          }
         }
-        const isError =
-          tc.result &&
-          typeof tc.result === "object" &&
-          "error" in (tc.result as Record<string, unknown>)
-        newBlocks.push({
-          kind: "tool-call",
-          id: tc.id,
-          name: tc.name,
-          status: isError ? "error" : "auto-executed",
-          args: argsAsStrings,
-        })
-      }
-      if (payload.text?.trim()) {
-        newBlocks.push({
-          kind: "text",
-          id: newMsgId(),
-          html: renderMarkdownLite(payload.text),
-        })
-      }
-      if (newBlocks.length === 0) {
-        newBlocks.push({
-          kind: "text",
-          id: newMsgId(),
-          html: "(empty response)",
-        })
       }
 
-      set((s) => ({
-        messages: s.messages.map((m) =>
-          m.id === aiMsg.id ? { ...m, blocks: newBlocks } : m,
-        ),
-      }))
-
-      for (const tc of payload.toolCalls) {
-        get().prependAudit({
-          action: tc.name.toUpperCase(),
-          text: `${tc.name}(${Object.keys(tc.args).join(", ") || "—"})`,
-          status: "auto",
-        })
+      if (blocks.length === 0) {
+        patch(() => [{ kind: "text", id: newMsgId(), html: "(empty response)" }])
       }
 
-      if (payload.didWrite) {
+      if (didWrite) {
         set((s) => ({ writeTick: s.writeTick + 1 }))
       }
     } catch (err) {
