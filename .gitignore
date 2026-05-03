@@ -7,5 +7,10 @@ __v0_jsx-dev-runtime.ts
 node_modules
 .next/
 .env*.local
+.env.production
+.env.development
+.env.preview
 .DS_Store
 tsconfig.tsbuildinfo
+.vercel
+supabase/.temp/
