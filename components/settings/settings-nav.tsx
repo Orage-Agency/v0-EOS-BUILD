@@ -123,6 +123,12 @@ const GROUPS: NavGroup[] = [
         hintColor: "text-success",
       },
       {
+        href: "/settings/sso",
+        label: "Single Sign-On",
+        icon: IcSecurity,
+        founderOnly: true,
+      },
+      {
         href: "/settings/ai",
         label: "AI Implementer",
         icon: IcAI,

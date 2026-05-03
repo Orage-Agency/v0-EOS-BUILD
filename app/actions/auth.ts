@@ -9,6 +9,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin"
 import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import crypto from "crypto"
+import { ssoRequirementForEmail } from "@/app/actions/sso"
 
 function appUrl() {
   if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL
@@ -39,6 +40,17 @@ export async function signUpMaster(email: string, password: string, fullName: st
 // ─── LOG IN ───
 export async function login(workspaceSlug: string, email: string, password: string, rememberMe: boolean) {
   void rememberMe
+
+  // SSO enforcement: block password sign-in for emails on a domain that
+  // requires SSO and surface the redirect URL the login UI will use.
+  const ssoCheck = await ssoRequirementForEmail(workspaceSlug, email)
+  if (ssoCheck.enforced) {
+    return {
+      error: `Your domain requires sign-in via ${ssoCheck.displayName ?? "SSO"}.`,
+      ssoProviderId: ssoCheck.providerId,
+    }
+  }
+
   const supabase = await createClient()
 
   const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -88,6 +100,14 @@ export async function login(workspaceSlug: string, email: string, password: stri
 
 // ─── MAGIC LINK FALLBACK ───
 export async function sendMagicLink(workspaceSlug: string, email: string) {
+  // Block magic-link sign-in too if the user's domain requires SSO.
+  const ssoCheck = await ssoRequirementForEmail(workspaceSlug, email)
+  if (ssoCheck.enforced) {
+    return {
+      error: `Your domain requires sign-in via ${ssoCheck.displayName ?? "SSO"}.`,
+    }
+  }
+
   const supabase = await createClient()
 
   const { error } = await supabase.auth.signInWithOtp({
