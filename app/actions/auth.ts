@@ -39,6 +39,118 @@ export async function signUpMaster(email: string, password: string, fullName: st
   return { success: true, userId: data.user?.id }
 }
 
+// ─── SIGN UP A NEW WORKSPACE (real customer flow) ───
+//
+// Creates the auth user, the workspace, and the founder membership in one
+// shot, then signs the user in so the redirect immediately lands on the
+// onboarding wizard. This is what /signup wires up — replaces the
+// master-only bootstrap path.
+
+const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/
+
+function slugify(input: string): string {
+  return input
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/[\s_]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40)
+}
+
+async function uniqueSlug(
+  base: string,
+  admin: ReturnType<typeof supabaseAdmin>,
+): Promise<string> {
+  const seed = base || "workspace"
+  // Try seed, seed-2, seed-3, ... up to 50 attempts.
+  for (let i = 0; i < 50; i++) {
+    const candidate = i === 0 ? seed : `${seed}-${i + 1}`
+    const { data } = await admin
+      .from("workspaces")
+      .select("id")
+      .eq("slug", candidate)
+      .maybeSingle()
+    if (!data) return candidate
+  }
+  // Last-ditch random suffix.
+  return `${seed}-${crypto.randomBytes(3).toString("hex")}`
+}
+
+export type SignUpWorkspaceResult =
+  | { ok: true; slug: string }
+  | { ok: false; error: string }
+
+export async function signUpWorkspace(input: {
+  email: string
+  password: string
+  fullName: string
+  workspaceName: string
+}): Promise<SignUpWorkspaceResult> {
+  const email = input.email.trim().toLowerCase()
+  const fullName = input.fullName.trim()
+  const wsName = input.workspaceName.trim()
+
+  if (!email || !email.includes("@")) return { ok: false, error: "Enter a valid email." }
+  if (input.password.length < 8) return { ok: false, error: "Password must be at least 8 characters." }
+  if (!fullName) return { ok: false, error: "Enter your full name." }
+  if (!wsName) return { ok: false, error: "Enter a workspace name." }
+
+  const supabase = await createClient()
+  const admin = supabaseAdmin()
+
+  // 1) Create the auth user. The handle_new_user trigger creates the profile.
+  //    Using signUp (not admin.create) so the response sets session cookies
+  //    and the user is logged in immediately on the redirect.
+  const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+    email,
+    password: input.password,
+    options: { data: { full_name: fullName } },
+  })
+  if (signUpErr || !signUpData.user) {
+    return { ok: false, error: signUpErr?.message ?? "Sign-up failed." }
+  }
+  const userId = signUpData.user.id
+
+  // 2) Create the workspace with a unique slug derived from the name.
+  const slug = await uniqueSlug(slugify(wsName), admin)
+  if (!SLUG_RE.test(slug)) {
+    return { ok: false, error: `Could not derive a valid slug from "${wsName}".` }
+  }
+  const { data: ws, error: wsErr } = await admin
+    .from("workspaces")
+    .insert({
+      slug,
+      name: wsName,
+      created_by: userId,
+      status: "active",
+    })
+    .select("id, slug")
+    .single()
+  if (wsErr || !ws) {
+    // Roll back the auth user so the next attempt isn't blocked by "email
+    // already exists" on a half-created state.
+    await admin.auth.admin.deleteUser(userId).catch(() => {})
+    return { ok: false, error: `Couldn't create workspace: ${wsErr?.message ?? "unknown"}` }
+  }
+
+  // 3) Founder membership.
+  const { error: memErr } = await admin.from("workspace_memberships").insert({
+    workspace_id: ws.id as string,
+    user_id: userId,
+    role: "founder",
+    status: "active",
+  })
+  if (memErr) {
+    // Don't roll back the workspace — it's a recoverable orphan, but the
+    // user can't access it without the membership. Surface the error.
+    return { ok: false, error: `Couldn't add membership: ${memErr.message}` }
+  }
+
+  return { ok: true, slug: ws.slug as string }
+}
+
 // ─── LOG IN ───
 export async function login(workspaceSlug: string, email: string, password: string, rememberMe: boolean) {
   void rememberMe
