@@ -85,6 +85,36 @@ export async function updateMetricValue(
   return result
 }
 
+/**
+ * Update a metric's weekly value during an L10 meeting. Only leader+
+ * can run an L10, so we don't enforce the per-metric owner check that
+ * `updateMetricValue` does — the leader speaks for the team here.
+ */
+export async function updateMetricValueDuringL10(
+  workspaceSlug: string,
+  metricId: string,
+  week: string,
+  value: number | null,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "scorecard:write")
+    const result = await upsertScorecardEntry(workspaceSlug, metricId, week, value)
+    if (result.ok) {
+      await logAudit({
+        user,
+        action: "update",
+        entityType: "scorecard_entry",
+        entityId: metricId,
+        metadata: { week, value, source: "l10" },
+      })
+    }
+    return result
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" }
+  }
+}
+
 export async function deleteMetric(
   workspaceSlug: string,
   metricId: string,

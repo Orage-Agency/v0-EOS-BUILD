@@ -4,18 +4,24 @@
  * Per-segment views shown in the L10 main stage. Each segment of the
  * standard EOS L10 has different content the leader walks through:
  *   SEGUE       — personal/business bests, free capture
- *   SCORECARD   — weekly metric grid
- *   ROCK REVIEW — every rock + status
+ *   SCORECARD   — weekly metric grid (inline-editable)
+ *   ROCK REVIEW — every rock + clickable status picker
  *   HEADLINES   — capture only (rail handles it)
- *   TO-DOS      — open tasks + done-toggle
+ *   TO-DOS      — open tasks + done-toggle (clickable)
  *   IDS         — handled by ids-stage.tsx
  *   CONCLUDE    — handled by conclude-modal.tsx
  *
- * Data comes from the server page once and is passed through MainStage.
+ * Each segment is actionable: the leader can change a rock's status,
+ * update a metric value, or mark a todo done — directly from the runner.
  */
-import { useMemo } from "react"
-import type { MockRock } from "@/lib/mock-data"
+import { useMemo, useState, useTransition } from "react"
+import { useParams } from "next/navigation"
+import type { MockRock, RockStatus } from "@/lib/mock-data"
 import { useL10Store } from "@/lib/l10-store"
+import { updateRockStatus } from "@/app/actions/rocks"
+import { updateTaskStatus } from "@/app/actions/tasks"
+import { updateMetricValueDuringL10 } from "@/app/actions/scorecard"
+import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
 const STATUS_COLOR: Record<string, string> = {
@@ -32,6 +38,7 @@ const STATUS_LABEL: Record<string, string> = {
   off_track: "OFF TRACK",
   done: "DONE",
 }
+const STATUS_OPTIONS: RockStatus[] = ["on_track", "in_progress", "at_risk", "off_track", "done"]
 
 export type ScorecardSnapshot = {
   metrics: Array<{
@@ -59,6 +66,11 @@ export type SegmentData = {
   membersById: Record<string, { name: string; initials: string }>
 }
 
+function isUuid(v: string | null | undefined): v is string {
+  if (!v) return false
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
+}
+
 export function SegueView() {
   return (
     <div className="px-10 py-12 max-w-[820px] mx-auto">
@@ -76,15 +88,30 @@ export function SegueView() {
   )
 }
 
+/**
+ * SCORECARD with inline-editable cells. Click a cell, type a number,
+ * blur or hit Enter to persist via upsertScorecardEntry. Optimistic UI
+ * keeps the cell live while the server action runs.
+ */
 export function ScorecardView({ data }: { data: ScorecardSnapshot }) {
-  // Show the most recent 4 weeks across all metrics so the team can spot
-  // a "two-weeks-red" trend at a glance.
+  const params = useParams()
+  const slug = (params?.workspace as string) ?? ""
+
+  // Local cell overrides so optimistic updates aren't blown away by the
+  // initial snapshot prop while the server action is in flight.
+  const [overrides, setOverrides] = useState<Record<string, number | null>>({})
+
   const weeks = useMemo(() => {
     const set = new Set(data.cells.map((c) => c.week))
     return Array.from(set).sort().slice(-4)
   }, [data.cells])
 
-  function valueFor(metricId: string, week: string) {
+  function key(metricId: string, week: string) {
+    return `${metricId}|${week}`
+  }
+  function valueFor(metricId: string, week: string): number | null {
+    const k = key(metricId, week)
+    if (k in overrides) return overrides[k]
     return data.cells.find((c) => c.metricId === metricId && c.week === week)?.value ?? null
   }
   function isRed(value: number | null, target: number, direction: "up" | "down") {
@@ -110,7 +137,7 @@ export function ScorecardView({ data }: { data: ScorecardSnapshot }) {
       <div className="mb-4 flex items-baseline justify-between">
         <div className="h-display text-gold-400 text-base tracking-[0.2em]">SCORECARD</div>
         <div className="text-[11px] text-text-muted font-mono">
-          ANY METRIC RED 2+ WEEKS → DROP TO IDS
+          ANY METRIC RED 2+ WEEKS → DROP TO IDS · CLICK A CELL TO EDIT
         </div>
       </div>
       <div className="card-glass overflow-hidden">
@@ -152,25 +179,19 @@ export function ScorecardView({ data }: { data: ScorecardSnapshot }) {
                     {m.direction === "up" ? "≥" : "≤"} {m.target}
                     {m.unit ? ` ${m.unit}` : ""}
                   </td>
-                  {weeks.map((w) => {
-                    const v = valueFor(m.id, w)
-                    const red = isRed(v, m.target, m.direction)
-                    return (
-                      <td
-                        key={w}
-                        className={cn(
-                          "px-3 py-2.5 text-right font-mono",
-                          v === null
-                            ? "text-text-dim"
-                            : red
-                              ? "text-danger"
-                              : "text-success",
-                        )}
-                      >
-                        {v === null ? "—" : v}
-                      </td>
-                    )
-                  })}
+                  {weeks.map((w) => (
+                    <ScorecardCell
+                      key={w}
+                      slug={slug}
+                      metricId={m.id}
+                      week={w}
+                      value={valueFor(m.id, w)}
+                      red={isRed(valueFor(m.id, w), m.target, m.direction)}
+                      onChange={(next) =>
+                        setOverrides((o) => ({ ...o, [key(m.id, w)]: next }))
+                      }
+                    />
+                  ))}
                 </tr>
               )
             })}
@@ -181,10 +202,99 @@ export function ScorecardView({ data }: { data: ScorecardSnapshot }) {
   )
 }
 
-export function RockReviewView({ rocks, membersById }: {
+function ScorecardCell({
+  slug,
+  metricId,
+  week,
+  value,
+  red,
+  onChange,
+}: {
+  slug: string
+  metricId: string
+  week: string
+  value: number | null
+  red: boolean
+  onChange: (next: number | null) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value === null ? "" : String(value))
+  const [, startTransition] = useTransition()
+
+  function commit() {
+    setEditing(false)
+    const trimmed = draft.trim()
+    const next = trimmed === "" ? null : Number(trimmed)
+    if (trimmed !== "" && Number.isNaN(next)) {
+      setDraft(value === null ? "" : String(value))
+      return
+    }
+    if (next === value) return
+    onChange(next)
+    if (slug) {
+      startTransition(async () => {
+        const res = await updateMetricValueDuringL10(slug, metricId, week, next)
+        if (!res.ok) {
+          toast.error("Couldn't save metric")
+          onChange(value)
+          setDraft(value === null ? "" : String(value))
+        }
+      })
+    }
+  }
+
+  if (editing) {
+    return (
+      <td className="px-3 py-2.5 text-right">
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit()
+            if (e.key === "Escape") {
+              setDraft(value === null ? "" : String(value))
+              setEditing(false)
+            }
+          }}
+          inputMode="decimal"
+          className="w-20 bg-bg-3 border border-gold-500/60 rounded-sm px-2 py-0.5 text-[12px] font-mono text-gold-400 outline-none text-right"
+        />
+      </td>
+    )
+  }
+  return (
+    <td
+      onClick={() => setEditing(true)}
+      className={cn(
+        "px-3 py-2.5 text-right font-mono cursor-pointer hover:bg-bg-3/40",
+        value === null ? "text-text-dim" : red ? "text-danger" : "text-success",
+      )}
+    >
+      {value === null ? "—" : value}
+    </td>
+  )
+}
+
+/**
+ * ROCK REVIEW with clickable status pickers. Click the status pill to
+ * open a dropdown of the 5 statuses. Selection persists via
+ * updateRockStatus and updates the local view immediately.
+ */
+export function RockReviewView({
+  rocks: initialRocks,
+  membersById,
+}: {
   rocks: MockRock[]
   membersById: Record<string, { name: string; initials: string }>
 }) {
+  const params = useParams()
+  const slug = (params?.workspace as string) ?? ""
+  const [rocks, setRocks] = useState(initialRocks)
+  const [openId, setOpenId] = useState<string | null>(null)
+  const [, startTransition] = useTransition()
+
   if (rocks.length === 0) {
     return (
       <div className="px-10 py-12 max-w-[820px] mx-auto">
@@ -197,6 +307,29 @@ export function RockReviewView({ rocks, membersById }: {
       </div>
     )
   }
+
+  function setStatus(rockId: string, next: RockStatus) {
+    const prev = rocks.find((r) => r.id === rockId)?.status
+    setRocks((rs) => rs.map((r) => (r.id === rockId ? { ...r, status: next } : r)))
+    setOpenId(null)
+    toast(`Status: ${STATUS_LABEL[next] ?? next}`)
+    if (slug && isUuid(rockId)) {
+      startTransition(async () => {
+        const res = await updateRockStatus(slug, rockId, next)
+        if (!res.ok) {
+          toast.error("Couldn't save status")
+          setRocks((rs) =>
+            rs.map((r) =>
+              r.id === rockId
+                ? { ...r, status: (prev ?? "in_progress") as RockStatus }
+                : r,
+            ),
+          )
+        }
+      })
+    }
+  }
+
   const onTrack = rocks.filter((r) => r.status === "on_track" || r.status === "in_progress").length
   const atRisk = rocks.filter((r) => r.status === "at_risk").length
   const offTrack = rocks.filter((r) => r.status === "off_track").length
@@ -220,16 +353,36 @@ export function RockReviewView({ rocks, membersById }: {
           return (
             <div
               key={r.id}
-              className="card-glass px-4 py-3 flex items-center gap-4"
+              className="card-glass px-4 py-3 flex items-center gap-4 relative"
             >
-              <span
+              <button
+                type="button"
+                onClick={() => setOpenId((id) => (id === r.id ? null : r.id))}
                 className={cn(
-                  "px-2 py-1 rounded-sm border font-display text-[10px] tracking-[0.15em] shrink-0",
+                  "px-2 py-1 rounded-sm border font-display text-[10px] tracking-[0.15em] shrink-0 hover:ring-1 hover:ring-gold-500/40",
                   cls,
                 )}
               >
                 {STATUS_LABEL[r.status] ?? r.status.toUpperCase()}
-              </span>
+              </button>
+              {openId === r.id && (
+                <ul className="absolute left-4 top-12 z-30 w-48 rounded-md border border-border-orage bg-bg-2 shadow-orage-lg py-1 text-[12px]">
+                  {STATUS_OPTIONS.map((s) => (
+                    <li key={s}>
+                      <button
+                        type="button"
+                        onClick={() => setStatus(r.id, s)}
+                        className={cn(
+                          "w-full text-left px-3 py-1.5 hover:bg-bg-3",
+                          r.status === s ? "text-gold-400" : "text-text-secondary",
+                        )}
+                      >
+                        {STATUS_LABEL[s] ?? s}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
               <div className="flex-1 min-w-0">
                 <div className="text-[13px] text-text-primary truncate">{r.title}</div>
                 {r.description && (
@@ -293,22 +446,50 @@ export function HeadlinesView({ meetingId }: { meetingId: string }) {
   )
 }
 
+/**
+ * TO-DOS with a clickable checkbox per task. Toggling marks the task
+ * done in the DB so the L10 ends with a clean checklist.
+ */
 export function TodosView({
-  openTasks,
+  openTasks: initialOpen,
   meetingId,
 }: {
   openTasks: TaskSnapshot[]
   meetingId: string
 }) {
+  const params = useParams()
+  const slug = (params?.workspace as string) ?? ""
   const meeting = useL10Store((s) => s.getMeeting(meetingId))
   const liveTodos = meeting?.captures.filter((c) => c.kind === "todo") ?? []
+  const [tasks, setTasks] = useState(initialOpen)
+  const [, startTransition] = useTransition()
+
+  function toggleTask(taskId: string, doneNow: boolean) {
+    const prev = tasks.find((t) => t.id === taskId)?.status
+    setTasks((ts) =>
+      ts.map((t) => (t.id === taskId ? { ...t, status: doneNow ? "done" : "open" } : t)),
+    )
+    if (slug && isUuid(taskId)) {
+      startTransition(async () => {
+        const res = await updateTaskStatus(slug, taskId, doneNow ? "done" : "open")
+        if (!res.ok) {
+          toast.error("Couldn't update task")
+          setTasks((ts) =>
+            ts.map((t) =>
+              t.id === taskId ? { ...t, status: prev ?? "open" } : t,
+            ),
+          )
+        }
+      })
+    }
+  }
 
   return (
     <div className="px-10 py-8 max-w-[1000px] mx-auto">
       <div className="mb-4 flex items-baseline justify-between">
         <div className="h-display text-gold-400 text-base tracking-[0.2em]">TO-DOS</div>
         <div className="text-[11px] text-text-muted font-mono">
-          NOT DONE → DROPS TO IDS
+          NOT DONE → DROPS TO IDS · CLICK CHECKBOX TO COMPLETE
         </div>
       </div>
 
@@ -335,49 +516,55 @@ export function TodosView({
       )}
 
       <div className="h-display text-text-muted text-[10px] tracking-[0.18em] mb-2">
-        OPEN FROM LAST WEEK · {openTasks.length}
+        OPEN FROM LAST WEEK · {tasks.filter((t) => t.status !== "done").length}
       </div>
       <div className="space-y-1.5">
-        {openTasks.length === 0 ? (
+        {tasks.length === 0 ? (
           <div className="card-glass p-6 text-center text-[12px] text-text-muted">
             No open to-dos from last week. Clean slate.
           </div>
         ) : (
-          openTasks.slice(0, 25).map((t) => (
-            <div
-              key={t.id}
-              className="card-glass px-3 py-2 flex items-center gap-2"
-            >
-              <span
-                className={cn(
-                  "w-3 h-3 rounded-sm border shrink-0",
-                  t.status === "done"
-                    ? "bg-gold-500 border-gold-500"
-                    : "border-border-strong",
-                )}
-              />
-              <span
-                className={cn(
-                  "flex-1 text-[12px]",
-                  t.status === "done"
-                    ? "text-text-muted line-through"
-                    : "text-text-primary",
-                )}
+          tasks.slice(0, 25).map((t) => {
+            const done = t.status === "done"
+            return (
+              <div
+                key={t.id}
+                className="card-glass px-3 py-2 flex items-center gap-2"
               >
-                {t.title}
-              </span>
-              {t.dueLabel && (
-                <span className="text-[10px] text-text-muted font-mono shrink-0">
-                  {t.dueLabel}
+                <button
+                  type="button"
+                  onClick={() => toggleTask(t.id, !done)}
+                  aria-label={done ? "Mark not done" : "Mark done"}
+                  className={cn(
+                    "w-3.5 h-3.5 rounded-sm border-[1.5px] shrink-0 flex items-center justify-center",
+                    done
+                      ? "bg-gold-500 border-gold-500"
+                      : "border-border-strong hover:border-gold-500",
+                  )}
+                >
+                  {done && <span className="text-[8px] text-text-on-gold">✓</span>}
+                </button>
+                <span
+                  className={cn(
+                    "flex-1 text-[12px]",
+                    done ? "text-text-muted line-through" : "text-text-primary",
+                  )}
+                >
+                  {t.title}
                 </span>
-              )}
-              {t.ownerName && (
-                <span className="text-[10px] text-text-muted shrink-0">
-                  {t.ownerName}
-                </span>
-              )}
-            </div>
-          ))
+                {t.dueLabel && (
+                  <span className="text-[10px] text-text-muted font-mono shrink-0">
+                    {t.dueLabel}
+                  </span>
+                )}
+                {t.ownerName && (
+                  <span className="text-[10px] text-text-muted shrink-0">
+                    {t.ownerName}
+                  </span>
+                )}
+              </div>
+            )
+          })
         )}
       </div>
     </div>
