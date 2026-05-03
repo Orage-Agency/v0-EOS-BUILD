@@ -19,6 +19,7 @@ import { requireUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/server/permissions"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { logAudit } from "@/lib/audit"
+import { notify } from "@/lib/notifications-server"
 import {
   UNASSIGNED_OWNER_ID,
   type MockTask,
@@ -118,6 +119,19 @@ export async function createTask(
       entityId: data.id as string,
       metadata: { title, ownerId, rockId, priority: data.priority, due: data.due_date },
     })
+    if (ownerId && ownerId !== user.id) {
+      await notify({
+        tenantId: user.workspaceId,
+        recipientId: ownerId,
+        actorId: user.id,
+        kind: "task_assigned",
+        entityType: "task",
+        entityId: data.id as string,
+        title: `${user.fullName ?? user.email} assigned you a task`,
+        body: title,
+        link: `/${workspaceSlug}/tasks`,
+      })
+    }
     revalidateTaskRoutes(workspaceSlug)
     return { ok: true, id: data.id as string, task: dbToMockTask(data as DbTask) }
   } catch (err) {
@@ -316,6 +330,23 @@ export async function updateTaskOwner(
       entityId: id,
       metadata: { field: "owner_id", value: ownerId },
     })
+    // Pull the title for a more useful notification body.
+    const { data: task } = await sb
+      .from("tasks")
+      .select("title")
+      .eq("id", id)
+      .maybeSingle()
+    await notify({
+      tenantId: user.workspaceId,
+      recipientId: ownerId,
+      actorId: user.id,
+      kind: "task_assigned",
+      entityType: "task",
+      entityId: id,
+      title: `${user.fullName ?? user.email} reassigned a task to you`,
+      body: (task?.title as string | undefined) ?? null,
+      link: `/${workspaceSlug}/tasks`,
+    })
     revalidateTaskRoutes(workspaceSlug)
     return { ok: true }
   } catch (err) {
@@ -425,6 +456,25 @@ export async function reassignTaskWithHandoff(
         to: input.toUserId,
         context: input.context.slice(0, 500),
       },
+    })
+    const { data: task } = await sb
+      .from("tasks")
+      .select("title")
+      .eq("id", input.taskId)
+      .maybeSingle()
+    await notify({
+      tenantId: user.workspaceId,
+      recipientId: input.toUserId,
+      actorId: user.id,
+      kind: "handoff",
+      entityType: "task",
+      entityId: input.taskId,
+      title: `${user.fullName ?? user.email} handed off a task to you`,
+      body:
+        (task?.title as string | undefined) ??
+        input.context.slice(0, 200) ??
+        null,
+      link: `/${workspaceSlug}/tasks`,
     })
     revalidateTaskRoutes(workspaceSlug)
     return { ok: true }

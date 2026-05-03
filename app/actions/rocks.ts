@@ -11,6 +11,7 @@ import { requireUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/server/permissions"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { logAudit } from "@/lib/audit"
+import { notify } from "@/lib/notifications-server"
 import { UNASSIGNED_OWNER_ID, type MockRock, type RockStatus } from "@/lib/mock-data"
 import type { DbRock } from "@/lib/db-types"
 
@@ -243,6 +244,22 @@ export async function updateRockOwner(
       entityType: "rock",
       entityId: id,
       metadata: { field: "owner_id", value: ownerId },
+    })
+    const { data: rock } = await sb
+      .from("rocks")
+      .select("title")
+      .eq("id", id)
+      .maybeSingle()
+    await notify({
+      tenantId: user.workspaceId,
+      recipientId: ownerId,
+      actorId: user.id,
+      kind: "rock_owner_changed",
+      entityType: "rock",
+      entityId: id,
+      title: `${user.fullName ?? user.email} made you the owner of a Rock`,
+      body: (rock?.title as string | undefined) ?? null,
+      link: `/${workspaceSlug}/rocks`,
     })
     revalidateRockRoutes(workspaceSlug)
     return { ok: true }
