@@ -10,6 +10,8 @@ import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import crypto from "crypto"
 import { ssoRequirementForEmail } from "@/app/actions/sso"
+import { sendEmail, htmlToText } from "@/lib/email"
+import { inviteEmail } from "@/lib/email-templates"
 
 function appUrl() {
   if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL
@@ -158,7 +160,7 @@ export async function createInvite(
 
   const { data: ws } = await supabase
     .from("workspaces")
-    .select("id")
+    .select("id, name")
     .eq("slug", workspaceSlug)
     .single()
 
@@ -178,6 +180,32 @@ export async function createInvite(
   if (error) return { error: error.message }
 
   const link = `${appUrl()}/accept-invite?token=${token}`
+
+  // Look up the inviter's display name for the email body. Fail soft —
+  // the invite link is still returned to the UI even if email/profile
+  // fetch errors out.
+  const admin = supabaseAdmin()
+  const { data: inviter } = await admin
+    .from("profiles")
+    .select("full_name, email")
+    .eq("id", user.id)
+    .maybeSingle()
+  const inviterName =
+    (inviter?.full_name as string | undefined) ??
+    (inviter?.email as string | undefined) ??
+    user.email ??
+    "An admin"
+
+  const { subject, html } = inviteEmail({
+    workspaceName: (ws.name as string) ?? "your workspace",
+    inviteUrl: link,
+    inviterName,
+    role,
+  })
+  // Fire-and-forget — never block the inviter waiting on the SMTP RTT.
+  sendEmail({ to: email, subject, html, text: htmlToText(html) }).catch((e) => {
+    console.error("[createInvite] sendEmail failed", e)
+  })
 
   revalidatePath(`/${workspaceSlug}/settings/members`)
   return { success: true, link }

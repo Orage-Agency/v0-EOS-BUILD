@@ -9,10 +9,24 @@
  */
 import { NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { sendEmail, htmlToText } from "@/lib/email"
+import { digestEmail } from "@/lib/email-templates"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
+
+function fmtRelative(iso: string): string {
+  const ts = new Date(iso).getTime()
+  if (Number.isNaN(ts)) return ""
+  const diffSec = Math.round((Date.now() - ts) / 1000)
+  if (diffSec < 60) return `${diffSec}s ago`
+  const diffMin = Math.round(diffSec / 60)
+  if (diffMin < 60) return `${diffMin}m ago`
+  const diffHr = Math.round(diffMin / 60)
+  if (diffHr < 24) return `${diffHr}h ago`
+  return `${Math.round(diffHr / 24)}d ago`
+}
 
 function authorized(req: Request): boolean {
   // Vercel Cron sets `Authorization: Bearer <CRON_SECRET>` when CRON_SECRET
@@ -65,18 +79,77 @@ export async function GET(req: Request) {
     byRecipient.set(r.recipient_id, arr)
   }
 
-  // Email vendor hook — swap when Resend/SMTP is wired.
-  // For now we only collect what we WOULD send and mark items emailed.
+  // Resolve recipient profiles + workspace names so we can address the email.
+  const recipientIds = Array.from(byRecipient.keys())
+  const tenantIds = Array.from(new Set(rows.map((r) => r.tenant_id)))
+  const [{ data: profiles }, { data: workspaces }] = await Promise.all([
+    sb
+      .from("profiles")
+      .select("id, email, full_name")
+      .in("id", recipientIds),
+    sb
+      .from("workspaces")
+      .select("id, name, slug")
+      .in("id", tenantIds),
+  ])
+  const profileById = new Map(
+    ((profiles ?? []) as Array<{ id: string; email: string; full_name: string | null }>).map(
+      (p) => [p.id, p],
+    ),
+  )
+  const workspaceById = new Map(
+    ((workspaces ?? []) as Array<{ id: string; name: string; slug: string }>).map((w) => [
+      w.id,
+      w,
+    ]),
+  )
+
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
+
+  let sentCount = 0
+  let skippedCount = 0
   const emailedIds: string[] = []
   for (const [recipientId, items] of byRecipient.entries()) {
-    const subject = `${items.length} new ${items.length === 1 ? "update" : "updates"} in Orage Core`
-    const lines = items.slice(0, 20).map((i) => `• ${i.title}${i.body ? ` — ${i.body}` : ""}`)
-    console.log("[cron/daily-digest] would email", {
-      recipientId,
-      subject,
-      preview: lines.slice(0, 3),
+    const profile = profileById.get(recipientId)
+    if (!profile?.email) {
+      skippedCount++
+      continue
+    }
+    // All notifications in this recipient's batch share the workspace if the
+    // user is in one; if multiple workspaces appear (rare — same email across
+    // tenants), pick the workspace of the first item.
+    const ws = workspaceById.get(items[0].tenant_id)
+    const wsName = ws?.name ?? "your workspace"
+    const inboxUrl = ws ? `${appUrl}/${ws.slug}/inbox` : `${appUrl}/`
+
+    const { subject, html } = digestEmail({
+      recipientName: profile.full_name ?? profile.email,
+      workspaceName: wsName,
+      inboxUrl,
+      items: items.map((i) => ({
+        title: i.title,
+        body: i.body,
+        relativeTime: fmtRelative(i.created_at),
+      })),
     })
-    for (const i of items) emailedIds.push(i.id)
+
+    const result = await sendEmail({
+      to: profile.email,
+      subject,
+      html,
+      text: htmlToText(html),
+    })
+    if (result.ok) {
+      sentCount++
+      for (const i of items) emailedIds.push(i.id)
+    } else {
+      console.error("[cron/daily-digest] send failed", {
+        recipientId,
+        error: result.error,
+      })
+    }
   }
 
   if (emailedIds.length > 0) {
@@ -89,6 +162,8 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ok: true,
     recipients: byRecipient.size,
+    sent: sentCount,
+    skipped: skippedCount,
     items: rows.length,
   })
 }
