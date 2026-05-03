@@ -40,9 +40,21 @@ export async function proxy(request: NextRequest) {
 
   const {
     data: { user },
+    error: authErr,
   } = await supabase.auth.getUser()
 
   const path = request.nextUrl.pathname
+
+  // TEMP DEBUG — remove once login redirect issue is resolved.
+  if (path === "/orage-team" || path.startsWith("/orage-team/")) {
+    console.log("[proxy/debug]", {
+      path,
+      hasUser: !!user,
+      userEmail: user?.email,
+      authErr: authErr?.message,
+      cookieNames: request.cookies.getAll().map((c) => c.name),
+    })
+  }
 
   // Allow root sign-up + auth pages without session
   if (PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + "/"))) {
