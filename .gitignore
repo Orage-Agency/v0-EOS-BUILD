@@ -14,3 +14,4 @@ node_modules
 tsconfig.tsbuildinfo
 .vercel
 supabase/.temp/
+.cookie-value.tmp
