@@ -107,23 +107,32 @@ export const getCurrentUser = cache(
 
     if (!profile) return null
 
+    // Two-step lookup: workspace first, then membership by workspace_id.
+    // The PostgREST FK alias filter `workspaces.slug` is unreliable in this
+    // codebase (same workaround used in lib/people-server.ts).
+    const { data: ws } = await supabase
+      .from("workspaces")
+      .select("id, slug, name")
+      .eq("slug", workspaceSlug)
+      .maybeSingle()
+
+    if (!ws) {
+      // No workspace by that slug — only master can land here, and even then
+      // there's nothing to scope into. Return null.
+      return null
+    }
+
     const { data: membership } = await supabase
       .from("workspace_memberships")
-      .select("role, workspace:workspaces(id, slug, name)")
+      .select("role")
       .eq("user_id", user.id)
-      .eq("workspaces.slug", workspaceSlug)
+      .eq("workspace_id", ws.id)
       .eq("status", "active")
-      .single()
+      .maybeSingle()
 
-    if (!membership || !membership.workspace) {
-      // Master users can access any workspace
+    if (!membership) {
+      // Master users can access any workspace.
       if (profile.is_master) {
-        const { data: ws } = await supabase
-          .from("workspaces")
-          .select("id, slug, name")
-          .eq("slug", workspaceSlug)
-          .single()
-        if (!ws) return null
         return {
           id: user.id,
           email: profile.email,
@@ -132,19 +141,13 @@ export const getCurrentUser = cache(
           timezone: profile.timezone,
           isMaster: true,
           onboardingCompleted: !!profile.onboarding_completed_at,
-          workspaceId: ws.id,
-          workspaceSlug: ws.slug,
-          workspaceName: ws.name,
+          workspaceId: ws.id as string,
+          workspaceSlug: ws.slug as string,
+          workspaceName: ws.name as string,
           role: "master" as Role,
         }
       }
       return null
-    }
-
-    const workspace = membership.workspace as unknown as {
-      id: string
-      slug: string
-      name: string
     }
 
     return {
@@ -155,9 +158,9 @@ export const getCurrentUser = cache(
       timezone: profile.timezone,
       isMaster: profile.is_master,
       onboardingCompleted: !!profile.onboarding_completed_at,
-      workspaceId: workspace.id,
-      workspaceSlug: workspace.slug,
-      workspaceName: workspace.name,
+      workspaceId: ws.id as string,
+      workspaceSlug: ws.slug as string,
+      workspaceName: ws.name as string,
       role: membership.role as Role,
     }
   },

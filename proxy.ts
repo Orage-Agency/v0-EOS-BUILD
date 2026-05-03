@@ -133,17 +133,25 @@ export async function proxy(request: NextRequest) {
     if (!userId) {
       return NextResponse.redirect(new URL("/login", request.url))
     }
-    const { data } = await supabase
+    // Two-step lookup: PostgREST's `workspace:workspaces(slug)` FK alias
+    // join is unreliable in this codebase (see lib/people-server.ts +
+    // lib/auth.ts). Fetch a membership row, then resolve its workspace.
+    const { data: mem } = await supabase
       .from("workspace_memberships")
-      .select("workspace:workspaces(slug)")
+      .select("workspace_id")
       .eq("user_id", userId)
       .eq("status", "active")
       .limit(1)
-      .single()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const slug = (data?.workspace as any)?.slug
-    if (slug) {
-      return NextResponse.redirect(new URL(`/${slug}`, request.url))
+      .maybeSingle()
+    if (mem?.workspace_id) {
+      const { data: ws } = await supabase
+        .from("workspaces")
+        .select("slug")
+        .eq("id", mem.workspace_id)
+        .maybeSingle()
+      if (ws?.slug) {
+        return NextResponse.redirect(new URL(`/${ws.slug}`, request.url))
+      }
     }
     return NextResponse.redirect(new URL("/login", request.url))
   }
