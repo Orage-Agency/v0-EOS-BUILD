@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
+import { getCurrentUser } from "@/lib/auth"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -49,6 +50,18 @@ export async function GET() {
       stage = "json-parse-failed: " + (e instanceof Error ? e.message : "?")
     }
   }
+  // Now call getCurrentUser to see what IT does with the same cookies.
+  let getCurrentUserResult: unknown = null
+  let getCurrentUserError: string | null = null
+  try {
+    const u = await getCurrentUser("orage-team")
+    getCurrentUserResult = u
+      ? { id: u.id, email: u.email, role: u.role, workspace: u.workspaceSlug }
+      : null
+  } catch (e) {
+    getCurrentUserError = e instanceof Error ? e.message : String(e)
+  }
+
   return NextResponse.json({
     stage,
     sbCookieNames: sb.map((c) => c.name),
@@ -57,5 +70,7 @@ export async function GET() {
     userIdFromJwt,
     claimsExp: (claims as { exp?: number } | null)?.exp ?? null,
     nowSec: Math.floor(Date.now() / 1000),
+    getCurrentUserResult,
+    getCurrentUserError,
   })
 }
