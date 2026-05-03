@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { slugify, SLUG_RE } from "./auth"
+import { slugify, SLUG_RE } from "@/lib/slug"
 
 describe("slugify (workspace name → URL slug)", () => {
   it("lowercases and replaces spaces with hyphens", () => {

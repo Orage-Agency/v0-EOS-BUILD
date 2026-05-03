@@ -46,21 +46,8 @@ export async function signUpMaster(email: string, password: string, fullName: st
 // onboarding wizard. This is what /signup wires up — replaces the
 // master-only bootstrap path.
 
-export const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/
-
-export function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .trim()
-    // Treat whitespace and underscores as word separators FIRST so they
-    // don't get stripped before they can become hyphens.
-    .replace(/[\s_]+/g, "-")
-    // Now strip anything that isn't a-z, 0-9, or the hyphen separator.
-    .replace(/[^a-z0-9-]/g, "")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40)
-}
+// Re-import from lib/slug — "use server" files can only export async functions.
+import { slugify, SLUG_RE } from "@/lib/slug"
 
 async function uniqueSlug(
   base: string,
