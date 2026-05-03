@@ -11,6 +11,7 @@ import {
 } from "@/lib/onboarding-store"
 import { useVTOStore } from "@/lib/vto-store"
 import { createRock as createRockAction } from "@/app/actions/rocks"
+import { saveVTOData } from "@/app/actions/vto"
 import { completeOnboarding } from "@/app/actions/onboarding"
 import { cn } from "@/lib/utils"
 
@@ -117,6 +118,26 @@ export function OnboardingWizard({
     if (draft.purpose) setPurpose(draft.purpose)
     if (draft.niche) setNiche(draft.niche)
     if (draft.tenYearTarget) setTenYearTarget(draft.tenYearTarget)
+
+    // Persist V/TO to the workspace so the /vto page reflects what the user
+    // typed during onboarding. Without this, the wizard answers only live
+    // in zustand persistence and disappear on a different device.
+    try {
+      const vtoPayload: Record<string, unknown> = {}
+      if (draft.purpose) vtoPayload.purpose = draft.purpose
+      if (draft.niche) vtoPayload.niche = draft.niche
+      if (draft.tenYearTarget) vtoPayload.tenYearTarget = draft.tenYearTarget
+      if (draft.coreValues?.length)
+        vtoPayload.coreValues = draft.coreValues.filter((v: string) => v?.trim())
+      if (draft.oneYearGoals?.length)
+        vtoPayload.oneYearGoals = draft.oneYearGoals.filter((v: string) => v?.trim())
+      if (Object.keys(vtoPayload).length > 0) {
+        await saveVTOData(workspaceSlug, vtoPayload)
+      }
+    } catch (err) {
+      console.error("[v0] saveVTOData failed during onboarding", err)
+      // Non-fatal: rocks/onboarding-completion still proceed.
+    }
 
     const validRocks = draft.rocks.filter((r) => r.title.trim().length > 0)
     const due = isoDateInDays(90)
