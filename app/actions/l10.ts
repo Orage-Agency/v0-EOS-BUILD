@@ -102,22 +102,48 @@ export async function saveMeetingState(
 export async function sendMeetingRecap(
   workspaceSlug: string,
   meeting: Meeting,
-): Promise<{ ok: boolean; sent: number; error?: string }> {
+): Promise<{ ok: boolean; sent: number; failed?: number; error?: string }> {
   try {
     const user = await requireUser(workspaceSlug)
     const sb = supabaseAdmin()
 
+    // Verify the meeting belongs to the caller's workspace before fanning
+    // out emails — the client supplies the Meeting object, so trust the
+    // server's record over what was passed in.
+    if (!isUuid(meeting.id)) return { ok: false, sent: 0, error: "Invalid meeting id" }
+    const { data: meetingRow } = await sb
+      .from("meetings")
+      .select("id")
+      .eq("id", meeting.id)
+      .eq("tenant_id", user.workspaceId)
+      .maybeSingle()
+    if (!meetingRow) return { ok: false, sent: 0, error: "Meeting not found in this workspace" }
+
     // Resolve participants → emails. Client-side IDs may be the demo `u_xxx`
-    // strings, so we filter to UUIDs only — those are real members.
+    // strings, so we filter to UUIDs only — those are real members. Then
+    // intersect with active workspace memberships so the recap can't be
+    // weaponized to email arbitrary user ids.
     const realIds = meeting.participants
       .map((p) => p.userId)
       .filter((id) => isUuid(id))
     if (realIds.length === 0) return { ok: true, sent: 0 }
 
+    const { data: memberRows } = await sb
+      .from("workspace_memberships")
+      .select("user_id")
+      .eq("workspace_id", user.workspaceId)
+      .eq("status", "active")
+      .in("user_id", realIds)
+    const memberIds = new Set(
+      ((memberRows ?? []) as Array<{ user_id: string }>).map((m) => m.user_id),
+    )
+    const scopedIds = realIds.filter((id) => memberIds.has(id))
+    if (scopedIds.length === 0) return { ok: true, sent: 0 }
+
     const { data: profiles } = await sb
       .from("profiles")
       .select("id, email, full_name")
-      .in("id", realIds)
+      .in("id", scopedIds)
     const recipients = ((profiles ?? []) as Array<{
       id: string
       email: string
@@ -181,6 +207,8 @@ export async function sendMeetingRecap(
     const { sendEmail, htmlToText } = await import("@/lib/email")
 
     let sent = 0
+    let failed = 0
+    let lastError: string | undefined
     for (const r of recipients) {
       const result = await sendEmail({
         to: r.email,
@@ -188,9 +216,24 @@ export async function sendMeetingRecap(
         html,
         text: htmlToText(html),
       })
-      if (result.ok) sent++
+      if (result.ok) {
+        sent++
+      } else {
+        failed++
+        lastError = result.error
+      }
     }
-    return { ok: true, sent }
+    // If every send failed, surface that to the UI instead of pretending
+    // the recap went out — the caller can show a retry/error state.
+    if (sent === 0 && failed > 0) {
+      return {
+        ok: false,
+        sent,
+        failed,
+        error: lastError ?? "All recap emails failed to send",
+      }
+    }
+    return { ok: true, sent, failed }
   } catch (err) {
     return {
       ok: false,

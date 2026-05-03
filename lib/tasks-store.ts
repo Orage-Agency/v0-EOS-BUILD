@@ -234,8 +234,9 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     }, 800)
   },
   updateDescription: (id, description) => {
-    // description is not currently in MockTask shape; we still persist
-    set((state) => state)
+    set((state) => ({
+      tasks: state.tasks.map((t) => (t.id === id ? { ...t, description } : t)),
+    }))
     const { workspaceSlug } = get()
     if (!workspaceSlug || !isDbId(id)) return
     if (_descSaveTimer) clearTimeout(_descSaveTimer)

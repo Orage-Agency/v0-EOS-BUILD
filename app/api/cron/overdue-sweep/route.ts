@@ -13,7 +13,11 @@ export const maxDuration = 60
 
 function authorized(req: Request): boolean {
   const secret = process.env.CRON_SECRET
-  if (!secret) return true
+  if (!secret) {
+    // Production must fail closed — see daily-digest route for context.
+    if (process.env.NODE_ENV === "production") return false
+    return true
+  }
   const auth = req.headers.get("authorization") ?? ""
   return auth === `Bearer ${secret}`
 }

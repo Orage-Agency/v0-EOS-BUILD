@@ -18,7 +18,13 @@ export type RateLimitDecision =
 
 /**
  * Decide whether `userId` may make another AI request right now.
- * On allow, also writes a row to ai_request_log so the next call counts it.
+ *
+ * Insert-then-count: the previous check-then-insert ordering let parallel
+ * requests both pass the limit before either recorded, so a user could
+ * burst past their quota with concurrent calls. We now insert first, then
+ * count rows in the window. If the post-insert count exceeds the cap, we
+ * delete the row we just wrote and reject the request. This is the
+ * tightest non-transactional guard available without a stored procedure.
  */
 export async function checkAndRecordAIRequest(args: {
   tenantId: string
@@ -30,8 +36,26 @@ export async function checkAndRecordAIRequest(args: {
   const oneHourAgo = new Date(now - 60 * 60 * 1000).toISOString()
   const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000).toISOString()
 
-  // Two count queries are cheaper than fetching rows; the index on
-  // (user_id, created_at DESC) makes both fast even with thousands of rows.
+  const { data: inserted, error: insertErr } = await sb
+    .from("ai_request_log")
+    .insert({
+      tenant_id: args.tenantId,
+      user_id: args.userId,
+      endpoint: args.endpoint,
+    })
+    .select("id")
+    .single()
+
+  // Failure to log is fail-open — better to serve the user than 500 on a
+  // flaky log write. Returns ok with conservative remaining counts.
+  if (insertErr || !inserted) {
+    return {
+      ok: true,
+      remainingHour: DEFAULTS.perHour,
+      remainingDay: DEFAULTS.perDay,
+    }
+  }
+
   const [{ count: hourCount }, { count: dayCount }] = await Promise.all([
     sb
       .from("ai_request_log")
@@ -48,7 +72,8 @@ export async function checkAndRecordAIRequest(args: {
   const usedHour = hourCount ?? 0
   const usedDay = dayCount ?? 0
 
-  if (usedHour >= DEFAULTS.perHour) {
+  if (usedHour > DEFAULTS.perHour) {
+    await sb.from("ai_request_log").delete().eq("id", (inserted as { id: string }).id)
     return {
       ok: false,
       reason: "hour",
@@ -56,7 +81,8 @@ export async function checkAndRecordAIRequest(args: {
       message: `AI rate limit hit: ${DEFAULTS.perHour} requests/hour. Try again later.`,
     }
   }
-  if (usedDay >= DEFAULTS.perDay) {
+  if (usedDay > DEFAULTS.perDay) {
+    await sb.from("ai_request_log").delete().eq("id", (inserted as { id: string }).id)
     return {
       ok: false,
       reason: "day",
@@ -65,17 +91,9 @@ export async function checkAndRecordAIRequest(args: {
     }
   }
 
-  // Record this request before letting it through. Failure here doesn't
-  // block — we'd rather serve the user than 500 on a flaky log write.
-  await sb.from("ai_request_log").insert({
-    tenant_id: args.tenantId,
-    user_id: args.userId,
-    endpoint: args.endpoint,
-  })
-
   return {
     ok: true,
-    remainingHour: DEFAULTS.perHour - usedHour - 1,
-    remainingDay: DEFAULTS.perDay - usedDay - 1,
+    remainingHour: Math.max(0, DEFAULTS.perHour - usedHour),
+    remainingDay: Math.max(0, DEFAULTS.perDay - usedDay),
   }
 }

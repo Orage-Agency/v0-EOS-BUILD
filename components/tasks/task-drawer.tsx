@@ -382,10 +382,7 @@ export function TaskDrawer() {
                 </div>
                 <textarea
                   value={descDraft}
-                  onChange={(e) => {
-                    setDescDraft(e.target.value)
-                    updateDescription(task.id, e.target.value)
-                  }}
+                  onChange={(e) => setDescDraft(e.target.value)}
                   onBlur={commitDescription}
                   placeholder="Add a description…"
                   className="w-full min-h-[88px] resize-y rounded-md border border-border-orage bg-bg-3 px-3 py-2 text-[13px] leading-relaxed text-text-primary outline-none transition-colors focus:border-gold-500/50"

@@ -29,10 +29,14 @@ function fmtRelative(iso: string): string {
 }
 
 function authorized(req: Request): boolean {
-  // Vercel Cron sets `Authorization: Bearer <CRON_SECRET>` when CRON_SECRET
-  // is configured in project env. Locally / on first deploy we accept all.
   const secret = process.env.CRON_SECRET
-  if (!secret) return true
+  if (!secret) {
+    // In production, missing CRON_SECRET must be a fail-closed default —
+    // anyone could otherwise trigger the cron. Local/dev still accepts all
+    // so smoke tests aren't blocked by the env var.
+    if (process.env.NODE_ENV === "production") return false
+    return true
+  }
   const auth = req.headers.get("authorization") ?? ""
   return auth === `Bearer ${secret}`
 }
@@ -72,26 +76,39 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, recipients: 0, items: 0 })
   }
 
-  const byRecipient = new Map<string, Pending[]>()
+  // Bucket by (recipient_id, tenant_id) — a user who is a member of two
+  // workspaces gets two separate emails, one per workspace. Mixing them
+  // would leak titles/bodies from workspace A into the digest sent for
+  // workspace B.
+  const byRecipientTenant = new Map<string, Pending[]>()
+  const keyFor = (rid: string, tid: string) => `${rid}::${tid}`
   for (const r of rows) {
-    const arr = byRecipient.get(r.recipient_id) ?? []
+    const k = keyFor(r.recipient_id, r.tenant_id)
+    const arr = byRecipientTenant.get(k) ?? []
     arr.push(r)
-    byRecipient.set(r.recipient_id, arr)
+    byRecipientTenant.set(k, arr)
   }
 
   // Resolve recipient profiles + workspace names so we can address the email.
-  const recipientIds = Array.from(byRecipient.keys())
+  const recipientIds = Array.from(new Set(rows.map((r) => r.recipient_id)))
   const tenantIds = Array.from(new Set(rows.map((r) => r.tenant_id)))
-  const [{ data: profiles }, { data: workspaces }] = await Promise.all([
-    sb
-      .from("profiles")
-      .select("id, email, full_name")
-      .in("id", recipientIds),
-    sb
-      .from("workspaces")
-      .select("id, name, slug")
-      .in("id", tenantIds),
-  ])
+  const [{ data: profiles }, { data: workspaces }, { data: memberships }] =
+    await Promise.all([
+      sb
+        .from("profiles")
+        .select("id, email, full_name")
+        .in("id", recipientIds),
+      sb
+        .from("workspaces")
+        .select("id, name, slug")
+        .in("id", tenantIds),
+      sb
+        .from("workspace_memberships")
+        .select("user_id, workspace_id")
+        .in("user_id", recipientIds)
+        .in("workspace_id", tenantIds)
+        .eq("status", "active"),
+    ])
   const profileById = new Map(
     ((profiles ?? []) as Array<{ id: string; email: string; full_name: string | null }>).map(
       (p) => [p.id, p],
@@ -103,6 +120,13 @@ export async function GET(req: Request) {
       w,
     ]),
   )
+  // Set of valid (user, workspace) pairs — anything missing here is a
+  // stale notification (recipient is no longer a member) and gets skipped.
+  const activeMembership = new Set(
+    ((memberships ?? []) as Array<{ user_id: string; workspace_id: string }>).map(
+      (m) => keyFor(m.user_id, m.workspace_id),
+    ),
+  )
 
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ??
@@ -111,16 +135,18 @@ export async function GET(req: Request) {
   let sentCount = 0
   let skippedCount = 0
   const emailedIds: string[] = []
-  for (const [recipientId, items] of byRecipient.entries()) {
+  for (const [k, items] of byRecipientTenant.entries()) {
+    const [recipientId, tenantId] = k.split("::")
+    if (!activeMembership.has(k)) {
+      skippedCount++
+      continue
+    }
     const profile = profileById.get(recipientId)
     if (!profile?.email) {
       skippedCount++
       continue
     }
-    // All notifications in this recipient's batch share the workspace if the
-    // user is in one; if multiple workspaces appear (rare — same email across
-    // tenants), pick the workspace of the first item.
-    const ws = workspaceById.get(items[0].tenant_id)
+    const ws = workspaceById.get(tenantId)
     const wsName = ws?.name ?? "your workspace"
     const inboxUrl = ws ? `${appUrl}/${ws.slug}/inbox` : `${appUrl}/`
 
@@ -161,7 +187,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     ok: true,
-    recipients: byRecipient.size,
+    recipients: byRecipientTenant.size,
     sent: sentCount,
     skipped: skippedCount,
     items: rows.length,

@@ -128,7 +128,7 @@ export default function MembersPage() {
 
   async function handleRevoke(id: string) {
     if (!confirm("Revoke this invite? The link will no longer work.")) return
-    await revokeInvite(id)
+    await revokeInvite(workspaceSlug, id)
     loadData()
   }
 

@@ -24,6 +24,26 @@ export function buildTools({
 }) {
   const sb = supabaseAdmin()
 
+  // Confirm `ownerId` (when supplied by the model) is an active member of
+  // the current workspace before we let it be written to a row's owner_id
+  // column. Demo user ids (u_geo etc.) are accepted — they map to mock
+  // users surfaced via list_users, not real DB rows. Without this guard
+  // the AI could be coaxed into reassigning work to a UUID from a
+  // different workspace if the id leaked.
+  async function ownerIdAllowed(ownerId: string | null | undefined): Promise<boolean> {
+    if (!ownerId) return true
+    if (ownerId.startsWith("u_")) return true
+    if (ownerId === userId) return true
+    const { data } = await sb
+      .from("workspace_memberships")
+      .select("user_id")
+      .eq("workspace_id", tenantId)
+      .eq("user_id", ownerId)
+      .eq("status", "active")
+      .maybeSingle()
+    return Boolean(data)
+  }
+
   return {
     read_rocks: tool({
       description:
@@ -241,6 +261,9 @@ export function buildTools({
         parentRockId: z.string().nullable(),
       }),
       execute: async ({ title, ownerId, priority, dueDate, parentRockId }) => {
+        if (!(await ownerIdAllowed(ownerId))) {
+          return { error: "ownerId is not a member of this workspace" }
+        }
         const { data, error } = await sb
           .from("tasks")
           .insert({
@@ -270,6 +293,9 @@ export function buildTools({
         rank: z.number().int().nullable(),
       }),
       execute: async ({ title, description, ownerId, rank }) => {
+        if (!(await ownerIdAllowed(ownerId))) {
+          return { error: "ownerId is not a member of this workspace" }
+        }
         const { data, error } = await sb
           .from("issues")
           .insert({
@@ -299,6 +325,9 @@ export function buildTools({
         ownerId: z.string().nullable(),
       }),
       execute: async ({ id, status, priority, dueDate, ownerId }) => {
+        if (ownerId !== null && !(await ownerIdAllowed(ownerId))) {
+          return { error: "ownerId is not a member of this workspace" }
+        }
         const patch: Record<string, unknown> = {}
         if (status !== null) {
           patch.status = status
@@ -445,6 +474,9 @@ export function buildTools({
         tag: z.string().nullable().describe("Department/area tag, e.g. SALES, PRODUCT"),
       }),
       execute: async ({ title, description, ownerId, dueDate, quarter, tag }) => {
+        if (!(await ownerIdAllowed(ownerId))) {
+          return { error: "ownerId is not a member of this workspace" }
+        }
         const { data, error } = await sb
           .from("rocks")
           .insert({
@@ -478,6 +510,9 @@ export function buildTools({
         dueDate: z.string().nullable().describe("YYYY-MM-DD or null"),
       }),
       execute: async ({ id, title, description, progress, ownerId, dueDate }) => {
+        if (ownerId !== null && !(await ownerIdAllowed(ownerId))) {
+          return { error: "ownerId is not a member of this workspace" }
+        }
         const patch: Record<string, unknown> = {}
         if (title !== null) patch.title = title
         if (description !== null) patch.description = description
@@ -512,6 +547,9 @@ export function buildTools({
         pinnedForL10: z.boolean().nullable(),
       }),
       execute: async ({ id, stage, status, severity, ownerId, pinnedForL10 }) => {
+        if (ownerId !== null && !(await ownerIdAllowed(ownerId))) {
+          return { error: "ownerId is not a member of this workspace" }
+        }
         const patch: Record<string, unknown> = {}
         if (stage !== null) patch.stage = stage
         if (status !== null) {

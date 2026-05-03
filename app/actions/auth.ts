@@ -12,6 +12,8 @@ import crypto from "crypto"
 import { ssoRequirementForEmail } from "@/app/actions/sso"
 import { sendEmail, htmlToText } from "@/lib/email"
 import { inviteEmail } from "@/lib/email-templates"
+import { getCurrentUser } from "@/lib/auth"
+import { requirePermission, PermissionError } from "@/lib/server/permissions"
 
 function appUrl() {
   if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL
@@ -253,13 +255,20 @@ export async function createInvite(
   email: string,
   role: "admin" | "leader" | "member" | "viewer",
 ) {
-  const supabase = await createClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // requireUser() can't be called from inside a "use server" file because
+  // it redirects on failure (which the catch-block UI can't recover from).
+  // Use getCurrentUser instead so we surface a normal error.
+  const user = await getCurrentUser(workspaceSlug)
   if (!user) return { error: "Not authenticated" }
 
+  try {
+    requirePermission(user, "people:invite")
+  } catch (e) {
+    if (e instanceof PermissionError) return { error: e.message }
+    throw e
+  }
+
+  const supabase = await createClient()
   const { data: ws } = await supabase
     .from("workspaces")
     .select("id, name")
@@ -267,8 +276,9 @@ export async function createInvite(
     .single()
 
   if (!ws) return { error: "Workspace not found" }
+  // user.workspaceId already verified membership in this workspace.
+  if ((ws.id as string) !== user.workspaceId) return { error: "Workspace mismatch" }
 
-  // Permission check happens via RLS — only admin+ can insert
   const token = crypto.randomBytes(32).toString("hex")
 
   const { error } = await supabase.from("workspace_invites").insert({
@@ -414,13 +424,25 @@ export async function changePassword(newPassword: string) {
 }
 
 // ─── REVOKE INVITE ───
-export async function revokeInvite(inviteId: string) {
-  const supabase = await createClient()
-  const { error } = await supabase
+export async function revokeInvite(workspaceSlug: string, inviteId: string) {
+  const user = await getCurrentUser(workspaceSlug)
+  if (!user) return { error: "Not authenticated" }
+
+  try {
+    requirePermission(user, "people:invite")
+  } catch (e) {
+    if (e instanceof PermissionError) return { error: e.message }
+    throw e
+  }
+
+  const admin = supabaseAdmin()
+  const { error } = await admin
     .from("workspace_invites")
     .update({ status: "revoked" })
     .eq("id", inviteId)
+    .eq("workspace_id", user.workspaceId)
 
   if (error) return { error: error.message }
+  revalidatePath(`/${workspaceSlug}/settings/members`)
   return { success: true }
 }
