@@ -24,6 +24,7 @@ import {
   type IssueStage,
   type ResolvePath,
 } from "@/lib/issues-seed"
+import { reconcile } from "@/lib/store-helpers"
 import { updateIssue as updateIssueAction, togglePinForL10 as togglePinForL10Action } from "@/app/actions/issues"
 
 let _contextSaveTimer: ReturnType<typeof setTimeout> | null = null
@@ -123,32 +124,49 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
     }),
 
   setStage: (id, stage) => {
+    const prev = get().issues.find((i) => i.id === id)
+    if (!prev) return
     set((state) => ({
       issues: state.issues.map((i) => (i.id === id ? { ...i, stage } : i)),
     }))
     const slug = get().workspaceSlug
     if (slug && isDbIssueId(id)) {
-      updateIssueAction(slug, id, { stage }).catch(console.error)
+      reconcile(
+        updateIssueAction(slug, id, { stage }),
+        () =>
+          set((state) => ({
+            issues: state.issues.map((i) => (i.id === id ? prev : i)),
+          })),
+        "Couldn't move issue",
+      )
     }
   },
 
   togglePin: (id) => {
-    let pinned = false
-    set((state) => {
-      const updated = state.issues.map((i) => {
-        if (i.id !== id) return i
-        pinned = !i.pinnedForL10
-        return { ...i, pinnedForL10: pinned }
-      })
-      return { issues: updated }
-    })
+    const prev = get().issues.find((i) => i.id === id)
+    if (!prev) return
+    const pinned = !prev.pinnedForL10
+    set((state) => ({
+      issues: state.issues.map((i) =>
+        i.id === id ? { ...i, pinnedForL10: pinned } : i,
+      ),
+    }))
     const slug = get().workspaceSlug
     if (slug && isDbIssueId(id)) {
-      togglePinForL10Action(slug, id, pinned).catch(console.error)
+      reconcile(
+        togglePinForL10Action(slug, id, pinned),
+        () =>
+          set((state) => ({
+            issues: state.issues.map((i) => (i.id === id ? prev : i)),
+          })),
+        "Couldn't pin issue",
+      )
     }
   },
 
   updateContext: (id, context) => {
+    const prev = get().issues.find((i) => i.id === id)
+    if (!prev) return
     set((state) => ({
       issues: state.issues.map((i) => (i.id === id ? { ...i, context } : i)),
     }))
@@ -156,12 +174,21 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
     if (slug && isDbIssueId(id)) {
       if (_contextSaveTimer) clearTimeout(_contextSaveTimer)
       _contextSaveTimer = setTimeout(() => {
-        updateIssueAction(slug, id, { context }).catch(console.error)
+        reconcile(
+          updateIssueAction(slug, id, { context }),
+          () =>
+            set((state) => ({
+              issues: state.issues.map((i) => (i.id === id ? prev : i)),
+            })),
+          "Couldn't save issue context",
+        )
       }, 800)
     }
   },
 
   updateTitle: (id, title) => {
+    const prev = get().issues.find((i) => i.id === id)
+    if (!prev) return
     set((state) => ({
       issues: state.issues.map((i) => (i.id === id ? { ...i, title } : i)),
     }))
@@ -169,7 +196,14 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
     if (slug && isDbIssueId(id)) {
       if (_titleSaveTimer) clearTimeout(_titleSaveTimer)
       _titleSaveTimer = setTimeout(() => {
-        updateIssueAction(slug, id, { title }).catch(console.error)
+        reconcile(
+          updateIssueAction(slug, id, { title }),
+          () =>
+            set((state) => ({
+              issues: state.issues.map((i) => (i.id === id ? prev : i)),
+            })),
+          "Couldn't save issue title",
+        )
       }, 800)
     }
   },

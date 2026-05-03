@@ -35,13 +35,15 @@ export function Composer() {
             }
           }}
           rows={2}
-          disabled={streaming}
+          // Stay editable while the AI is responding — the user should be
+          // able to draft the next prompt without waiting for the stream
+          // to finish. Only Send is gated by `streaming`.
           placeholder={
             streaming
-              ? "Implementer is responding… press Stop to cancel."
+              ? "Drafting next message… (Stop the response to send)"
               : "Ask the implementer anything · @ to mention · / for commands · pin context above…"
           }
-          className="w-full bg-transparent px-3.5 py-3 text-[13px] text-text-primary placeholder:text-text-dim focus:outline-none resize-none leading-snug disabled:opacity-60"
+          className="w-full bg-transparent px-3.5 py-3 text-[13px] text-text-primary placeholder:text-text-dim focus:outline-none resize-none leading-snug"
         />
         <div className="flex items-center gap-2 px-3 py-2 border-t border-border-orage/70">
           <button

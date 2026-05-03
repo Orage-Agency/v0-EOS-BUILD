@@ -4,6 +4,7 @@ import { create } from "zustand"
 import { type MockRock, type RockStatus, UNASSIGNED_OWNER_ID } from "@/lib/mock-data"
 import type { Role } from "@/types/permissions"
 import type { WorkspaceMember } from "@/lib/tasks-server"
+import { reconcile } from "@/lib/store-helpers"
 import {
   updateRockStatus as updateRockStatusAction,
   updateRockProgress as updateRockProgressAction,
@@ -261,65 +262,126 @@ export const useRocksStore = create<RocksState>((set, get) => ({
   closeNewRock: () => set({ newRockOpen: false }),
 
   updateStatus: (id, status) => {
+    const prev = get().rocks.find((r) => r.id === id)
+    if (!prev) return
     set((state) => ({
       rocks: state.rocks.map((r) => (r.id === id ? { ...r, status } : r)),
     }))
     const { workspaceSlug } = get()
     if (workspaceSlug && isDbId(id)) {
-      updateRockStatusAction(workspaceSlug, id, status).catch(console.error)
+      reconcile(
+        updateRockStatusAction(workspaceSlug, id, status),
+        () =>
+          set((state) => ({
+            rocks: state.rocks.map((r) => (r.id === id ? prev : r)),
+          })),
+        "Couldn't update rock status",
+      )
     }
   },
   updateProgress: (id, progress) => {
+    const prev = get().rocks.find((r) => r.id === id)
+    if (!prev) return
     const clamped = Math.max(0, Math.min(100, Math.round(progress)))
     set((state) => ({
       rocks: state.rocks.map((r) => (r.id === id ? { ...r, progress: clamped } : r)),
     }))
     const { workspaceSlug } = get()
     if (workspaceSlug && isDbId(id)) {
-      debounceSave(`progress:${id}`, () => {
-        updateRockProgressAction(workspaceSlug, id, clamped).catch(console.error)
-      }, 400)
+      debounceSave(
+        `progress:${id}`,
+        () => {
+          reconcile(
+            updateRockProgressAction(workspaceSlug, id, clamped),
+            () =>
+              set((state) => ({
+                rocks: state.rocks.map((r) => (r.id === id ? prev : r)),
+              })),
+            "Couldn't update progress",
+          )
+        },
+        400,
+      )
     }
   },
   updateTitle: (id, title) => {
+    const prev = get().rocks.find((r) => r.id === id)
+    if (!prev) return
     set((state) => ({
       rocks: state.rocks.map((r) => (r.id === id ? { ...r, title } : r)),
     }))
     const { workspaceSlug } = get()
     if (!workspaceSlug || !isDbId(id)) return
     debounceSave(`title:${id}`, () => {
-      updateRockTitleAction(workspaceSlug, id, title).catch(console.error)
+      reconcile(
+        updateRockTitleAction(workspaceSlug, id, title),
+        () =>
+          set((state) => ({
+            rocks: state.rocks.map((r) => (r.id === id ? prev : r)),
+          })),
+        "Couldn't save rock title",
+      )
     })
   },
   updateDescription: (id, description) => {
+    const prev = get().rocks.find((r) => r.id === id)
+    if (!prev) return
     set((state) => ({
       rocks: state.rocks.map((r) => (r.id === id ? { ...r, description } : r)),
     }))
     const { workspaceSlug } = get()
     if (!workspaceSlug || !isDbId(id)) return
     debounceSave(`desc:${id}`, () => {
-      updateRockDescriptionAction(workspaceSlug, id, description).catch(console.error)
+      reconcile(
+        updateRockDescriptionAction(workspaceSlug, id, description),
+        () =>
+          set((state) => ({
+            rocks: state.rocks.map((r) => (r.id === id ? prev : r)),
+          })),
+        "Couldn't save rock description",
+      )
     })
   },
   updateOwner: (id, ownerId) => {
+    const prev = get().rocks.find((r) => r.id === id)
+    if (!prev) return
     set((state) => ({
       rocks: state.rocks.map((r) => (r.id === id ? { ...r, owner: ownerId } : r)),
     }))
     const { workspaceSlug } = get()
     if (workspaceSlug && isDbId(id) && isDbId(ownerId)) {
-      updateRockOwnerAction(workspaceSlug, id, ownerId).catch(console.error)
+      reconcile(
+        updateRockOwnerAction(workspaceSlug, id, ownerId),
+        () =>
+          set((state) => ({
+            rocks: state.rocks.map((r) => (r.id === id ? prev : r)),
+          })),
+        "Couldn't reassign rock",
+      )
     }
   },
   updateDue: (id, due) => {
+    const prev = get().rocks.find((r) => r.id === id)
+    if (!prev) return
     set((state) => ({
       rocks: state.rocks.map((r) => (r.id === id ? { ...r, due } : r)),
     }))
     const { workspaceSlug } = get()
     if (workspaceSlug && isDbId(id) && /^\d{4}-\d{2}-\d{2}$/.test(due)) {
-      updateRockDueAction(workspaceSlug, id, due).catch(console.error)
+      reconcile(
+        updateRockDueAction(workspaceSlug, id, due),
+        () =>
+          set((state) => ({
+            rocks: state.rocks.map((r) => (r.id === id ? prev : r)),
+          })),
+        "Couldn't update due date",
+      )
     }
   },
   deleteRock: (id) => {
+    const prev = get().rocks.find((r) => r.id === id)
+    const prevMilestones = get().milestones.filter((m) => m.rockId === id)
+    if (!prev) return
     set((state) => ({
       rocks: state.rocks.filter((r) => r.id !== id),
       openRockId: state.openRockId === id ? null : state.openRockId,
@@ -327,23 +389,38 @@ export const useRocksStore = create<RocksState>((set, get) => ({
     }))
     const { workspaceSlug } = get()
     if (workspaceSlug && isDbId(id)) {
-      deleteRockAction(workspaceSlug, id).catch(console.error)
+      reconcile(
+        deleteRockAction(workspaceSlug, id),
+        () =>
+          set((state) => ({
+            rocks: [prev, ...state.rocks],
+            milestones: [...state.milestones, ...prevMilestones],
+          })),
+        "Couldn't delete rock",
+      )
     }
   },
 
   // ───── milestones ────────────────────────────────────────────────────
   toggleMilestone: (id) => {
-    let nextDone = false
+    const prev = get().milestones.find((m) => m.id === id)
+    if (!prev) return
+    const nextDone = !prev.done
     set((state) => ({
-      milestones: state.milestones.map((m) => {
-        if (m.id !== id) return m
-        nextDone = !m.done
-        return { ...m, done: nextDone }
-      }),
+      milestones: state.milestones.map((m) =>
+        m.id === id ? { ...m, done: nextDone } : m,
+      ),
     }))
     const { workspaceSlug } = get()
     if (workspaceSlug && isDbId(id)) {
-      toggleMilestoneAction(workspaceSlug, id, nextDone).catch(console.error)
+      reconcile(
+        toggleMilestoneAction(workspaceSlug, id, nextDone),
+        () =>
+          set((state) => ({
+            milestones: state.milestones.map((m) => (m.id === id ? prev : m)),
+          })),
+        "Couldn't toggle milestone",
+      )
     }
   },
   addMilestone: async (rockId, title, due) => {
@@ -388,23 +465,41 @@ export const useRocksStore = create<RocksState>((set, get) => ({
     }
   },
   updateMilestoneTitle: (id, title) => {
+    const prev = get().milestones.find((m) => m.id === id)
+    if (!prev) return
     set((state) => ({
       milestones: state.milestones.map((m) => (m.id === id ? { ...m, title } : m)),
     }))
     const { workspaceSlug } = get()
     if (workspaceSlug && isDbId(id)) {
       debounceSave(`ms_title:${id}`, () => {
-        updateMilestoneAction(workspaceSlug, id, { title }).catch(console.error)
+        reconcile(
+          updateMilestoneAction(workspaceSlug, id, { title }),
+          () =>
+            set((state) => ({
+              milestones: state.milestones.map((m) => (m.id === id ? prev : m)),
+            })),
+          "Couldn't save milestone title",
+        )
       })
     }
   },
   updateMilestoneDue: (id, due) => {
+    const prev = get().milestones.find((m) => m.id === id)
+    if (!prev) return
     set((state) => ({
       milestones: state.milestones.map((m) => (m.id === id ? { ...m, due } : m)),
     }))
     const { workspaceSlug } = get()
     if (workspaceSlug && isDbId(id)) {
-      updateMilestoneAction(workspaceSlug, id, { due }).catch(console.error)
+      reconcile(
+        updateMilestoneAction(workspaceSlug, id, { due }),
+        () =>
+          set((state) => ({
+            milestones: state.milestones.map((m) => (m.id === id ? prev : m)),
+          })),
+        "Couldn't update milestone date",
+      )
     }
   },
 
@@ -453,17 +548,24 @@ export const useRocksStore = create<RocksState>((set, get) => ({
     }
   },
   toggleLinkedTask: (id) => {
-    let nextDone = false
+    const prev = get().linkedTasks.find((t) => t.id === id)
+    if (!prev) return
+    const nextDone = !prev.done
     set((state) => ({
-      linkedTasks: state.linkedTasks.map((t) => {
-        if (t.id !== id) return t
-        nextDone = !t.done
-        return { ...t, done: nextDone }
-      }),
+      linkedTasks: state.linkedTasks.map((t) =>
+        t.id === id ? { ...t, done: nextDone } : t,
+      ),
     }))
     const { workspaceSlug } = get()
     if (workspaceSlug && isDbId(id)) {
-      updateTaskStatusAction(workspaceSlug, id, nextDone ? "done" : "open").catch(console.error)
+      reconcile(
+        updateTaskStatusAction(workspaceSlug, id, nextDone ? "done" : "open"),
+        () =>
+          set((state) => ({
+            linkedTasks: state.linkedTasks.map((t) => (t.id === id ? prev : t)),
+          })),
+        "Couldn't toggle linked task",
+      )
     }
   },
   removeLinkedTask: (id) => {
@@ -480,30 +582,54 @@ export const useRocksStore = create<RocksState>((set, get) => ({
     }
   },
   updateLinkedTaskOwner: (id, ownerId) => {
+    const prev = get().linkedTasks.find((t) => t.id === id)
+    if (!prev) return
     set((state) => ({
       linkedTasks: state.linkedTasks.map((t) => (t.id === id ? { ...t, ownerId } : t)),
     }))
     const { workspaceSlug } = get()
     if (workspaceSlug && isDbId(id) && isDbId(ownerId)) {
-      updateTaskOwnerAction(workspaceSlug, id, ownerId).catch(console.error)
+      reconcile(
+        updateTaskOwnerAction(workspaceSlug, id, ownerId),
+        () =>
+          set((state) => ({
+            linkedTasks: state.linkedTasks.map((t) => (t.id === id ? prev : t)),
+          })),
+        "Couldn't reassign task",
+      )
     }
   },
   updateLinkedTaskDue: (id, due) => {
+    const prev = get().linkedTasks.find((t) => t.id === id)
+    if (!prev) return
     set((state) => ({
       linkedTasks: state.linkedTasks.map((t) => (t.id === id ? { ...t, due } : t)),
     }))
     const { workspaceSlug } = get()
     if (workspaceSlug && isDbId(id) && /^\d{4}-\d{2}-\d{2}$/.test(due)) {
-      updateTaskDueDateAction(workspaceSlug, id, due).catch(console.error)
+      reconcile(
+        updateTaskDueDateAction(workspaceSlug, id, due),
+        () =>
+          set((state) => ({
+            linkedTasks: state.linkedTasks.map((t) => (t.id === id ? prev : t)),
+          })),
+        "Couldn't update task date",
+      )
     }
   },
   unlinkTaskFromRock: (id) => {
+    const prev = get().linkedTasks.find((t) => t.id === id)
+    if (!prev) return
     set((state) => ({
       linkedTasks: state.linkedTasks.filter((t) => t.id !== id),
     }))
     const { workspaceSlug } = get()
     if (workspaceSlug && isDbId(id)) {
-      updateTaskRockAction(workspaceSlug, id, null).catch(console.error)
+      reconcile(
+        updateTaskRockAction(workspaceSlug, id, null),
+        () => set((state) => ({ linkedTasks: [...state.linkedTasks, prev] })),
+        "Couldn't unlink task",
+      )
     }
   },
 }))

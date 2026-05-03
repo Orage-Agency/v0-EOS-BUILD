@@ -1,7 +1,9 @@
 "use client"
 
 import { create } from "zustand"
+import { toast } from "sonner"
 import { USERS, type MockUser } from "@/lib/mock-data"
+import { reconcile } from "@/lib/store-helpers"
 import {
   createL10Meeting,
   renameMeeting as renameMeetingAction,
@@ -10,6 +12,24 @@ import {
   deleteMeeting as deleteMeetingAction,
   saveMeetingState as saveMeetingStateAction,
 } from "@/app/actions/l10"
+
+// During an L10 meeting, every segment edit fires saveMeetingState. We
+// don't want to roll local state back mid-meeting (the runner would
+// flicker), but we do want the user to see when a save fails so they can
+// retry before concluding. Toast-only.
+function notifyOnSaveFailure(promise: Promise<{ ok: boolean; error?: string }>) {
+  promise
+    .then((res) => {
+      if (res && res.ok === false) {
+        toast.error(`Meeting didn't save: ${res.error ?? "save failed"}`)
+      }
+    })
+    .catch((err) => {
+      toast.error(
+        `Meeting didn't save: ${err instanceof Error ? err.message : "network error"}`,
+      )
+    })
+}
 
 function _isDbId(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
@@ -587,6 +607,8 @@ export const useL10Store = create<State & Actions>((set, get) => ({
   },
 
   renameMeeting: (meetingId, name) => {
+    const prev = get().meetings.find((m) => m.id === meetingId)
+    if (!prev) return
     const trimmed = name.trim()
     if (!trimmed) return
     set((s) => ({
@@ -596,11 +618,20 @@ export const useL10Store = create<State & Actions>((set, get) => ({
     }))
     const slug = get().workspaceSlug
     if (slug && _isDbId(meetingId)) {
-      renameMeetingAction(slug, meetingId, trimmed).catch(console.error)
+      reconcile(
+        renameMeetingAction(slug, meetingId, trimmed),
+        () =>
+          set((s) => ({
+            meetings: s.meetings.map((m) => (m.id === meetingId ? prev : m)),
+          })),
+        "Couldn't rename meeting",
+      )
     }
   },
 
   rescheduleMeeting: (meetingId, scheduledAt) => {
+    const prev = get().meetings.find((m) => m.id === meetingId)
+    if (!prev) return
     set((s) => ({
       meetings: s.meetings.map((m) =>
         m.id === meetingId ? { ...m, scheduledAt } : m,
@@ -608,11 +639,20 @@ export const useL10Store = create<State & Actions>((set, get) => ({
     }))
     const slug = get().workspaceSlug
     if (slug && _isDbId(meetingId)) {
-      rescheduleMeetingAction(slug, meetingId, scheduledAt).catch(console.error)
+      reconcile(
+        rescheduleMeetingAction(slug, meetingId, scheduledAt),
+        () =>
+          set((s) => ({
+            meetings: s.meetings.map((m) => (m.id === meetingId ? prev : m)),
+          })),
+        "Couldn't reschedule meeting",
+      )
     }
   },
 
   cancelMeeting: (meetingId) => {
+    const prev = get().meetings.find((m) => m.id === meetingId)
+    if (!prev) return
     set((s) => ({
       meetings: s.meetings.map((m) =>
         m.id === meetingId
@@ -627,17 +667,30 @@ export const useL10Store = create<State & Actions>((set, get) => ({
     }))
     const slug = get().workspaceSlug
     if (slug && _isDbId(meetingId)) {
-      cancelMeetingAction(slug, meetingId).catch(console.error)
+      reconcile(
+        cancelMeetingAction(slug, meetingId),
+        () =>
+          set((s) => ({
+            meetings: s.meetings.map((m) => (m.id === meetingId ? prev : m)),
+          })),
+        "Couldn't cancel meeting",
+      )
     }
   },
 
   deleteMeeting: (meetingId) => {
+    const prev = get().meetings.find((m) => m.id === meetingId)
+    if (!prev) return
     set((s) => ({
       meetings: s.meetings.filter((m) => m.id !== meetingId),
     }))
     const slug = get().workspaceSlug
     if (slug && _isDbId(meetingId)) {
-      deleteMeetingAction(slug, meetingId).catch(console.error)
+      reconcile(
+        deleteMeetingAction(slug, meetingId),
+        () => set((s) => ({ meetings: [prev, ...s.meetings] })),
+        "Couldn't delete meeting",
+      )
     }
   },
 
@@ -666,7 +719,7 @@ export const useL10Store = create<State & Actions>((set, get) => ({
     }))
     const slug = get().workspaceSlug
     if (slug && _isDbId(meetingId) && snapshot) {
-      saveMeetingStateAction(slug, snapshot).catch(console.error)
+      notifyOnSaveFailure(saveMeetingStateAction(slug, snapshot))
     }
   },
 
@@ -696,7 +749,7 @@ export const useL10Store = create<State & Actions>((set, get) => ({
     }))
     const slug = get().workspaceSlug
     if (slug && _isDbId(meetingId) && snapshot) {
-      saveMeetingStateAction(slug, snapshot).catch(console.error)
+      notifyOnSaveFailure(saveMeetingStateAction(slug, snapshot))
     }
   },
 
@@ -715,7 +768,7 @@ export const useL10Store = create<State & Actions>((set, get) => ({
     }))
     const slug = get().workspaceSlug
     if (slug && _isDbId(meetingId) && snapshot) {
-      saveMeetingStateAction(slug, snapshot).catch(console.error)
+      notifyOnSaveFailure(saveMeetingStateAction(slug, snapshot))
     }
   },
 }))

@@ -217,19 +217,31 @@ export async function POST(req: Request) {
     }
 
     // ---------- streaming path ----------
+    // Tie the model run to the inbound request so client cancellation
+    // (composer Stop button → fetch AbortController) actually stops gpt-5-mini
+    // upstream instead of silently letting it finish on our dime.
     const result = streamText({
       model: "openai/gpt-5-mini",
       system: buildSystemPrompt(),
       messages,
       tools,
       stopWhen: stepCountIs(12),
+      abortSignal: req.signal,
     })
 
     const encoder = new TextEncoder()
     const sse = new ReadableStream<Uint8Array>({
       async start(controller) {
         const send = (frame: unknown) => {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`))
+          // Once the consumer disconnects, controller.enqueue throws. Skip
+          // emits in that state so the catch below doesn't mask the abort
+          // as a stream error.
+          if (req.signal.aborted) return
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`))
+          } catch {
+            /* consumer gone */
+          }
         }
         try {
           for await (const chunk of result.fullStream) {
@@ -268,19 +280,36 @@ export async function POST(req: Request) {
                 break
             }
           }
-          // Compute didWrite from the final step list.
-          const steps = await result.steps
-          const toolCalls = collectToolCalls(steps ?? [])
-          const didWrite = toolCalls.some((c) => WRITE_TOOLS.has(c.name))
-          if (didWrite) revalidateAll(workspaceSlug)
-          send({ kind: "done", didWrite })
+          // Compute didWrite from the final step list. If the request was
+          // aborted mid-stream we may have never reached a "done" step, so
+          // skip revalidation in that case.
+          if (!req.signal.aborted) {
+            const steps = await result.steps
+            const toolCalls = collectToolCalls(steps ?? [])
+            const didWrite = toolCalls.some((c) => WRITE_TOOLS.has(c.name))
+            if (didWrite) revalidateAll(workspaceSlug)
+            send({ kind: "done", didWrite })
+          }
         } catch (err) {
-          send({
-            kind: "error",
-            message: err instanceof Error ? err.message : "Stream failed",
-          })
+          // Aborts surface as either DOMException AbortError or the AI
+          // SDK's own AbortError shape — treat both as a clean cancel.
+          const aborted =
+            req.signal.aborted ||
+            (err instanceof Error &&
+              (err.name === "AbortError" ||
+                err.message.toLowerCase().includes("aborted")))
+          if (!aborted) {
+            send({
+              kind: "error",
+              message: err instanceof Error ? err.message : "Stream failed",
+            })
+          }
         } finally {
-          controller.close()
+          try {
+            controller.close()
+          } catch {
+            /* already closed */
+          }
         }
       },
     })

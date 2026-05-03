@@ -7,6 +7,8 @@
  */
 
 import { create } from "zustand"
+import { toast } from "sonner"
+import { reconcile } from "@/lib/store-helpers"
 import {
   createNote as createNoteAction,
   saveNoteContent as saveNoteContentAction,
@@ -22,11 +24,34 @@ function isDbId(id: string) {
   return !id.startsWith("n_")
 }
 
+// Autosave failures are surfaced as a toast but do NOT roll back local
+// state — that would destroy the user's in-progress typing. The retry is
+// implicit on the next keystroke (which reschedules the debounce).
+function warnOnSaveFailure<T extends { ok: boolean; error?: string } | void>(
+  promise: Promise<T>,
+  label: string,
+) {
+  promise
+    .then((res) => {
+      if (res && res.ok === false) {
+        toast.error(`${label}: ${res.error ?? "save failed"}`)
+      }
+    })
+    .catch((err) => {
+      toast.error(
+        `${label}: ${err instanceof Error ? err.message : "network error"}`,
+      )
+    })
+}
+
 function scheduleAutosave(slug: string, noteId: string, blocks: Block[]) {
   if (!slug || !isDbId(noteId)) return
   if (_autosaveTimer) clearTimeout(_autosaveTimer)
   _autosaveTimer = setTimeout(() => {
-    saveNoteContentAction(slug, noteId, blocks).catch(console.error)
+    warnOnSaveFailure(
+      saveNoteContentAction(slug, noteId, blocks),
+      "Note didn't save",
+    )
   }, 800)
 }
 
@@ -34,7 +59,10 @@ function scheduleTitleSave(slug: string, noteId: string, title: string) {
   if (!slug || !isDbId(noteId)) return
   if (_titleSaveTimer) clearTimeout(_titleSaveTimer)
   _titleSaveTimer = setTimeout(() => {
-    updateNoteTitleAction(slug, noteId, title).catch(console.error)
+    warnOnSaveFailure(
+      updateNoteTitleAction(slug, noteId, title),
+      "Note title didn't save",
+    )
   }, 800)
 }
 
@@ -440,14 +468,14 @@ export const useNotesStore = create<NotesState>((set, get) => ({
   },
 
   deleteNote: (noteId) => {
-    let nextActiveId = get().activeNoteId
+    const prevNote = get().notes.find((n) => n.id === noteId)
+    const prevBlocks = get().blocks[noteId]
+    const prevActive = get().activeNoteId
+    if (!prevNote) return
     set((s) => {
       const remaining = s.notes.filter((n) => n.id !== noteId)
       const newActive =
-        s.activeNoteId === noteId
-          ? remaining[0]?.id ?? ""
-          : s.activeNoteId
-      nextActiveId = newActive
+        s.activeNoteId === noteId ? remaining[0]?.id ?? "" : s.activeNoteId
       const blocks = { ...s.blocks }
       delete blocks[noteId]
       return {
@@ -458,9 +486,17 @@ export const useNotesStore = create<NotesState>((set, get) => ({
     })
     const slug = get().workspaceSlug
     if (slug && isDbId(noteId)) {
-      deleteNoteAction(slug, noteId).catch(console.error)
+      reconcile(
+        deleteNoteAction(slug, noteId),
+        () =>
+          set((s) => ({
+            notes: [prevNote, ...s.notes],
+            blocks: prevBlocks ? { ...s.blocks, [noteId]: prevBlocks } : s.blocks,
+            activeNoteId: prevActive,
+          })),
+        "Couldn't delete note",
+      )
     }
-    void nextActiveId
   },
 }))
 

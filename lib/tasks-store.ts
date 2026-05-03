@@ -11,9 +11,9 @@
  */
 
 import { create } from "zustand"
-import { toast } from "sonner"
 import type { MockTask, TaskPriority, TaskStatus } from "@/lib/mock-data"
 import type { RockOption, WorkspaceMember } from "@/lib/tasks-server"
+import { reconcile } from "@/lib/store-helpers"
 import {
   updateTaskStatus as updateTaskStatusAction,
   updateTaskDueDate as updateTaskDueDateAction,
@@ -25,29 +25,6 @@ import {
   bulkDeleteTasks as bulkDeleteTasksAction,
   deleteTask as deleteTaskAction,
 } from "@/app/actions/tasks"
-
-// Server actions return { ok: true, ... } | { ok: false, error: string } —
-// they don't throw. The previous .catch(console.error) pattern silently
-// swallowed `ok: false`, so optimistic updates stuck on screen even when
-// the DB write failed. This wrapper checks the response and runs the
-// caller-supplied rollback so the UI matches reality.
-function reconcile<T extends { ok: boolean; error?: string } | void>(
-  promise: Promise<T>,
-  rollback: () => void,
-  label: string,
-) {
-  promise
-    .then((res) => {
-      if (res && res.ok === false) {
-        rollback()
-        toast.error(`${label}: ${res.error ?? "save failed"}`)
-      }
-    })
-    .catch((err) => {
-      rollback()
-      toast.error(`${label}: ${err instanceof Error ? err.message : "network error"}`)
-    })
-}
 
 export type Handoff = {
   id: string
@@ -413,28 +390,39 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       }
     }),
   bulkUpdate: (ids, patch) => {
-    set((state) => {
-      const idSet = new Set(ids)
-      return {
-        tasks: state.tasks.map((t) => (idSet.has(t.id) ? { ...t, ...patch } : t)),
-      }
-    })
+    const idSet = new Set(ids)
+    const prevTasks = get().tasks.filter((t) => idSet.has(t.id))
+    set((state) => ({
+      tasks: state.tasks.map((t) => (idSet.has(t.id) ? { ...t, ...patch } : t)),
+    }))
     const { workspaceSlug } = get()
     if (workspaceSlug && ids.length > 0) {
-      bulkUpdateTasksAction(workspaceSlug, ids, patch).catch(console.error)
+      reconcile(
+        bulkUpdateTasksAction(workspaceSlug, ids, patch),
+        () => {
+          const prevById = new Map(prevTasks.map((t) => [t.id, t]))
+          set((state) => ({
+            tasks: state.tasks.map((t) => prevById.get(t.id) ?? t),
+          }))
+        },
+        `Couldn't update ${ids.length} tasks`,
+      )
     }
   },
   bulkDelete: (ids) => {
-    set((state) => {
-      const idSet = new Set(ids)
-      return {
-        tasks: state.tasks.filter((t) => !idSet.has(t.id)),
-        selected: new Set(),
-      }
-    })
+    const idSet = new Set(ids)
+    const prevTasks = get().tasks.filter((t) => idSet.has(t.id))
+    set((state) => ({
+      tasks: state.tasks.filter((t) => !idSet.has(t.id)),
+      selected: new Set(),
+    }))
     const { workspaceSlug } = get()
     if (workspaceSlug && ids.length > 0) {
-      bulkDeleteTasksAction(workspaceSlug, ids).catch(console.error)
+      reconcile(
+        bulkDeleteTasksAction(workspaceSlug, ids),
+        () => set((state) => ({ tasks: [...prevTasks, ...state.tasks] })),
+        `Couldn't delete ${ids.length} tasks`,
+      )
     }
   },
 }))

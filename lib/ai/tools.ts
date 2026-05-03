@@ -5,6 +5,23 @@ import { supabaseAdmin } from "@/lib/supabase/admin"
 import { ROCKS, TASKS, USERS } from "@/lib/mock-data"
 import { SEED_ISSUES } from "@/lib/issues-seed"
 
+// HTML escape + length cap for any text the model writes into a stored
+// `html` field. The notes editor renders block.html via dangerouslySetInnerHTML,
+// so an unescaped `<script>` from a prompt-injected tool call would be
+// stored XSS. Cheap defense: convert tags to entities so they render as
+// literal text, and clamp at 50k chars so a runaway model can't exhaust
+// the row size.
+const MAX_NOTE_BODY_CHARS = 50_000
+function escapeHtmlForStorage(input: string): string {
+  return input
+    .slice(0, MAX_NOTE_BODY_CHARS)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
 // All tools are scoped to a single tenant. The route handler resolves the
 // caller's tenantId from getCurrentUser() and binds it via this factory so
 // the model never has the chance to escape its tenant.
@@ -578,18 +595,22 @@ export function buildTools({
       description:
         "Create a quick personal note for the caller. Use when the user says 'remember that X', 'jot down Y', or wants to capture a thought without context-switching to /notes.",
       inputSchema: z.object({
-        title: z.string().min(2),
-        bodyMarkdown: z.string().nullable().describe("Optional initial markdown body"),
+        title: z.string().min(2).max(200),
+        bodyMarkdown: z
+          .string()
+          .max(MAX_NOTE_BODY_CHARS)
+          .nullable()
+          .describe("Optional initial markdown body"),
       }),
       execute: async ({ title, bodyMarkdown }) => {
-        const blocks = bodyMarkdown
-          ? [{ id: "b1", type: "p", html: bodyMarkdown }]
-          : [{ id: "b1", type: "p", html: "" }]
+        const safeTitle = escapeHtmlForStorage(title.trim())
+        const safeBody = bodyMarkdown ? escapeHtmlForStorage(bodyMarkdown) : ""
+        const blocks = [{ id: "b1", type: "p", html: safeBody }]
         const { data, error } = await sb
           .from("notes")
           .insert({
             tenant_id: tenantId,
-            title,
+            title: safeTitle,
             content: blocks,
             parent_type: "personal",
             parent_id: null,
