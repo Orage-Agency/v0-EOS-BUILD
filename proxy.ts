@@ -99,15 +99,32 @@ export async function proxy(request: NextRequest) {
   // runtime / JWKS issue mentioned at the top of this file.
   const session = readSessionFromCookies(request)
   let userId: string | null = null
+  let debugReason = "no-session"
   if (session?.access_token) {
     const claims = decodeJwt(session.access_token)
     const now = Math.floor(Date.now() / 1000)
-    if (claims?.sub && (!claims.exp || claims.exp > now)) {
+    if (!claims?.sub) debugReason = "no-sub"
+    else if (claims.exp && claims.exp <= now) debugReason = "expired"
+    else {
       userId = claims.sub
+      debugReason = "ok"
     }
+  } else if (session) {
+    debugReason = "no-token"
   }
 
   const path = request.nextUrl.pathname
+
+  // TEMP DEBUG: expose the proxy's decision via a header so we can
+  // diagnose without needing the Vercel runtime log stream.
+  if (path.startsWith("/orage-team")) {
+    response.headers.set("x-proxy-debug-reason", debugReason)
+    response.headers.set(
+      "x-proxy-debug-cookies",
+      request.cookies.getAll().map((c) => c.name).join(","),
+    )
+    response.headers.set("x-proxy-debug-userid", userId ?? "null")
+  }
 
   // Allow root sign-up + auth pages without session
   if (PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + "/"))) {
@@ -146,7 +163,15 @@ export async function proxy(request: NextRequest) {
 
   // All other workspace routes require auth
   if (!userId) {
-    return NextResponse.redirect(new URL(`/${workspaceSlug}/login`, request.url))
+    const r = NextResponse.redirect(new URL(`/${workspaceSlug}/login`, request.url))
+    if (path.startsWith("/orage-team")) {
+      r.headers.set("x-proxy-debug-reason", debugReason)
+      r.headers.set(
+        "x-proxy-debug-cookies",
+        request.cookies.getAll().map((c) => c.name).join(","),
+      )
+    }
+    return r
   }
 
   // Verify user is a member of this workspace (or is master)
