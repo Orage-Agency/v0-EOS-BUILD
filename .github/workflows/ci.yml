@@ -18,24 +18,52 @@ jobs:
       NEXT_PUBLIC_APP_URL: https://stub.example.com
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
         with:
           version: 10
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
-
       - name: Install
         run: pnpm install --frozen-lockfile
-
       - name: Typecheck
         run: pnpm typecheck
-
       - name: Unit tests
         run: pnpm test
-
       - name: Build
         run: pnpm build
+
+  e2e:
+    name: Playwright e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: build
+    if: ${{ vars.E2E_ENABLED == 'true' }}
+    env:
+      BASE_URL: ${{ vars.BASE_URL }}
+      TEST_EMAIL: ${{ secrets.TEST_EMAIL }}
+      TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+      TEST_SLUG: ${{ vars.TEST_SLUG }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run e2e
+        run: pnpm test:e2e
+      - name: Upload trace on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-trace
+          path: test-results/
+          retention-days: 7
