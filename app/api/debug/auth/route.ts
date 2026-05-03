@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
-import { getCurrentUser } from "@/lib/auth"
+import { getCurrentUser, getAuthUserIdFromCookie } from "@/lib/auth"
+import { supabaseAdmin } from "@/lib/supabase/admin"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -50,6 +51,35 @@ export async function GET() {
       stage = "json-parse-failed: " + (e instanceof Error ? e.message : "?")
     }
   }
+  // Direct call to the lib/auth helper to compare against inline result.
+  let libAuthUserId: string | null = null
+  try {
+    libAuthUserId = await getAuthUserIdFromCookie()
+  } catch (e) {
+    libAuthUserId = "ERROR: " + (e instanceof Error ? e.message : String(e))
+  }
+
+  // Run each step of getCurrentUser by hand so we can see which one fails.
+  let profileLookup: unknown = null
+  let membershipLookup: unknown = null
+  if (userIdFromJwt) {
+    const sb = supabaseAdmin()
+    const { data: prof, error: profErr } = await sb
+      .from("profiles")
+      .select("id, email, is_master")
+      .eq("id", userIdFromJwt)
+      .single()
+    profileLookup = profErr ? { error: profErr.message } : prof
+    const { data: mem, error: memErr } = await sb
+      .from("workspace_memberships")
+      .select("role, workspace:workspaces(id, slug, name)")
+      .eq("user_id", userIdFromJwt)
+      .eq("workspaces.slug", "orage-team")
+      .eq("status", "active")
+      .single()
+    membershipLookup = memErr ? { error: memErr.message } : mem
+  }
+
   // Now call getCurrentUser to see what IT does with the same cookies.
   let getCurrentUserResult: unknown = null
   let getCurrentUserError: string | null = null
@@ -70,6 +100,9 @@ export async function GET() {
     userIdFromJwt,
     claimsExp: (claims as { exp?: number } | null)?.exp ?? null,
     nowSec: Math.floor(Date.now() / 1000),
+    libAuthUserId,
+    profileLookup,
+    membershipLookup,
     getCurrentUserResult,
     getCurrentUserError,
   })

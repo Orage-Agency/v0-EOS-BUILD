@@ -16,7 +16,7 @@ import { cookies } from "next/headers"
  * Supabase queries use the service-role admin client, not auth, so
  * RLS+JWT verification doesn't matter for our reads.
  */
-async function getAuthUserIdFromCookie(): Promise<string | null> {
+export async function getAuthUserIdFromCookie(): Promise<string | null> {
   try {
     const store = await cookies()
     const all = store.getAll()
