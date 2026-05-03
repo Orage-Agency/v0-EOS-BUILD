@@ -3,10 +3,24 @@
 import { useEffect } from "react"
 import { useL10Store } from "@/lib/l10-store"
 import { IDSStageView } from "./ids-stage"
+import {
+  ScorecardView,
+  RockReviewView,
+  TodosView,
+  HeadlinesView,
+  SegueView,
+  type SegmentData,
+} from "./segment-views"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
-export function MainStage({ meetingId }: { meetingId: string }) {
+export function MainStage({
+  meetingId,
+  segmentData,
+}: {
+  meetingId: string
+  segmentData: SegmentData
+}) {
   const meeting = useL10Store((s) => s.getMeeting(meetingId))
   const timerSec = useL10Store((s) => s.timerSec)
   const timerRunning = useL10Store((s) => s.timerRunning)
@@ -38,7 +52,7 @@ export function MainStage({ meetingId }: { meetingId: string }) {
   const warning = timerSec < 300 && timerSec >= 60
   const over = timerSec < 60
 
-  const isIDS = active?.segment === "ids"
+  const segment = active?.segment
 
   return (
     <main className="flex-1 flex flex-col overflow-hidden bg-bg-1">
@@ -108,38 +122,34 @@ export function MainStage({ meetingId }: { meetingId: string }) {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {isIDS ? (
+        {segment === "ids" ? (
           <IDSStageView meetingId={meetingId} />
+        ) : segment === "scorecard" ? (
+          <ScorecardView data={segmentData.scorecard} />
+        ) : segment === "rock_review" ? (
+          <RockReviewView
+            rocks={segmentData.rocks}
+            membersById={segmentData.membersById}
+          />
+        ) : segment === "todos" ? (
+          <TodosView openTasks={segmentData.openTasks} meetingId={meetingId} />
+        ) : segment === "headlines" ? (
+          <HeadlinesView meetingId={meetingId} />
+        ) : segment === "segue" ? (
+          <SegueView />
         ) : (
-          <NonIDSPlaceholder name={active?.name ?? "—"} />
+          <div className="px-10 py-12 max-w-[820px] mx-auto">
+            <div className="card-glass p-10 text-center">
+              <div className="h-display text-gold-400 text-base mb-3 tracking-[0.2em]">
+                {active?.name ?? "—"}
+              </div>
+              <p className="text-[12px] text-text-muted">
+                Use the right rail to capture notes during this segment.
+              </p>
+            </div>
+          </div>
         )}
       </div>
     </main>
-  )
-}
-
-function NonIDSPlaceholder({ name }: { name: string }) {
-  return (
-    <div className="px-10 py-12 max-w-[820px] mx-auto">
-      <div className="card-glass p-10 text-center">
-        <div className="h-display text-gold-400 text-base mb-3 tracking-[0.2em]">{name}</div>
-        <p className="text-sm text-text-muted leading-relaxed">
-          {name === "SEGUE"
-            ? "Each leader shares 1 personal best, 1 business best from the past week."
-            : name === "SCORECARD"
-              ? "Walk through metrics. Anything red 2 weeks running auto-flags into IDS."
-              : name === "ROCK REVIEW"
-                ? "Status check on each rock — On Track, At Risk, or Off Track."
-                : name === "HEADLINES"
-                  ? "Customer + employee headlines. Signal, not full discussion."
-                  : name === "TO-DOS"
-                    ? "Review last week's to-dos. Not done = drops to IDS."
-                    : "Cascade messages, rate the meeting, AI summary delivered to attendees."}
-        </p>
-        <div className="text-[10px] text-text-muted font-mono mt-6 tracking-wider">
-          USE THE LIVE FEED ON THE RIGHT TO CAPTURE TO-DOS, DECISIONS, OR HEADLINES
-        </div>
-      </div>
-    </div>
   )
 }

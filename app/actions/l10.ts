@@ -93,6 +93,122 @@ export async function saveMeetingState(
   }
 }
 
+/**
+ * Send the meeting recap to every participant. Wraps the cascading
+ * message + IDS resolved + captures + average rating into a single email
+ * so the team has a record. Called after the user confirms the conclude
+ * dialog.
+ */
+export async function sendMeetingRecap(
+  workspaceSlug: string,
+  meeting: Meeting,
+): Promise<{ ok: boolean; sent: number; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    const sb = supabaseAdmin()
+
+    // Resolve participants → emails. Client-side IDs may be the demo `u_xxx`
+    // strings, so we filter to UUIDs only — those are real members.
+    const realIds = meeting.participants
+      .map((p) => p.userId)
+      .filter((id) => isUuid(id))
+    if (realIds.length === 0) return { ok: true, sent: 0 }
+
+    const { data: profiles } = await sb
+      .from("profiles")
+      .select("id, email, full_name")
+      .in("id", realIds)
+    const recipients = ((profiles ?? []) as Array<{
+      id: string
+      email: string
+      full_name: string | null
+    }>).filter((p) => p.email)
+
+    if (recipients.length === 0) return { ok: true, sent: 0 }
+
+    const { data: ws } = await sb
+      .from("workspaces")
+      .select("name, slug")
+      .eq("id", user.workspaceId)
+      .maybeSingle()
+    const wsName = (ws?.name as string | undefined) ?? "your workspace"
+
+    const ratings = meeting.participants.flatMap((p) => (p.rating ? [p.rating] : []))
+    const avgRating =
+      ratings.length > 0
+        ? (ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(1)
+        : "—"
+    const idsResolved = meeting.ids.filter((i) => i.resolved).length
+    const idsTotal = meeting.ids.length
+    const todos = meeting.captures.filter((c) => c.kind === "todo")
+    const headlines = meeting.captures.filter((c) => c.kind === "headline")
+
+    // Lightweight inline HTML — doesn't share the email-templates shell so
+    // we keep this file's deps small. Branded enough for an internal recap.
+    const dateStr = new Date(meeting.scheduledAt).toLocaleDateString([], {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    })
+    const subject = `L10 Recap · ${dateStr} · ${wsName}`
+    const todosBlock =
+      todos.length > 0
+        ? `<p style="margin:12px 0 4px 0;color:#E4AF7A;font-size:13px;"><strong>To-Dos (${todos.length})</strong></p>
+           <ul style="margin:0 0 12px 18px;padding:0;color:#FFD69C;font-size:13px;">${todos
+             .map((t) => `<li>${escape(t.text)}${t.ownerLabel ? ` <span style="color:#8a7860;">— ${escape(t.ownerLabel)}</span>` : ""}</li>`)
+             .join("")}</ul>`
+        : ""
+    const headlinesBlock =
+      headlines.length > 0
+        ? `<p style="margin:12px 0 4px 0;color:#E4AF7A;font-size:13px;"><strong>Headlines (${headlines.length})</strong></p>
+           <ul style="margin:0 0 12px 18px;padding:0;color:#FFD69C;font-size:13px;">${headlines
+             .map((h) => `<li>${escape(h.text)}</li>`)
+             .join("")}</ul>`
+        : ""
+
+    const html = `<!doctype html><html><body style="margin:0;background:#0a0a0a;color:#FFD69C;font-family:Arial,sans-serif;padding:24px;">
+<div style="max-width:600px;margin:0 auto;background:#151515;border:1px solid rgba(182,128,57,0.18);padding:24px;border-radius:4px;">
+  <div style="font-family:'Bebas Neue',Impact,sans-serif;letter-spacing:.18em;color:#E4AF7A;font-size:14px;margin-bottom:8px;">L10 RECAP</div>
+  <h1 style="margin:0 0 12px 0;color:#E4AF7A;font-size:18px;">${escape(meeting.name)} · ${escape(dateStr)}</h1>
+  <p style="margin:0 0 12px 0;font-size:13px;line-height:1.5;color:#FFD69C;"><strong>Attended</strong> ${meeting.participants.filter((p) => p.status !== "away").length}/${meeting.participants.length} · <strong>Avg rating</strong> ${avgRating}/10 · <strong>IDS</strong> ${idsResolved}/${idsTotal} resolved</p>
+  ${meeting.cascadingMessage ? `<div style="border-left:3px solid #B68039;padding:10px 14px;margin:14px 0;background:rgba(182,128,57,0.06);"><div style="font-size:11px;color:#8a7860;text-transform:uppercase;letter-spacing:.15em;margin-bottom:4px;">Cascading message</div><div style="font-size:13px;line-height:1.5;color:#FFD69C;">${escape(meeting.cascadingMessage)}</div></div>` : ""}
+  ${todosBlock}
+  ${headlinesBlock}
+  <div style="margin-top:18px;font-size:11px;color:#8a7860;">Sent because you were a participant in this L10.</div>
+</div>
+</body></html>`
+
+    const { sendEmail, htmlToText } = await import("@/lib/email")
+
+    let sent = 0
+    for (const r of recipients) {
+      const result = await sendEmail({
+        to: r.email,
+        subject,
+        html,
+        text: htmlToText(html),
+      })
+      if (result.ok) sent++
+    }
+    return { ok: true, sent }
+  } catch (err) {
+    return {
+      ok: false,
+      sent: 0,
+      error: err instanceof Error ? err.message : "Unknown error",
+    }
+  }
+}
+
+function escape(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
 export async function renameMeeting(
   workspaceSlug: string,
   id: string,

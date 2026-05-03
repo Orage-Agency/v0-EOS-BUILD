@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useParams } from "next/navigation"
 import { useTenantPath } from "@/hooks/use-tenant-path"
 import { useL10Store } from "@/lib/l10-store"
 import { USERS } from "@/lib/mock-data"
@@ -15,6 +15,7 @@ import {
 import { AIOrb } from "@/components/orage/ai-orb"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { sendMeetingRecap } from "@/app/actions/l10"
 
 export function ConcludeModal({ meetingId }: { meetingId: string }) {
   const concludeOpen = useL10Store((s) => s.concludeOpen)
@@ -25,6 +26,8 @@ export function ConcludeModal({ meetingId }: { meetingId: string }) {
   const conclude = useL10Store((s) => s.conclude)
   const router = useRouter()
   const tp = useTenantPath()
+  const params = useParams()
+  const workspaceSlug = (params?.workspace as string) ?? ""
 
   const [cascading, setCascading] = useState("")
 
@@ -43,10 +46,22 @@ export function ConcludeModal({ meetingId }: { meetingId: string }) {
   const todoCount = meeting.captures.filter((c) => c.kind === "todo").length
   const parkedCount = meeting.captures.filter((c) => c.kind === "park").length
 
-  function handleConfirm() {
+  async function handleConfirm() {
     setCascadingMessage(meetingId, cascading)
     conclude(meetingId)
-    toast("MEETING CONCLUDED · SUMMARY SENT TO #ORAGE-L10")
+    // Pull the latest meeting state (which now has the cascading message
+    // and the conclude timestamp) to ship in the recap email.
+    const finalMeeting = useL10Store.getState().getMeeting(meetingId)
+    if (finalMeeting && workspaceSlug) {
+      sendMeetingRecap(workspaceSlug, finalMeeting)
+        .then((res) => {
+          if (res.ok && res.sent > 0) {
+            toast(`RECAP SENT TO ${res.sent} ${res.sent === 1 ? "PARTICIPANT" : "PARTICIPANTS"}`)
+          }
+        })
+        .catch((e) => console.error("[conclude] recap failed", e))
+    }
+    toast("MEETING CONCLUDED")
     router.push(tp(`/l10/${meetingId}`))
   }
 

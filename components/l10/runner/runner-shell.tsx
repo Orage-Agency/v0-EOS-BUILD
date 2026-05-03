@@ -10,8 +10,17 @@ import { MainStage } from "./main-stage"
 import { ParticipantsRail } from "./participants-rail"
 import { ConcludeModal } from "./conclude-modal"
 import { IcChevronLeft } from "@/components/orage/icons"
+import type { SegmentData } from "./segment-views"
 
-export function RunnerShell({ id, workspaceSlug }: { id: string; workspaceSlug?: string }) {
+export function RunnerShell({
+  id,
+  workspaceSlug,
+  segmentData,
+}: {
+  id: string
+  workspaceSlug?: string
+  segmentData: SegmentData
+}) {
   const meeting = useL10Store((s) => s.getMeeting(id))
   const startMeeting = useL10Store((s) => s.startMeeting)
   const setMeetings = useL10Store((s) => s.setMeetings)
@@ -132,7 +141,7 @@ export function RunnerShell({ id, workspaceSlug }: { id: string; workspaceSlug?:
       </Link>
       <div className="flex flex-1 overflow-hidden">
         <AgendaRail meetingId={id} />
-        <MainStage meetingId={id} />
+        <MainStage meetingId={id} segmentData={segmentData} />
         <ParticipantsRail meetingId={id} />
       </div>
       <ConcludeModal meetingId={id} />
