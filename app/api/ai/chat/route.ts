@@ -2,6 +2,7 @@ import { generateText, stepCountIs } from "ai"
 import { revalidatePath } from "next/cache"
 import { requireUser } from "@/lib/auth"
 import { buildTools } from "@/lib/ai/tools"
+import { checkAndRecordAIRequest } from "@/lib/ai/rate-limit"
 import { manualDigest } from "@/lib/help-manual"
 
 export const runtime = "nodejs"
@@ -101,6 +102,18 @@ export async function POST(req: Request) {
     // workspace identified by `workspaceSlug` — it redirects on failure, so
     // by the time we have `me`, the tenant scoping below is already safe.
     const me = await requireUser(workspaceSlug)
+
+    const limit = await checkAndRecordAIRequest({
+      tenantId: me.workspaceId,
+      userId: me.id,
+      endpoint: "/api/ai/chat",
+    })
+    if (!limit.ok) {
+      return Response.json(
+        { error: limit.message, hint: "Rate limit hit." },
+        { status: 429, headers: { "Retry-After": String(limit.retryAfterSec) } },
+      )
+    }
 
     const tools = buildTools({ tenantId: me.workspaceId, userId: me.id })
 
