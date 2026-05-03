@@ -12,10 +12,10 @@ import { useWorkspaceSlug } from "@/hooks/use-workspace-slug"
 import { toast } from "sonner"
 
 const SUGGESTIONS = [
-  "What's at risk?",
-  "Today's priorities",
-  "Create a task",
-  "Generate pulse",
+  "What rocks are at risk?",
+  "What's on my plate today?",
+  "Create a task for me",
+  "Summarize last week's L10",
 ]
 
 export function ConversationPane({
@@ -32,6 +32,7 @@ export function ConversationPane({
   const setDraft = useAIImplementerStore((s) => s.setComposerDraft)
   const sendMessage = useAIImplementerStore((s) => s.sendMessage)
   const writeTick = useAIImplementerStore((s) => s.writeTick)
+  const streaming = useAIImplementerStore((s) => s.streaming)
   const workspaceSlug = useWorkspaceSlug()
   const router = useRouter()
 
@@ -42,7 +43,7 @@ export function ConversationPane({
   useEffect(() => {
     if (writeTick > 0) {
       router.refresh()
-      toast("WORKSPACE UPDATED")
+      toast.success("Workspace updated")
     }
   }, [writeTick, router])
 
@@ -56,22 +57,29 @@ export function ConversationPane({
   )
 
   const scrollerRef = useRef<HTMLDivElement>(null)
+  // Sticky-bottom auto-scroll. Only follow the stream if the user is
+  // already pinned to the bottom (within 64px); otherwise leave them alone
+  // so they can read history without the view yanking back down.
   useEffect(() => {
     const el = scrollerRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    if (!el) return
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    if (distanceFromBottom < 64) {
+      el.scrollTop = el.scrollHeight
+    }
   }, [messages])
 
   const meta = useMemo(() => {
     if (!thread) return ""
-    return `claude opus · streaming · ${messages.length} message${messages.length === 1 ? "" : "s"}`
-  }, [thread, messages.length])
+    const state = streaming ? "streaming" : "ready"
+    return `gpt-5-mini · ${state} · ${messages.length} message${messages.length === 1 ? "" : "s"}`
+  }, [thread, messages.length, streaming])
 
   const isEmpty = messages.length === 0
 
   function pickSuggestion(s: string) {
     setDraft(s)
     sendMessage(s, workspaceSlug)
-    toast("STREAMING RESPONSE…")
   }
 
   return (
@@ -126,8 +134,9 @@ export function ConversationPane({
             <p className="font-display tracking-[0.22em] text-gold-400 text-sm">
               READY TO IMPLEMENT
             </p>
-            <p className="text-[12px] text-text-muted mt-2 mb-8">
-              Ask anything below — or start with one of these.
+            <p className="text-[12px] text-text-muted mt-2 mb-8 max-w-md">
+              I can read your rocks, tasks, scorecard, V/TO, and people, then
+              create or update them on your behalf. Try one of these:
             </p>
             <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full">
               {SUGGESTIONS.map((s) => (

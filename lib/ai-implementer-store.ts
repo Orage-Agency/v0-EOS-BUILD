@@ -44,6 +44,8 @@ export type ToolCallBlock = {
   name: string
   status: ToolCallStatus
   args: Record<string, string>
+  /** One-line summary the route emits via the `tool-result` SSE frame. */
+  summary?: string
 }
 
 export type RockEmbedBlock = {
@@ -372,6 +374,11 @@ type State = {
   // The /ai page subscribes to this and triggers router.refresh() so the
   // rest of the workspace picks up the AI's writes without a full reload.
   writeTick: number
+  // Stream lifecycle — the composer disables Send + shows a Stop button
+  // when streaming is true. Calling cancelStream() aborts the in-flight
+  // fetch so we stop billing the model the moment the user changes mind.
+  streaming: boolean
+  cancelStream: () => void
 }
 
 // ----- Helpers shared by sendMessage ----------------------------------------
@@ -387,8 +394,8 @@ function escapeHtml(s: string): string {
 
 /**
  * Tiny markdown → HTML pass for assistant narration. Just enough to render
- * **bold**, *italic*, line breaks and bullet lists. Anything fancier the
- * model emits comes through as escaped text.
+ * **bold**, *italic*, [text](url) links, line breaks and bullet lists.
+ * Anything fancier the model emits comes through as escaped text.
  */
 function renderMarkdownLite(input: string): string {
   const safe = escapeHtml(input)
@@ -405,8 +412,14 @@ function renderMarkdownLite(input: string): string {
       return `${lead}<ul class="list-disc pl-5 space-y-1">${items}</ul>`
     },
   )
+  // Links — only allow http(s)/mailto so a model can't emit `javascript:`
+  // and bypass the escapeHtml pass above.
+  const withLinks = withLists.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-gold-400 underline hover:text-gold-300">$1</a>',
+  )
   // Bold + italic
-  const withInline = withLists
+  const withInline = withLinks
     .replace(/\*\*([^*]+)\*\*/g, '<strong class="text-text-primary">$1</strong>')
     .replace(/(^|\W)\*([^*\n]+)\*/g, '$1<em class="text-gold-300">$2</em>')
   // Paragraph breaks
@@ -434,6 +447,10 @@ const newMsgId = () => `m_${++mid}`
 let tid = 100
 const newThreadId = () => `th_new_${++tid}`
 
+// Module-scoped — only one stream runs per tab and cancelStream() needs
+// access to it from outside the sendMessage closure.
+let _activeAbortController: AbortController | null = null
+
 const nowTime = () =>
   new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
 
@@ -449,6 +466,10 @@ export const useAIImplementerStore = create<State>((set, get) => ({
   composerDraft: "",
   deepMode: true,
   writeTick: 0,
+  streaming: false,
+  cancelStream: () => {
+    if (_activeAbortController) _activeAbortController.abort()
+  },
 
   setActiveThread: (id) => set({ activeThreadId: id }),
   setRightTab: (tab) => set({ rightTab: tab }),
@@ -620,6 +641,9 @@ export const useAIImplementerStore = create<State>((set, get) => ({
       }))
     }
 
+    const controller = new AbortController()
+    _activeAbortController = controller
+    set({ streaming: true })
     try {
       const res = await fetch("/api/ai/chat", {
         method: "POST",
@@ -629,6 +653,7 @@ export const useAIImplementerStore = create<State>((set, get) => ({
           history: priorHistory,
           workspaceSlug,
         }),
+        signal: controller.signal,
       })
       if (!res.ok || !res.body) {
         let detail = `HTTP ${res.status}`
@@ -677,13 +702,23 @@ export const useAIImplementerStore = create<State>((set, get) => ({
             const args = (frame.args as Record<string, unknown>) ?? {}
             const argsAsStrings: Record<string, string> = {}
             for (const [k, v] of Object.entries(args)) {
-              argsAsStrings[k] = typeof v === "string" ? `"${v}"` : JSON.stringify(v)
+              // Render strings without re-quoting and shorten long values so
+              // the chip stays readable. JSON.stringify on a string adds
+              // outer quotes which then got rendered as `status: "\"x\""`.
+              if (v == null) {
+                argsAsStrings[k] = "—"
+              } else if (typeof v === "string") {
+                argsAsStrings[k] = v.length > 40 ? `${v.slice(0, 40)}…` : v
+              } else {
+                const s = JSON.stringify(v)
+                argsAsStrings[k] = s.length > 40 ? `${s.slice(0, 40)}…` : s
+              }
             }
             const block: MessageBlock & { kind: "tool-call" } = {
               kind: "tool-call",
               id,
               name,
-              status: "auto-executed",
+              status: "running",
               args: argsAsStrings,
             }
             toolBlockById.set(id, block)
@@ -696,9 +731,11 @@ export const useAIImplementerStore = create<State>((set, get) => ({
           } else if (frame.kind === "tool-result") {
             const id = frame.id as string
             const ok = frame.ok as boolean | undefined
+            const summary = (frame.summary as string | undefined) ?? ""
             const block = toolBlockById.get(id)
-            if (block && ok === false) {
-              block.status = "error"
+            if (block) {
+              block.status = ok === false ? "error" : "auto-executed"
+              if (summary) block.summary = summary
               patch((bs) => bs.slice())
             }
           } else if (frame.kind === "text") {
@@ -735,23 +772,34 @@ export const useAIImplementerStore = create<State>((set, get) => ({
         set((s) => ({ writeTick: s.writeTick + 1 }))
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error"
+      const aborted =
+        err instanceof DOMException && err.name === "AbortError"
+      // Drop the cursor block (the placeholder dot) so the message shows
+      // either the partial output or a clean error/cancel notice.
+      const filtered = blocks.filter((b) => b.kind !== "cursor")
+      const errorBlock: MessageBlock = aborted
+        ? {
+            kind: "text",
+            id: newMsgId(),
+            html: '<span class="text-text-muted italic">Stopped.</span>',
+          }
+        : {
+            kind: "text",
+            id: newMsgId(),
+            html: `<span class="text-status-danger">Implementer error:</span> ${escapeHtml(
+              err instanceof Error ? err.message : "Unknown error",
+            )}`,
+          }
+      const finalBlocks =
+        filtered.length === 0 ? [errorBlock] : [...filtered, errorBlock]
       set((s) => ({
         messages: s.messages.map((m) =>
-          m.id === aiMsg.id
-            ? {
-                ...m,
-                blocks: [
-                  {
-                    kind: "text" as const,
-                    id: newMsgId(),
-                    html: `<span class="text-status-danger">Implementer error:</span> ${escapeHtml(msg)}`,
-                  },
-                ],
-              }
-            : m,
+          m.id === aiMsg.id ? { ...m, blocks: finalBlocks } : m,
         ),
       }))
+    } finally {
+      if (_activeAbortController === controller) _activeAbortController = null
+      set({ streaming: false })
     }
   },
 

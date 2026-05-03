@@ -6,26 +6,34 @@ import { cn } from "@/lib/utils"
 const STATUS_LABEL: Record<ToolCallBlock["status"], string> = {
   running: "● RUNNING",
   done: "✓ DONE",
-  "auto-executed": "✓ AUTO-EXECUTED",
+  "auto-executed": "✓ DONE",
   error: "✕ ERROR",
 }
 
 export function ToolCall({ block }: { block: ToolCallBlock }) {
+  const isRunning = block.status === "running"
   return (
     <div className="my-3 bg-bg-3/60 border border-border-orage rounded-sm overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border-orage bg-bg-2/60">
-        <span className="text-gold-400 text-xs">◆</span>
+        <span
+          className={cn(
+            "text-gold-400 text-xs",
+            isRunning && "animate-pulse",
+          )}
+        >
+          ◆
+        </span>
         <span className="font-mono text-[11px] text-gold-400 tracking-wide flex-1">
           {block.name}
         </span>
         <span
           className={cn(
             "font-display tracking-[0.18em] text-[9px] px-1.5 py-px rounded-sm",
-            block.status === "auto-executed"
+            block.status === "auto-executed" || block.status === "done"
               ? "bg-[rgba(111,170,107,0.18)] text-success"
               : block.status === "error"
                 ? "bg-[rgba(194,84,80,0.18)] text-danger"
-                : "bg-[rgba(228,175,122,0.15)] text-gold-400",
+                : "bg-[rgba(228,175,122,0.15)] text-gold-400 animate-pulse",
           )}
         >
           {STATUS_LABEL[block.status]}
@@ -39,6 +47,11 @@ export function ToolCall({ block }: { block: ToolCallBlock }) {
           </div>
         ))}
       </dl>
+      {block.summary && (
+        <div className="px-3 py-1.5 border-t border-border-orage bg-bg-2/40 font-mono text-[10px] text-text-muted">
+          {block.summary}
+        </div>
+      )}
     </div>
   )
 }

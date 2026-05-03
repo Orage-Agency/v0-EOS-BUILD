@@ -11,9 +11,12 @@ export function Composer() {
   const sendMessage = useAIImplementerStore((s) => s.sendMessage)
   const deepMode = useAIImplementerStore((s) => s.deepMode)
   const toggleDeep = useAIImplementerStore((s) => s.toggleDeepMode)
+  const streaming = useAIImplementerStore((s) => s.streaming)
+  const cancelStream = useAIImplementerStore((s) => s.cancelStream)
   const workspaceSlug = useWorkspaceSlug()
 
   const handleSend = () => {
+    if (streaming) return
     const text = draft.trim()
     if (!text) return
     sendMessage(text, workspaceSlug)
@@ -32,8 +35,13 @@ export function Composer() {
             }
           }}
           rows={2}
-          placeholder="Ask the implementer anything · @ to mention · / for commands · pin context above…"
-          className="w-full bg-transparent px-3.5 py-3 text-[13px] text-text-primary placeholder:text-text-dim focus:outline-none resize-none leading-snug"
+          disabled={streaming}
+          placeholder={
+            streaming
+              ? "Implementer is responding… press Stop to cancel."
+              : "Ask the implementer anything · @ to mention · / for commands · pin context above…"
+          }
+          className="w-full bg-transparent px-3.5 py-3 text-[13px] text-text-primary placeholder:text-text-dim focus:outline-none resize-none leading-snug disabled:opacity-60"
         />
         <div className="flex items-center gap-2 px-3 py-2 border-t border-border-orage/70">
           <button
@@ -49,16 +57,28 @@ export function Composer() {
             DEEP MODE
           </button>
           <div className="flex-1" />
-          <span className="font-mono text-[10px] text-text-dim">
-            ⌘↩ to send
-          </span>
-          <button
-            onClick={handleSend}
-            disabled={!draft.trim()}
-            className="font-display tracking-[0.2em] text-[10px] px-3.5 py-1.5 rounded-sm bg-gold-500 hover:bg-gold-400 disabled:opacity-40 disabled:cursor-not-allowed text-text-on-gold transition"
-          >
-            SEND →
-          </button>
+          {streaming ? (
+            <button
+              onClick={cancelStream}
+              className="font-display tracking-[0.2em] text-[10px] px-3.5 py-1.5 rounded-sm border border-danger/60 text-danger hover:bg-danger/10 transition inline-flex items-center gap-1.5"
+              aria-label="Stop generating"
+            >
+              ■ STOP
+            </button>
+          ) : (
+            <>
+              <span className="font-mono text-[10px] text-text-dim">
+                ⌘↩ to send
+              </span>
+              <button
+                onClick={handleSend}
+                disabled={!draft.trim()}
+                className="font-display tracking-[0.2em] text-[10px] px-3.5 py-1.5 rounded-sm bg-gold-500 hover:bg-gold-400 disabled:opacity-40 disabled:cursor-not-allowed text-text-on-gold transition"
+              >
+                SEND →
+              </button>
+            </>
+          )}
         </div>
       </div>
     </footer>

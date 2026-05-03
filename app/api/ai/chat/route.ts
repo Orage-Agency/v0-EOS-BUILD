@@ -71,6 +71,35 @@ Today is provided in the user's local timezone via the system. When the user say
 
 When the user asks "how does X work?" or for definitions (rocks, scorecard, L10, IDS, V/TO, GWC, accountability chart), answer from the MANUAL DIGEST below — that's the canon for this product.`
 
+// Produce a short, human-friendly summary of a tool's output so the UI
+// can render "read_tasks · 12 results" or "create_task · ✓ created" next
+// to the tool block. Full payloads aren't shipped to the client to keep
+// SSE frames small; the model narrates the specifics in the text stream.
+function summarizeToolOutput(out: unknown): string {
+  if (out == null) return ""
+  if (typeof out !== "object") return String(out).slice(0, 120)
+  const o = out as Record<string, unknown>
+  if (typeof o.error === "string") return `error: ${o.error}`
+  if (o.created === true) return "✓ created"
+  if (o.updated === true) return "✓ updated"
+  if (o.deleted === true) return "✓ deleted"
+  for (const key of [
+    "rocks",
+    "tasks",
+    "issues",
+    "people",
+    "users",
+    "notes",
+    "milestones",
+    "metrics",
+    "entries",
+  ]) {
+    const val = o[key]
+    if (Array.isArray(val)) return `${val.length} ${key}`
+  }
+  return ""
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function collectToolCalls(steps: any[]): Array<{
   id: string
@@ -216,17 +245,24 @@ export async function POST(req: Request) {
                   args: chunk.input ?? {},
                 })
                 break
-              case "tool-result":
+              case "tool-result": {
+                const out = chunk.output as unknown
+                const isErr =
+                  Boolean(out) &&
+                  typeof out === "object" &&
+                  out !== null &&
+                  "error" in (out as Record<string, unknown>)
                 send({
                   kind: "tool-result",
                   id: chunk.toolCallId,
-                  ok: !(
-                    chunk.output &&
-                    typeof chunk.output === "object" &&
-                    "error" in (chunk.output as Record<string, unknown>)
-                  ),
+                  ok: !isErr,
+                  // Lightweight summary the UI can render — full payloads can
+                  // be megabytes, so we cap the JSON length and let the model
+                  // narrate specifics in the text stream that follows.
+                  summary: summarizeToolOutput(out),
                 })
                 break
+              }
               case "error":
                 send({ kind: "error", message: String(chunk.error) })
                 break

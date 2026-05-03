@@ -11,6 +11,7 @@
  */
 
 import { create } from "zustand"
+import { toast } from "sonner"
 import type { MockTask, TaskPriority, TaskStatus } from "@/lib/mock-data"
 import type { RockOption, WorkspaceMember } from "@/lib/tasks-server"
 import {
@@ -24,6 +25,29 @@ import {
   bulkDeleteTasks as bulkDeleteTasksAction,
   deleteTask as deleteTaskAction,
 } from "@/app/actions/tasks"
+
+// Server actions return { ok: true, ... } | { ok: false, error: string } —
+// they don't throw. The previous .catch(console.error) pattern silently
+// swallowed `ok: false`, so optimistic updates stuck on screen even when
+// the DB write failed. This wrapper checks the response and runs the
+// caller-supplied rollback so the UI matches reality.
+function reconcile<T extends { ok: boolean; error?: string } | void>(
+  promise: Promise<T>,
+  rollback: () => void,
+  label: string,
+) {
+  promise
+    .then((res) => {
+      if (res && res.ok === false) {
+        rollback()
+        toast.error(`${label}: ${res.error ?? "save failed"}`)
+      }
+    })
+    .catch((err) => {
+      rollback()
+      toast.error(`${label}: ${err instanceof Error ? err.message : "network error"}`)
+    })
+}
 
 export type Handoff = {
   id: string
@@ -186,43 +210,72 @@ export const useTasksStore = create<TasksState>((set, get) => ({
   },
 
   toggleStatus: (id) => {
-    let newStatus: TaskStatus = "open"
-    set((state) => {
-      const tasks = state.tasks.map((t) => {
-        if (t.id !== id) return t
-        newStatus = t.status === "done" ? "open" : "done"
-        return {
-          ...t,
-          status: newStatus,
-          completed: newStatus === "done" ? new Date().toISOString().slice(0, 10) : undefined,
-        }
-      })
-      return { tasks }
-    })
+    const prev = get().tasks.find((t) => t.id === id)
+    if (!prev) return
+    const newStatus: TaskStatus = prev.status === "done" ? "open" : "done"
+    set((state) => ({
+      tasks: state.tasks.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              status: newStatus,
+              completed:
+                newStatus === "done" ? new Date().toISOString().slice(0, 10) : undefined,
+            }
+          : t,
+      ),
+    }))
     const { workspaceSlug } = get()
     if (workspaceSlug) {
-      updateTaskStatusAction(workspaceSlug, id, newStatus).catch(console.error)
+      reconcile(
+        updateTaskStatusAction(workspaceSlug, id, newStatus),
+        () =>
+          set((state) => ({
+            tasks: state.tasks.map((t) => (t.id === id ? prev : t)),
+          })),
+        "Couldn't update status",
+      )
     }
   },
   updateStatus: (id, status) => {
+    const prev = get().tasks.find((t) => t.id === id)
+    if (!prev) return
     set((state) => ({
       tasks: state.tasks.map((t) => (t.id === id ? { ...t, status } : t)),
     }))
     const { workspaceSlug } = get()
     if (workspaceSlug) {
-      updateTaskStatusAction(workspaceSlug, id, status).catch(console.error)
+      reconcile(
+        updateTaskStatusAction(workspaceSlug, id, status),
+        () =>
+          set((state) => ({
+            tasks: state.tasks.map((t) => (t.id === id ? prev : t)),
+          })),
+        "Couldn't update status",
+      )
     }
   },
   updateDue: (id, due) => {
+    const prev = get().tasks.find((t) => t.id === id)
+    if (!prev) return
     set((state) => ({
       tasks: state.tasks.map((t) => (t.id === id ? { ...t, due } : t)),
     }))
     const { workspaceSlug } = get()
     if (workspaceSlug) {
-      updateTaskDueDateAction(workspaceSlug, id, due).catch(console.error)
+      reconcile(
+        updateTaskDueDateAction(workspaceSlug, id, due),
+        () =>
+          set((state) => ({
+            tasks: state.tasks.map((t) => (t.id === id ? prev : t)),
+          })),
+        "Couldn't update due date",
+      )
     }
   },
   updateTitle: (id, title) => {
+    const prev = get().tasks.find((t) => t.id === id)
+    if (!prev) return
     set((state) => ({
       tasks: state.tasks.map((t) => (t.id === id ? { ...t, title } : t)),
     }))
@@ -230,10 +283,19 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     if (!workspaceSlug || !isDbId(id)) return
     if (_titleSaveTimer) clearTimeout(_titleSaveTimer)
     _titleSaveTimer = setTimeout(() => {
-      updateTaskTitleAction(workspaceSlug, id, title).catch(console.error)
+      reconcile(
+        updateTaskTitleAction(workspaceSlug, id, title),
+        () =>
+          set((state) => ({
+            tasks: state.tasks.map((t) => (t.id === id ? prev : t)),
+          })),
+        "Couldn't save title",
+      )
     }, 800)
   },
   updateDescription: (id, description) => {
+    const prev = get().tasks.find((t) => t.id === id)
+    if (!prev) return
     set((state) => ({
       tasks: state.tasks.map((t) => (t.id === id ? { ...t, description } : t)),
     }))
@@ -241,19 +303,37 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     if (!workspaceSlug || !isDbId(id)) return
     if (_descSaveTimer) clearTimeout(_descSaveTimer)
     _descSaveTimer = setTimeout(() => {
-      updateTaskDescriptionAction(workspaceSlug, id, description).catch(console.error)
+      reconcile(
+        updateTaskDescriptionAction(workspaceSlug, id, description),
+        () =>
+          set((state) => ({
+            tasks: state.tasks.map((t) => (t.id === id ? prev : t)),
+          })),
+        "Couldn't save description",
+      )
     }, 800)
   },
   updatePriority: (id, priority) => {
+    const prev = get().tasks.find((t) => t.id === id)
+    if (!prev) return
     set((state) => ({
       tasks: state.tasks.map((t) => (t.id === id ? { ...t, priority } : t)),
     }))
     const { workspaceSlug } = get()
     if (workspaceSlug && isDbId(id)) {
-      updateTaskPriorityAction(workspaceSlug, id, priority).catch(console.error)
+      reconcile(
+        updateTaskPriorityAction(workspaceSlug, id, priority),
+        () =>
+          set((state) => ({
+            tasks: state.tasks.map((t) => (t.id === id ? prev : t)),
+          })),
+        "Couldn't update priority",
+      )
     }
   },
   updateRock: (id, rockId) => {
+    const prev = get().tasks.find((t) => t.id === id)
+    if (!prev) return
     set((state) => ({
       tasks: state.tasks.map((t) =>
         t.id === id ? { ...t, rockId: rockId ?? undefined } : t,
@@ -261,7 +341,14 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     }))
     const { workspaceSlug } = get()
     if (workspaceSlug && isDbId(id)) {
-      updateTaskRockAction(workspaceSlug, id, rockId).catch(console.error)
+      reconcile(
+        updateTaskRockAction(workspaceSlug, id, rockId),
+        () =>
+          set((state) => ({
+            tasks: state.tasks.map((t) => (t.id === id ? prev : t)),
+          })),
+        "Couldn't link rock",
+      )
     }
   },
   reassign: (id, ownerId) =>
@@ -271,6 +358,8 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       ),
     })),
   deleteOne: (id) => {
+    const prev = get().tasks.find((t) => t.id === id)
+    if (!prev) return
     set((state) => ({
       tasks: state.tasks.filter((t) => t.id !== id),
       selected: new Set(Array.from(state.selected).filter((s) => s !== id)),
@@ -278,10 +367,16 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     }))
     const { workspaceSlug } = get()
     if (workspaceSlug && isDbId(id)) {
-      deleteTaskAction(workspaceSlug, id).catch(console.error)
+      reconcile(
+        deleteTaskAction(workspaceSlug, id),
+        () => set((state) => ({ tasks: [prev, ...state.tasks] })),
+        "Couldn't delete task",
+      )
     }
   },
   archiveOne: (id) => {
+    const prev = get().tasks.find((t) => t.id === id)
+    if (!prev) return
     set((state) => ({
       tasks: state.tasks.map((t) =>
         t.id === id ? { ...t, status: "cancelled" as TaskStatus } : t,
@@ -289,7 +384,14 @@ export const useTasksStore = create<TasksState>((set, get) => ({
     }))
     const { workspaceSlug } = get()
     if (workspaceSlug && isDbId(id)) {
-      updateTaskStatusAction(workspaceSlug, id, "cancelled" as TaskStatus).catch(console.error)
+      reconcile(
+        updateTaskStatusAction(workspaceSlug, id, "cancelled" as TaskStatus),
+        () =>
+          set((state) => ({
+            tasks: state.tasks.map((t) => (t.id === id ? prev : t)),
+          })),
+        "Couldn't archive task",
+      )
     }
   },
   reorder: (ids) =>

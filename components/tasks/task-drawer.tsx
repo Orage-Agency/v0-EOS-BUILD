@@ -74,6 +74,34 @@ export function TaskDrawer() {
     }
   }, [task?.id])
 
+  // Restore focus to the element that opened the drawer when it closes —
+  // keyboard users were getting dropped at <body> after the drawer
+  // animated away. We capture the trigger on open and re-focus on close.
+  const triggerRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    if (open) {
+      triggerRef.current = document.activeElement as HTMLElement | null
+    } else if (triggerRef.current) {
+      triggerRef.current.focus?.()
+      triggerRef.current = null
+    }
+  }, [open])
+
+  // Escape closes the drawer from anywhere — title input already has its
+  // own handler that resets the draft, but everywhere else (textarea,
+  // status pill, etc.) lacked a global escape.
+  useEffect(() => {
+    if (!open) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.stopPropagation()
+        closeTask()
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [open, closeTask])
+
   function commitTitle() {
     if (!task) return
     const next = titleDraft.trim()
