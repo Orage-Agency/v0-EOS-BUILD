@@ -8,7 +8,7 @@
 
 import { Suspense, useState } from "react"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { loginByEmail } from "@/app/actions/auth"
 
 export default function LoginEntryPage() {
@@ -20,7 +20,6 @@ export default function LoginEntryPage() {
 }
 
 function LoginForm() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const initialError = searchParams.get("error")
 
@@ -37,16 +36,11 @@ function LoginForm() {
     e.preventDefault()
     setLoading(true)
     setError(null)
+    // loginByEmail redirects on success — only error responses come back.
     const result = await loginByEmail(email, password)
-    if (!result.ok) {
+    if (result && !result.ok) {
       setError(result.error)
       setLoading(false)
-      return
-    }
-    if (result.slug) {
-      router.push(`/${result.slug}`)
-    } else {
-      router.push("/signup")
     }
   }
 

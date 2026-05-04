@@ -8,11 +8,9 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { signUpWorkspace } from "@/app/actions/auth"
 
 export default function SignupPage() {
-  const router = useRouter()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [fullName, setFullName] = useState("")
@@ -23,13 +21,14 @@ export default function SignupPage() {
     e.preventDefault()
     setLoading(true)
     setError(null)
+    // signUpWorkspace redirects on success — only error responses come
+    // back here. The redirect itself happens server-side and flushes the
+    // session cookies cleanly.
     const result = await signUpWorkspace({ email, password, fullName })
-    if (!result.ok) {
+    if (result && !result.ok) {
       setError(result.error)
       setLoading(false)
-      return
     }
-    router.push(`/${result.slug}`)
   }
 
   return (

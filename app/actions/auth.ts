@@ -167,7 +167,10 @@ export async function signUpWorkspace(input: {
     return { ok: false, error: `Couldn't add membership: ${memErr.message}` }
   }
 
-  return { ok: true, slug: ws.slug as string }
+  // Use redirect() directly so Next.js flushes the Supabase session
+  // cookies on the redirect response. Returning a payload + router.push
+  // can drop cookies set during the action in some versions.
+  redirect(`/${ws.slug as string}`)
 }
 
 // ─── LOG IN BY EMAIL (workspace-agnostic) ───
@@ -176,14 +179,14 @@ export async function signUpWorkspace(input: {
 // then resolves the user's first active workspace and returns its slug
 // so the client can redirect. If the user has no workspace yet, we send
 // them to /signup to create one.
-export type LoginByEmailResult =
-  | { ok: true; slug: string | null }
-  | { ok: false; error: string }
+// Returned only when the action does NOT redirect (errors only on the
+// success path because we redirect server-side to flush session cookies).
+export type LoginByEmailResult = { ok: false; error: string }
 
 export async function loginByEmail(
   email: string,
   password: string,
-): Promise<LoginByEmailResult> {
+): Promise<LoginByEmailResult | undefined> {
   const limit = await checkAuthRateLimit("login")
   if (!limit.ok) return { ok: false, error: limit.message }
 
@@ -209,21 +212,22 @@ export async function loginByEmail(
     .maybeSingle()
 
   if (profile?.is_master) {
-    return { ok: true, slug: null }
+    redirect("/")
   }
 
   // Two-step lookup — PostgREST FK alias filter is unreliable here.
+  // The membership table's timestamp column is `joined_at`, not created_at.
   const { data: mem } = await admin
     .from("workspace_memberships")
-    .select("workspace_id, created_at")
+    .select("workspace_id, joined_at")
     .eq("user_id", userId)
     .eq("status", "active")
-    .order("created_at", { ascending: true })
+    .order("joined_at", { ascending: true })
     .limit(1)
     .maybeSingle()
 
   if (!mem?.workspace_id) {
-    return { ok: true, slug: null }
+    redirect("/signup")
   }
 
   const { data: ws } = await admin
@@ -232,7 +236,13 @@ export async function loginByEmail(
     .eq("id", mem.workspace_id)
     .maybeSingle()
 
-  return { ok: true, slug: (ws?.slug as string | undefined) ?? null }
+  if (!ws?.slug) {
+    // Membership exists but workspace was deleted/orphaned — bounce to
+    // signup so the user can recover with a new workspace.
+    redirect("/signup")
+  }
+
+  redirect(`/${ws.slug as string}`)
 }
 
 // ─── LOG IN (legacy workspace-scoped form, used by /[workspace]/login) ───
