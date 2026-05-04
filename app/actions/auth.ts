@@ -15,6 +15,7 @@ import { inviteEmail } from "@/lib/email-templates"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission, PermissionError } from "@/lib/server/permissions"
 import { checkAuthRateLimit } from "@/lib/auth-rate-limit"
+import { generateTempPassword } from "@/lib/temp-password"
 
 function appUrl() {
   if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL
@@ -400,23 +401,71 @@ export async function createInvite(
   if ((ws.id as string) !== user.workspaceId) return { error: "Workspace mismatch" }
 
   const token = crypto.randomBytes(32).toString("hex")
+  const tempPassword = generateTempPassword()
+  const inviteeEmail = email.trim().toLowerCase()
 
+  // Pre-create the auth user with the temp password so the admin can
+  // share credentials immediately if the invite email fails. If the user
+  // already exists (e.g., they're being invited to a 2nd workspace),
+  // skip creation — keep their existing password intact.
+  const admin = supabaseAdmin()
+  let createdAuthUser = false
+  let preCreatedUserId: string | null = null
+  try {
+    const { data: created, error: createErr } = await admin.auth.admin.createUser({
+      email: inviteeEmail,
+      password: tempPassword,
+      email_confirm: true,
+      user_metadata: { full_name: inviteeEmail.split("@")[0] ?? "member" },
+    })
+    if (createErr) {
+      // "already registered" is fine — fall through.
+      if (!/already.*registered|exists/i.test(createErr.message)) {
+        console.error("[createInvite] admin.createUser failed", createErr.message)
+      }
+    } else if (created.user) {
+      createdAuthUser = true
+      preCreatedUserId = created.user.id
+      // Mirror signUp pattern: ensure profile row exists for proxy/RLS.
+      await admin
+        .from("profiles")
+        .upsert(
+          { id: preCreatedUserId, email: inviteeEmail, full_name: inviteeEmail.split("@")[0] ?? "member" },
+          { onConflict: "id" },
+        )
+    }
+  } catch (e) {
+    // Don't fail the whole invite on auth-user creation hiccup. Admin can
+    // still share the link; acceptInvite handles existing-or-new users.
+    console.error("[createInvite] admin.createUser exception", e)
+  }
+
+  // Only persist the temp password if WE created the auth user this
+  // request. For pre-existing users, we don't know (and shouldn't reveal)
+  // their password.
   const { error } = await supabase.from("workspace_invites").insert({
     workspace_id: ws.id,
-    email,
+    email: inviteeEmail,
     role,
     token,
     invited_by: user.id,
+    temp_password: createdAuthUser ? tempPassword : null,
   })
 
-  if (error) return { error: error.message }
+  if (error) {
+    // Roll back the just-created auth user so a retry isn't blocked by
+    // "email already exists".
+    if (preCreatedUserId) {
+      await admin.auth.admin.deleteUser(preCreatedUserId).catch(() => {})
+    }
+    return { error: error.message }
+  }
 
   const link = `${appUrl()}/accept-invite?token=${token}`
 
   // Look up the inviter's display name for the email body. Fail soft —
   // the invite link is still returned to the UI even if email/profile
   // fetch errors out.
-  const admin = supabaseAdmin()
   const { data: inviter } = await admin
     .from("profiles")
     .select("full_name, email")
@@ -460,7 +509,13 @@ export async function createInvite(
   })
 
   revalidatePath(`/${workspaceSlug}/settings/members`)
-  return { success: true, link }
+  return {
+    success: true,
+    link,
+    // Only returned for newly-created auth users. Existing users keep their
+    // own password; the inviter shouldn't see anything for them.
+    tempPassword: createdAuthUser ? tempPassword : null,
+  }
 }
 
 // ─── ACCEPT INVITE (from /accept-invite?token=xxx page) ───
@@ -526,39 +581,55 @@ export async function acceptInvite(token: string, password: string, fullName?: s
     if (pwErr) return { error: pwErr.message }
     userId = existingSessionUser.id
   } else {
-    // Direct-link path — no session yet. Create a pre-confirmed user
-    // via the admin API (works regardless of the project's "Confirm
-    // email" setting), then sign in to set the session cookies.
-    const { data: created, error: createErr } = await admin.auth.admin.createUser({
-      email: inviteeEmail,
-      password,
-      email_confirm: true,
-      user_metadata: { full_name: resolvedName },
-    })
-    if (createErr || !created.user) {
-      // If the email is already in use (e.g. user signed up elsewhere
-      // first, then pasted the invite link), fall back to a clear hint.
-      const msg = createErr?.message ?? "Sign up failed"
-      if (/already.*registered|exists/i.test(msg)) {
-        return {
-          error:
-            "An account already exists for this email. Sign in first, then click the invite link again.",
-        }
-      }
-      return { error: msg }
-    }
-    userId = created.user.id
-    createdNewUser = true
+    // Direct-link path — no session yet. Look up the auth user that
+    // createInvite pre-created at invite time. If found, just rotate
+    // their password to whatever the invitee chose. If not found (older
+    // invite from before the pre-create flow, or admin.createUser failed
+    // at invite time), fall through to create them now.
+    const { data: list } = await admin.auth.admin.listUsers({ perPage: 200 })
+    const existingByEmail = list.users.find(
+      (u) => u.email?.toLowerCase() === inviteeEmail,
+    )
 
-    // Mirror signUpWorkspace: ensure a profile row exists. There's no
-    // handle_new_user trigger in this codebase's migrations, so admin
-    // user creation alone leaves profiles empty.
-    await admin
-      .from("profiles")
-      .upsert(
-        { id: userId, email: inviteeEmail, full_name: resolvedName },
-        { onConflict: "id" },
+    if (existingByEmail) {
+      const { error: updErr } = await admin.auth.admin.updateUserById(
+        existingByEmail.id,
+        {
+          password,
+          email_confirm: true,
+          user_metadata: { full_name: resolvedName },
+        },
       )
+      if (updErr) return { error: updErr.message }
+      userId = existingByEmail.id
+
+      await admin
+        .from("profiles")
+        .upsert(
+          { id: userId, email: inviteeEmail, full_name: resolvedName },
+          { onConflict: "id" },
+        )
+    } else {
+      const { data: created, error: createErr } = await admin.auth.admin.createUser({
+        email: inviteeEmail,
+        password,
+        email_confirm: true,
+        user_metadata: { full_name: resolvedName },
+      })
+      if (createErr || !created.user) {
+        const msg = createErr?.message ?? "Sign up failed"
+        return { error: msg }
+      }
+      userId = created.user.id
+      createdNewUser = true
+
+      await admin
+        .from("profiles")
+        .upsert(
+          { id: userId, email: inviteeEmail, full_name: resolvedName },
+          { onConflict: "id" },
+        )
+    }
 
     const { error: signInErr } = await supabase.auth.signInWithPassword({
       email: inviteeEmail,
@@ -607,6 +678,9 @@ export async function acceptInvite(token: string, password: string, fullName?: s
       status: "accepted",
       accepted_at: new Date().toISOString(),
       accepted_by: userId,
+      // The user picked their own password — clear the fallback so it's
+      // no longer recoverable from the members UI.
+      temp_password: null,
     })
     .eq("id", invite.id)
 

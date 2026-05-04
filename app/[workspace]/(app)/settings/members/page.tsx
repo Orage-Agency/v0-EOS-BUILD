@@ -28,6 +28,7 @@ type Invite = {
   role: string
   token: string
   expires_at: string
+  temp_password: string | null
 }
 
 export default function MembersPage() {
@@ -40,7 +41,9 @@ export default function MembersPage() {
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteRole, setInviteRole] = useState<"admin" | "leader" | "member" | "viewer">("member")
   const [generatedLink, setGeneratedLink] = useState<string | null>(null)
+  const [generatedPassword, setGeneratedPassword] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [revealedPwId, setRevealedPwId] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
     const supabase = createClient()
@@ -113,6 +116,7 @@ export default function MembersPage() {
     const result = await createInvite(workspaceSlug, inviteEmail, inviteRole)
     if (result.success && result.link) {
       setGeneratedLink(result.link)
+      setGeneratedPassword(result.tempPassword ?? null)
       setInviteEmail("")
       loadData()
     } else {
@@ -167,7 +171,7 @@ export default function MembersPage() {
               >
                 Invite link generated
               </div>
-              <div className="flex gap-2 mb-4">
+              <div className="flex gap-2 mb-3">
                 <input
                   readOnly
                   value={generatedLink}
@@ -181,14 +185,44 @@ export default function MembersPage() {
                   {copied ? "✓ Copied" : "Copy"}
                 </button>
               </div>
+
+              {generatedPassword && (
+                <div className="mb-3">
+                  <div
+                    className="text-[10px] uppercase tracking-[0.18em] text-[#8a7860] mb-1.5"
+                    style={{ fontFamily: "Bebas Neue" }}
+                  >
+                    Fallback password
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      readOnly
+                      value={generatedPassword}
+                      className="flex-1 px-4 py-2 bg-[#0a0a0a] border border-[rgba(182,128,57,0.18)] rounded-[2px] text-[12px] text-[#FFD69C] font-mono"
+                    />
+                    <button
+                      onClick={() => copyToClipboard(generatedPassword)}
+                      className="px-4 py-2 bg-[rgba(182,128,57,0.18)] text-[#E4AF7A] text-[11px] uppercase tracking-[0.1em] rounded-[2px] hover:bg-[rgba(182,128,57,0.3)]"
+                      style={{ fontFamily: "Bebas Neue" }}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <p className="text-[11px] text-[#8a7860]">
-                Send this link to <strong className="text-[#E4AF7A]">the invitee</strong>. They&apos;ll set
-                their password and join. The link expires in 14 days.
+                Send the link to <strong className="text-[#E4AF7A]">the invitee</strong>. They&apos;ll
+                set their own password from the link.
+                {generatedPassword
+                  ? " If they have any trouble, share the fallback password — they can sign in directly with it. The link expires in 14 days."
+                  : " The link expires in 14 days."}
               </p>
               <button
                 onClick={() => {
                   setShowInviteForm(false)
                   setGeneratedLink(null)
+                  setGeneratedPassword(null)
                 }}
                 className="mt-4 text-[11px] text-[#8a7860] hover:text-[#E4AF7A]"
               >
@@ -250,35 +284,64 @@ export default function MembersPage() {
             {invites.map((inv) => (
               <div
                 key={inv.id}
-                className="p-4 bg-[#151515] border border-[rgba(182,128,57,0.18)] rounded-[2px] flex items-center justify-between"
+                className="p-4 bg-[#151515] border border-[rgba(182,128,57,0.18)] rounded-[2px]"
               >
-                <div>
-                  <div className="text-[13px] text-[#FFD69C]">{inv.email}</div>
-                  <div
-                    className="text-[11px] text-[#8a7860] uppercase tracking-[0.1em]"
-                    style={{ fontFamily: "Bebas Neue" }}
-                  >
-                    {inv.role} · expires {new Date(inv.expires_at).toLocaleDateString()}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-[13px] text-[#FFD69C]">{inv.email}</div>
+                    <div
+                      className="text-[11px] text-[#8a7860] uppercase tracking-[0.1em]"
+                      style={{ fontFamily: "Bebas Neue" }}
+                    >
+                      {inv.role} · expires {new Date(inv.expires_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() =>
+                        copyToClipboard(`${window.location.origin}/accept-invite?token=${inv.token}`)
+                      }
+                      className="px-3 py-1 text-[10px] uppercase tracking-[0.1em] text-[#E4AF7A] border border-[rgba(182,128,57,0.18)] rounded-[2px] hover:border-[#B68039]"
+                      style={{ fontFamily: "Bebas Neue" }}
+                    >
+                      Copy link
+                    </button>
+                    {inv.temp_password && (
+                      <button
+                        onClick={() =>
+                          setRevealedPwId(revealedPwId === inv.id ? null : inv.id)
+                        }
+                        className="px-3 py-1 text-[10px] uppercase tracking-[0.1em] text-[#E4AF7A] border border-[rgba(182,128,57,0.18)] rounded-[2px] hover:border-[#B68039]"
+                        style={{ fontFamily: "Bebas Neue" }}
+                      >
+                        {revealedPwId === inv.id ? "Hide" : "Show"} password
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleRevoke(inv.id)}
+                      className="px-3 py-1 text-[10px] uppercase tracking-[0.1em] text-[#C25450] hover:bg-[rgba(194,84,80,0.1)] rounded-[2px]"
+                      style={{ fontFamily: "Bebas Neue" }}
+                    >
+                      Revoke
+                    </button>
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() =>
-                      copyToClipboard(`${window.location.origin}/accept-invite?token=${inv.token}`)
-                    }
-                    className="px-3 py-1 text-[10px] uppercase tracking-[0.1em] text-[#E4AF7A] border border-[rgba(182,128,57,0.18)] rounded-[2px] hover:border-[#B68039]"
-                    style={{ fontFamily: "Bebas Neue" }}
-                  >
-                    Copy link
-                  </button>
-                  <button
-                    onClick={() => handleRevoke(inv.id)}
-                    className="px-3 py-1 text-[10px] uppercase tracking-[0.1em] text-[#C25450] hover:bg-[rgba(194,84,80,0.1)] rounded-[2px]"
-                    style={{ fontFamily: "Bebas Neue" }}
-                  >
-                    Revoke
-                  </button>
-                </div>
+                {inv.temp_password && revealedPwId === inv.id && (
+                  <div className="mt-3 flex gap-2">
+                    <input
+                      readOnly
+                      value={inv.temp_password}
+                      className="flex-1 px-3 py-1.5 bg-[#0a0a0a] border border-[rgba(182,128,57,0.18)] rounded-[2px] text-[12px] text-[#FFD69C] font-mono"
+                    />
+                    <button
+                      onClick={() => copyToClipboard(inv.temp_password!)}
+                      className="px-3 py-1.5 bg-[rgba(182,128,57,0.18)] text-[#E4AF7A] text-[10px] uppercase tracking-[0.1em] rounded-[2px] hover:bg-[rgba(182,128,57,0.3)]"
+                      style={{ fontFamily: "Bebas Neue" }}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
