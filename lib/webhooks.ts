@@ -2,39 +2,23 @@ import "server-only"
 import crypto from "crypto"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 
+// Re-export client-safe pieces so existing server callers keep working
+// without changing imports.
+export {
+  ALL_WEBHOOK_EVENTS,
+  type WebhookEventType,
+} from "@/lib/webhooks-types"
+
 /**
  * Outbound webhook system.
  *
  * Server actions and API endpoints call `enqueueWebhookEvent` after a
  * successful write. This inserts a row into webhook_deliveries for each
- * subscribed webhook in the workspace. A scheduled cron picks pending
- * rows and POSTs them with an HMAC signature, retrying with backoff on
- * failure.
- *
- * Decoupling the producer from the network call keeps user-facing writes
- * fast — a slow consumer can't slow down the app.
+ * subscribed webhook in the workspace. The webhook-delivery cron picks
+ * pending rows and POSTs them with an HMAC signature; we ALSO POST
+ * inline below with a 5s timeout so the happy-path latency is sub-second
+ * on the Hobby plan (where the cron only fires once per day).
  */
-
-export type WebhookEventType =
-  | "task.created"
-  | "task.updated"
-  | "task.deleted"
-  | "rock.created"
-  | "rock.updated"
-  | "rock.deleted"
-  | "issue.created"
-  | "issue.updated"
-  | "issue.deleted"
-  | "note.created"
-  | "note.updated"
-  | "note.deleted"
-
-export const ALL_WEBHOOK_EVENTS: WebhookEventType[] = [
-  "task.created", "task.updated", "task.deleted",
-  "rock.created", "rock.updated", "rock.deleted",
-  "issue.created", "issue.updated", "issue.deleted",
-  "note.created", "note.updated", "note.deleted",
-]
 
 export async function enqueueWebhookEvent(
   workspaceId: string,

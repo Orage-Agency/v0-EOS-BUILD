@@ -12,7 +12,7 @@ import {
   deleteWebhook,
   type WebhookRow,
 } from "@/app/actions/webhooks"
-import { ALL_WEBHOOK_EVENTS } from "@/lib/webhooks"
+import { ALL_WEBHOOK_EVENTS } from "@/lib/webhooks-types"
 import { cn } from "@/lib/utils"
 
 function timeAgo(iso: string | null): string {
