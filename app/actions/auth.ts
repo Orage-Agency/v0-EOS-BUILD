@@ -100,18 +100,37 @@ export async function signUpWorkspace(input: {
   const supabase = await createClient()
   const admin = supabaseAdmin()
 
-  // 1) Create the auth user. The handle_new_user trigger creates the profile.
-  //    Using signUp (not admin.create) so the response sets session cookies
-  //    and the user is logged in immediately on the redirect.
-  const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+  // 1) Create the auth user via the admin API with email_confirm:true so
+  //    the user is pre-confirmed regardless of the project-wide "Confirm
+  //    email" setting. The handle_new_user trigger creates the profile.
+  //    Then immediately sign them in via signInWithPassword so the
+  //    response sets the session cookies and they land logged-in.
+  const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email,
     password: input.password,
-    options: { data: { full_name: fullName } },
+    email_confirm: true,
+    user_metadata: { full_name: fullName },
   })
-  if (signUpErr || !signUpData.user) {
-    return { ok: false, error: signUpErr?.message ?? "Sign-up failed." }
+  if (createErr || !created.user) {
+    // Treat "already registered" as a precondition error so the UI can
+    // direct the visitor to /login without leaking which emails exist.
+    const msg = createErr?.message ?? "Sign-up failed."
+    if (/already.*registered|exists/i.test(msg)) {
+      return { ok: false, error: "An account already exists for that email. Try signing in." }
+    }
+    return { ok: false, error: msg }
   }
-  const userId = signUpData.user.id
+  const userId = created.user.id
+
+  const { error: signInErr } = await supabase.auth.signInWithPassword({
+    email,
+    password: input.password,
+  })
+  if (signInErr) {
+    // Don't roll back — the user was created and they can sign in
+    // directly at /login. Surface a clear next step.
+    return { ok: false, error: "Account created — please sign in." }
+  }
 
   // 2) Create the workspace with a unique slug derived from the name.
   const slug = await uniqueSlug(slugify(wsName), admin)
@@ -485,17 +504,40 @@ export async function acceptInvite(token: string, password: string, fullName?: s
     if (pwErr) return { error: pwErr.message }
     userId = existingSessionUser.id
   } else {
-    // Direct-link path — no session yet. Sign up. (With "Confirm email"
-    // turned OFF in Supabase Auth, this also sets session cookies.)
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+    // Direct-link path — no session yet. Create a pre-confirmed user
+    // via the admin API (works regardless of the project's "Confirm
+    // email" setting), then sign in to set the session cookies.
+    const { data: created, error: createErr } = await admin.auth.admin.createUser({
       email: inviteeEmail,
       password,
-      options: { data: { full_name: resolvedName } },
+      email_confirm: true,
+      user_metadata: { full_name: resolvedName },
     })
-    if (signUpError) return { error: signUpError.message }
-    if (!signUpData.user) return { error: "Sign up failed" }
-    userId = signUpData.user.id
+    if (createErr || !created.user) {
+      // If the email is already in use (e.g. user signed up elsewhere
+      // first, then pasted the invite link), fall back to a clear hint.
+      const msg = createErr?.message ?? "Sign up failed"
+      if (/already.*registered|exists/i.test(msg)) {
+        return {
+          error:
+            "An account already exists for this email. Sign in first, then click the invite link again.",
+        }
+      }
+      return { error: msg }
+    }
+    userId = created.user.id
     createdNewUser = true
+
+    const { error: signInErr } = await supabase.auth.signInWithPassword({
+      email: inviteeEmail,
+      password,
+    })
+    if (signInErr) {
+      // The user is created and confirmed — they just couldn't be
+      // auto-signed-in. Membership creation continues below; the
+      // recipient can sign in via /login.
+      console.error("[acceptInvite] auto sign-in failed", signInErr.message)
+    }
   }
 
   // Use the service-role client for the membership insert + invite mark
