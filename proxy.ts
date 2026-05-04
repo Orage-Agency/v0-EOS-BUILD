@@ -11,6 +11,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { createServerClient } from "@supabase/ssr"
+import { createClient as createServiceClient } from "@supabase/supabase-js"
 import { NextResponse, type NextRequest } from "next/server"
 
 const PUBLIC_PATHS = [
@@ -75,6 +76,13 @@ function decodeJwt(token: string): { sub?: string; exp?: number } | null {
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })
 
+  // We DON'T use the cookie-bound server client for the DB queries below,
+  // because @supabase/ssr never wires the user's JWT onto the outgoing
+  // PostgREST requests when we skip auth.getUser() (the ES256 quirk). The
+  // queries would then hit RLS as anon and silently return zero rows,
+  // bouncing logged-in users to /login. The keep-cookies-fresh client is
+  // still useful for the setAll side-effect, so we instantiate it but
+  // route DB lookups through the service-role client below.
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
@@ -93,6 +101,16 @@ export async function proxy(request: NextRequest) {
         },
       },
     },
+  )
+  void supabase
+
+  // Service-role client for authority checks (profile is_master + workspace
+  // membership). The proxy is server-only so the key is never exposed to
+  // the browser, and these are admission decisions, not user-visible reads.
+  const svc = createServiceClient(
+    (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL)!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } },
   )
 
   // Manual session resolution — bypasses auth.getUser() to avoid the Edge
@@ -136,7 +154,7 @@ export async function proxy(request: NextRequest) {
     // Two-step lookup: PostgREST's `workspace:workspaces(slug)` FK alias
     // join is unreliable in this codebase (see lib/people-server.ts +
     // lib/auth.ts). Fetch a membership row, then resolve its workspace.
-    const { data: mem } = await supabase
+    const { data: mem } = await svc
       .from("workspace_memberships")
       .select("workspace_id")
       .eq("user_id", userId)
@@ -144,7 +162,7 @@ export async function proxy(request: NextRequest) {
       .limit(1)
       .maybeSingle()
     if (mem?.workspace_id) {
-      const { data: ws } = await supabase
+      const { data: ws } = await svc
         .from("workspaces")
         .select("slug")
         .eq("id", mem.workspace_id)
@@ -167,30 +185,30 @@ export async function proxy(request: NextRequest) {
   }
 
   // Verify user is a member of this workspace (or is master)
-  const { data: profile } = await supabase
+  const { data: profile } = await svc
     .from("profiles")
     .select("is_master")
     .eq("id", userId)
-    .single()
+    .maybeSingle()
 
   if (!profile?.is_master) {
-    const { data: ws } = await supabase
+    const { data: ws } = await svc
       .from("workspaces")
       .select("id")
       .eq("slug", workspaceSlug)
-      .single()
+      .maybeSingle()
 
     if (!ws) {
       return NextResponse.redirect(new URL("/login", request.url))
     }
 
-    const { data: hasAccess } = await supabase
+    const { data: hasAccess } = await svc
       .from("workspace_memberships")
       .select("id")
       .eq("user_id", userId)
       .eq("workspace_id", ws.id)
       .eq("status", "active")
-      .single()
+      .maybeSingle()
 
     if (!hasAccess) {
       return NextResponse.redirect(new URL("/login?error=no_access", request.url))

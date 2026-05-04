@@ -122,6 +122,18 @@ export async function signUpWorkspace(input: {
   }
   const userId = created.user.id
 
+  // Ensure a profile row exists. The handle_new_user trigger isn't
+  // installed in this project's migrations, so admin.createUser does
+  // NOT auto-create a profile. Without one, RLS-bound queries (e.g.
+  // proxy.ts membership checks) silently return zero rows. Upsert so
+  // we're idempotent against any future trigger that does fire.
+  await admin
+    .from("profiles")
+    .upsert(
+      { id: userId, email, full_name: fullName },
+      { onConflict: "id" },
+    )
+
   const { error: signInErr } = await supabase.auth.signInWithPassword({
     email,
     password: input.password,
