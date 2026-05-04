@@ -82,6 +82,50 @@ function describe(r: AuditRow): string {
   }
 }
 
+function toCsv(rows: AuditRow[]): string {
+  const escape = (v: unknown) => {
+    if (v === null || v === undefined) return ""
+    const s = typeof v === "string" ? v : JSON.stringify(v)
+    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+    return s
+  }
+  const header = [
+    "timestamp",
+    "actor_name",
+    "actor_email",
+    "action",
+    "entity_type",
+    "entity_id",
+    "metadata",
+  ].join(",")
+  const body = rows
+    .map((r) =>
+      [
+        r.createdAt,
+        r.actor.name,
+        r.actor.email ?? "",
+        r.action,
+        r.entityType,
+        r.entityId,
+        r.metadata ? JSON.stringify(r.metadata) : "",
+      ]
+        .map(escape)
+        .join(","),
+    )
+    .join("\n")
+  return `${header}\n${body}`
+}
+
+function downloadCsv(filename: string, content: string) {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 100)
+}
+
 export function AuditViewer({
   rows,
   canSeeAll,
@@ -91,17 +135,42 @@ export function AuditViewer({
 }) {
   const [filterEntity, setFilterEntity] = useState<string>("")
   const [filterActor, setFilterActor] = useState<string>("")
+  const [filterAction, setFilterAction] = useState<string>("")
+  const [filterDate, setFilterDate] = useState<"" | "1d" | "7d" | "30d">("")
+  const [filterSearch, setFilterSearch] = useState<string>("")
 
   const filtered = useMemo(() => {
+    const cutoffMs =
+      filterDate === "1d"
+        ? Date.now() - 24 * 60 * 60 * 1000
+        : filterDate === "7d"
+          ? Date.now() - 7 * 24 * 60 * 60 * 1000
+          : filterDate === "30d"
+            ? Date.now() - 30 * 24 * 60 * 60 * 1000
+            : 0
+    const q = filterSearch.trim().toLowerCase()
     return rows.filter((r) => {
       if (filterEntity && r.entityType !== filterEntity) return false
       if (filterActor && r.actor.id !== filterActor) return false
+      if (filterAction && r.action !== filterAction) return false
+      if (cutoffMs && new Date(r.createdAt).getTime() < cutoffMs) return false
+      if (q) {
+        const hay =
+          `${r.actor.name} ${r.action} ${r.entityType} ${r.entityId} ${
+            r.metadata ? JSON.stringify(r.metadata) : ""
+          }`.toLowerCase()
+        if (!hay.includes(q)) return false
+      }
       return true
     })
-  }, [rows, filterEntity, filterActor])
+  }, [rows, filterEntity, filterActor, filterAction, filterDate, filterSearch])
 
   const entities = useMemo(
     () => Array.from(new Set(rows.map((r) => r.entityType))).sort(),
+    [rows],
+  )
+  const actions = useMemo(
+    () => Array.from(new Set(rows.map((r) => r.action))).sort(),
     [rows],
   )
   const actors = useMemo(() => {
@@ -129,6 +198,12 @@ export function AuditViewer({
       </div>
 
       <div className="mb-6 flex flex-wrap gap-2">
+        <input
+          value={filterSearch}
+          onChange={(e) => setFilterSearch(e.target.value)}
+          placeholder="Search action or metadata…"
+          className="bg-[#0a0a0a] border border-[rgba(182,128,57,0.18)] rounded-[2px] px-3 py-2 text-[12px] text-[#FFD69C] placeholder:text-[#5a4f3e] focus:outline-none focus:border-[#B68039] flex-1 min-w-[200px]"
+        />
         <select
           value={filterEntity}
           onChange={(e) => setFilterEntity(e.target.value)}
@@ -140,6 +215,28 @@ export function AuditViewer({
               {ENTITY_LABEL[e] ?? e}
             </option>
           ))}
+        </select>
+        <select
+          value={filterAction}
+          onChange={(e) => setFilterAction(e.target.value)}
+          className="bg-[#0a0a0a] border border-[rgba(182,128,57,0.18)] rounded-[2px] px-3 py-2 text-[12px] text-[#FFD69C] focus:outline-none focus:border-[#B68039]"
+        >
+          <option value="">All actions</option>
+          {actions.map((a) => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
+        </select>
+        <select
+          value={filterDate}
+          onChange={(e) => setFilterDate(e.target.value as typeof filterDate)}
+          className="bg-[#0a0a0a] border border-[rgba(182,128,57,0.18)] rounded-[2px] px-3 py-2 text-[12px] text-[#FFD69C] focus:outline-none focus:border-[#B68039]"
+        >
+          <option value="">Any time</option>
+          <option value="1d">Last 24h</option>
+          <option value="7d">Last 7 days</option>
+          <option value="30d">Last 30 days</option>
         </select>
         {canSeeAll && actors.length > 0 && (
           <select
@@ -155,6 +252,18 @@ export function AuditViewer({
             ))}
           </select>
         )}
+        <button
+          type="button"
+          onClick={() =>
+            downloadCsv(
+              `orage-audit-${new Date().toISOString().slice(0, 10)}.csv`,
+              toCsv(filtered),
+            )
+          }
+          className="font-display text-[10px] tracking-[0.18em] uppercase px-3 py-2 rounded-[2px] border border-gold-500/40 text-gold-400 hover:bg-gold-500/10 transition-colors"
+        >
+          Export CSV
+        </button>
         <span className="ml-auto text-[11px] text-[#8a7860] self-center">
           {filtered.length} {filtered.length === 1 ? "event" : "events"}
         </span>

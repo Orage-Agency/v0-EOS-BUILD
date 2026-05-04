@@ -17,6 +17,7 @@ import { HandoffModal } from "./handoff-modal"
 import { BulkActionBar } from "./bulk-action-bar"
 import { NewTaskModal, type CurrentUserCard } from "./new-task-modal"
 import type { QuickAddHandle } from "./quick-add-row"
+import { HelpTip } from "@/components/help/help-tip"
 
 export function TasksShell({
   workspaceSlug,
@@ -73,6 +74,13 @@ export function TasksShell({
         onQuickAddFocus={() => quickAddRef.current?.focus()}
         onNewTask={openNewTask}
       />
+      <div className="px-4 md:px-8 mt-3">
+        <HelpTip
+          id="tasks.handoff"
+          title="Reassigning tasks"
+          body="Click any task's owner avatar to hand it off — you'll be asked for a context note so the next owner picks up where you left off. Tag the task with a client (Quintessa, Boomer, OKC) for a colored dot."
+        />
+      </div>
       <ViewTabs />
       {view === "list" && <TasksToolbar />}
       <BulkActionBar />

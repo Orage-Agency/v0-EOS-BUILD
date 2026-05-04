@@ -201,13 +201,14 @@ export async function requireRole(
 }
 
 /**
- * Get user's workspace memberships (for the workspace switcher).
- * Returns an empty list when the visitor is signed out.
+ * Get the workspaces the user can access via the switcher.
+ *
+ * Regular users see only the workspaces they're an active member of.
+ * Master users (Orage staff with profiles.is_master = true) see EVERY
+ * workspace — they impersonate as `master` role to support customers.
  *
  * Uses the manual cookie/JWT decode + a two-step lookup because the
- * @supabase/ssr auth.getUser() returns null for ES256 tokens, and the
- * PostgREST FK alias select shape (`workspace:workspaces(...)`) has been
- * flaky for us — see `lib/people-server.ts` for the same workaround.
+ * @supabase/ssr auth.getUser() returns null for ES256 tokens.
  */
 export async function getUserWorkspaces(): Promise<
   Array<{
@@ -222,6 +223,29 @@ export async function getUserWorkspaces(): Promise<
   const userId = await getAuthUserIdFromCookie()
   if (!userId) return []
   const supabase = await createClient()
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("is_master")
+    .eq("id", userId)
+    .maybeSingle()
+  const isMaster = Boolean(profile?.is_master)
+
+  if (isMaster) {
+    // Master users get a flat list of every active workspace, presented
+    // as `master` role for permission checks downstream.
+    const { data: workspaces } = await supabase
+      .from("workspaces")
+      .select("id, slug, name, logo_url, brand_color")
+      .order("name", { ascending: true })
+    return ((workspaces ?? []) as Array<{
+      id: string
+      slug: string
+      name: string
+      logo_url: string | null
+      brand_color: string | null
+    }>).map((w) => ({ ...w, role: "master" as Role }))
+  }
 
   const { data: memberships } = await supabase
     .from("workspace_memberships")

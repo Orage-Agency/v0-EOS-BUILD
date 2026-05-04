@@ -12,6 +12,7 @@ import { NewRockModal } from "./new-rock-modal"
 import type { MockRock } from "@/lib/mock-data"
 import type { WorkspaceMember } from "@/lib/tasks-server"
 import type { ClientTagOption } from "@/lib/client-tags"
+import { HelpTip } from "@/components/help/help-tip"
 
 type RocksCurrentUser = {
   id: string
@@ -125,6 +126,13 @@ export function RocksShell({
   return (
     <div className="flex h-full flex-col">
       <RocksHeader />
+      <div className="px-4 md:px-8 mt-3">
+        <HelpTip
+          id="rocks.first-rock"
+          title="What's a rock?"
+          body="A 90-day measurable outcome — not a task list. Pick 3-7 things you'll absolutely ship this quarter. Owner gets nudged when status slips out of green; the L10 segments review them every Monday."
+        />
+      </div>
       <SummaryBar />
       <div className="mt-4">
         <RocksToolbar />

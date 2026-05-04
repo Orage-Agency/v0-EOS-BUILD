@@ -25,7 +25,14 @@ export type AuditRow = {
 
 export async function listAuditForWorkspace(
   workspaceSlug: string,
-  opts: { limit?: number; entityType?: string } = {},
+  opts: {
+    limit?: number
+    entityType?: string
+    action?: string
+    actorId?: string
+    since?: string // ISO timestamp
+    until?: string // ISO timestamp
+  } = {},
 ): Promise<AuditRow[]> {
   const user = await requireUser(workspaceSlug)
   const sb = supabaseAdmin()
@@ -37,6 +44,10 @@ export async function listAuditForWorkspace(
     .order("created_at", { ascending: false })
     .limit(limit)
   if (opts.entityType) q = q.eq("entity_type", opts.entityType)
+  if (opts.action) q = q.eq("action", opts.action)
+  if (opts.actorId) q = q.eq("actor_id", opts.actorId)
+  if (opts.since) q = q.gte("created_at", opts.since)
+  if (opts.until) q = q.lte("created_at", opts.until)
   const { data, error } = await q
   if (error || !data) return []
 

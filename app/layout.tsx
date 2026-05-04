@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next"
 import { Bebas_Neue, Montserrat, JetBrains_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
+import { SWRegister } from "@/components/shell/sw-register"
 import "./globals.css"
 
 const montserrat = Montserrat({
@@ -31,6 +32,12 @@ export const metadata: Metadata = {
   },
   description: "The business operating system that runs itself.",
   generator: "v0.app",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "Orage",
+    statusBarStyle: "black-translucent",
+  },
   icons: {
     icon: [
       { url: "/icon-light-32x32.png", media: "(prefers-color-scheme: light)" },
@@ -61,6 +68,7 @@ export default function RootLayout({
         <div className="atmosphere" aria-hidden="true" />
         <div className="relative z-10">{children}</div>
         {process.env.NODE_ENV === "production" && <Analytics />}
+        <SWRegister />
       </body>
     </html>
   )

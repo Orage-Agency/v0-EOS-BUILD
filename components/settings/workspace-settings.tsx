@@ -1,8 +1,14 @@
 "use client"
 
+import { useRef, useState, useTransition } from "react"
 import { toast } from "sonner"
+import { useParams } from "next/navigation"
 import { useSettingsStore, BRAND_COLORS } from "@/lib/settings-store"
 import { useOnboardingStore } from "@/lib/onboarding-store"
+import {
+  uploadWorkspaceLogo,
+  removeWorkspaceLogo,
+} from "@/app/actions/workspace-logo"
 import {
   SectionBlock,
   SCard,
@@ -18,6 +24,44 @@ export function WorkspaceSettings() {
   const workspace = useSettingsStore((s) => s.workspace)
   const updateWorkspace = useSettingsStore((s) => s.updateWorkspace)
   const setBrandColor = useSettingsStore((s) => s.setBrandColor)
+  const params = useParams()
+  const workspaceSlug = (params?.workspace as string) ?? ""
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  const [pending, startUpload] = useTransition()
+
+  function pickFile() {
+    fileInputRef.current?.click()
+  }
+
+  function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = "" // allow re-selecting the same file
+    startUpload(async () => {
+      const fd = new FormData()
+      fd.append("file", file)
+      const res = await uploadWorkspaceLogo(workspaceSlug, fd)
+      if (res.ok && res.url) {
+        setLogoUrl(res.url)
+        toast.success("Logo uploaded")
+      } else {
+        toast.error(res.error ?? "Upload failed")
+      }
+    })
+  }
+
+  function clearLogo() {
+    startUpload(async () => {
+      const res = await removeWorkspaceLogo(workspaceSlug)
+      if (res.ok) {
+        setLogoUrl(null)
+        toast.success("Logo removed")
+      } else {
+        toast.error(res.error ?? "Remove failed")
+      }
+    })
+  }
 
   return (
     <SectionBlock
@@ -27,34 +71,56 @@ export function WorkspaceSettings() {
       <SCard title="IDENTITY">
         <FieldRow
           name="Workspace Logo"
-          hint="Used in sidebar, exports, and emails. Square image, min 256×256."
+          hint="Used in sidebar, exports, and emails. PNG / JPEG / SVG / WebP, under 2 MB."
           control={
             <div className="flex items-center gap-3.5">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                onChange={onFile}
+                className="hidden"
+              />
               <button
                 type="button"
-                onClick={() => toast("LOGO PICKER OPENED")}
-                className="relative w-20 h-20 rounded-md text-text-on-gold flex items-center justify-center font-display text-[18px] font-bold tracking-[0.05em] border border-border-strong group cursor-pointer"
+                onClick={pickFile}
+                disabled={pending}
+                className="relative w-20 h-20 rounded-md text-text-on-gold flex items-center justify-center font-display text-[18px] font-bold tracking-[0.05em] border border-border-strong group cursor-pointer overflow-hidden disabled:opacity-60"
                 style={{
-                  background: "linear-gradient(135deg, var(--gold-500), var(--gold-700))",
+                  background: logoUrl
+                    ? "transparent"
+                    : "linear-gradient(135deg, var(--gold-500), var(--gold-700))",
                 }}
                 aria-label="Change workspace logo"
               >
-                OR
+                {logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={logoUrl}
+                    alt="Workspace logo"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  workspace.name?.slice(0, 2).toUpperCase() ?? "OR"
+                )}
                 <span className="absolute inset-0 rounded-md flex items-center justify-center bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity font-sans text-[10px] tracking-[0.1em] text-gold-400 uppercase font-medium">
-                  Change
+                  {pending ? "Uploading…" : "Change"}
                 </span>
               </button>
               <div className="flex flex-col gap-1.5 items-start">
-                <SecondaryButton onClick={() => toast("UPLOAD PICKER")}>
-                  Upload Image
+                <SecondaryButton onClick={pickFile}>
+                  {pending ? "Uploading…" : "Upload Image"}
                 </SecondaryButton>
-                <button
-                  type="button"
-                  onClick={() => toast("LOGO REMOVED")}
-                  className="text-[11px] text-text-muted hover:text-danger transition-colors"
-                >
-                  Remove
-                </button>
+                {logoUrl && (
+                  <button
+                    type="button"
+                    onClick={clearLogo}
+                    disabled={pending}
+                    className="text-[11px] text-text-muted hover:text-danger transition-colors disabled:opacity-60"
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
             </div>
           }

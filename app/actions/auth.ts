@@ -14,6 +14,7 @@ import { sendEmail, htmlToText } from "@/lib/email"
 import { inviteEmail } from "@/lib/email-templates"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission, PermissionError } from "@/lib/server/permissions"
+import { checkAuthRateLimit } from "@/lib/auth-rate-limit"
 
 function appUrl() {
   if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL
@@ -80,6 +81,9 @@ export async function signUpWorkspace(input: {
   fullName: string
   workspaceName: string
 }): Promise<SignUpWorkspaceResult> {
+  const limit = await checkAuthRateLimit("signup")
+  if (!limit.ok) return { ok: false, error: limit.message }
+
   const email = input.email.trim().toLowerCase()
   const fullName = input.fullName.trim()
   const wsName = input.workspaceName.trim()
@@ -147,6 +151,9 @@ export async function signUpWorkspace(input: {
 export async function login(workspaceSlug: string, email: string, password: string, rememberMe: boolean) {
   void rememberMe
 
+  const limit = await checkAuthRateLimit("login")
+  if (!limit.ok) return { error: limit.message }
+
   // SSO enforcement: block password sign-in for emails on a domain that
   // requires SSO and surface the redirect URL the login UI will use.
   const ssoCheck = await ssoRequirementForEmail(workspaceSlug, email)
@@ -206,6 +213,9 @@ export async function login(workspaceSlug: string, email: string, password: stri
 
 // ─── MAGIC LINK FALLBACK ───
 export async function sendMagicLink(workspaceSlug: string, email: string) {
+  const limit = await checkAuthRateLimit("magic-link")
+  if (!limit.ok) return { error: limit.message }
+
   // Block magic-link sign-in too if the user's domain requires SSO.
   const ssoCheck = await ssoRequirementForEmail(workspaceSlug, email)
   if (ssoCheck.enforced) {
@@ -333,6 +343,9 @@ export async function createInvite(
 //     marks the invite accepted, because the new user has no role yet
 //     and would be blocked by `admins_manage_memberships` RLS.
 export async function acceptInvite(token: string, password: string, fullName: string) {
+  const limit = await checkAuthRateLimit("accept-invite")
+  if (!limit.ok) return { error: limit.message }
+
   if (password.length < 8) return { error: "Password must be at least 8 characters" }
 
   const supabase = await createClient()
