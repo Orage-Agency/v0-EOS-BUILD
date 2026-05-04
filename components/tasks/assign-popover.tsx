@@ -75,69 +75,87 @@ export function AssignPopover({
 
   if (!open) return null
 
-  const source: AssignTarget[] =
-    members && members.length > 0
-      ? members.map((m) => ({
-          id: m.id,
-          name: m.name,
-          initials: m.initials || deriveInitials(m.name),
-          role: m.role,
-        }))
-      : USERS.map((u) => ({
-          id: u.id,
-          name: u.name,
-          initials: u.initials,
-          role: u.role,
-          color: u.color,
-        }))
+  // If a caller explicitly passes `members` (even an empty array), trust
+  // that — an empty workspace should NOT silently fall back to the demo
+  // USERS so the founder ends up trying to assign work to fake people.
+  // Fallback to demo USERS only when `members` was never provided
+  // (legacy callers that haven't been updated yet).
+  const usingRealMembers = members !== undefined
+  const source: AssignTarget[] = usingRealMembers
+    ? (members ?? []).map((m) => ({
+        id: m.id,
+        name: m.name,
+        initials: m.initials || deriveInitials(m.name),
+        role: m.role,
+      }))
+    : USERS.map((u) => ({
+        id: u.id,
+        name: u.name,
+        initials: u.initials,
+        role: u.role,
+        color: u.color,
+      }))
 
   const filtered = source.filter((u) =>
     u.name.toLowerCase().includes(filter.toLowerCase()),
   )
 
+  const noTeammates = usingRealMembers && source.length === 0
+
   return (
     <div
       ref={ref}
-      className="absolute right-0 top-[calc(100%+4px)] z-40 glass-strong border-gold-500 rounded-sm shadow-orage-md shadow-gold p-1.5 min-w-[220px] fade-in"
+      className="absolute right-0 top-[calc(100%+4px)] z-40 glass-strong border-gold-500 rounded-sm shadow-orage-md shadow-gold p-1.5 min-w-[240px] fade-in"
       role="menu"
       onClick={(e) => e.stopPropagation()}
     >
-      <input
-        autoFocus
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        placeholder="Search teammate…"
-        className="w-full px-2.5 py-2 bg-bg-3 border border-border-orage rounded-sm text-text-primary text-xs mb-1.5 focus:border-gold-500 outline-none"
-      />
-      {filtered.map((u) => (
-        <button
-          key={u.id}
-          role="menuitem"
-          type="button"
-          onClick={() => onSelect(u)}
-          className={cn(
-            "w-full flex items-center gap-2.5 px-2 py-1.5 rounded-sm hover:bg-bg-active transition-colors text-left",
-            u.id === currentOwnerId && "bg-bg-active",
-          )}
-        >
-          <OrageAvatar
-            user={{
-              name: u.name,
-              initials: u.initials,
-              color: u.color,
-            }}
-            size="sm"
-          />
-          <span className="text-xs text-text-primary flex-1">{u.name}</span>
-          <span className="font-display text-[9px] tracking-[0.15em] text-gold-500">
-            {u.role.toUpperCase()}
-          </span>
-        </button>
-      ))}
-      {filtered.length === 0 && (
-        <div className="px-2 py-3 text-center text-text-muted text-xs">
-          No matches
+      {noTeammates ? (
+        <div className="px-3 py-4 text-center">
+          <div className="text-xs text-text-primary mb-1">No teammates yet</div>
+          <div className="text-[11px] text-text-muted leading-relaxed">
+            Invite your team from the People page so you can hand off work.
+          </div>
         </div>
+      ) : (
+        <>
+          <input
+            autoFocus
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Search teammate…"
+            className="w-full px-2.5 py-2 bg-bg-3 border border-border-orage rounded-sm text-text-primary text-xs mb-1.5 focus:border-gold-500 outline-none"
+          />
+          {filtered.map((u) => (
+            <button
+              key={u.id}
+              role="menuitem"
+              type="button"
+              onClick={() => onSelect(u)}
+              className={cn(
+                "w-full flex items-center gap-2.5 px-2 py-1.5 rounded-sm hover:bg-bg-active transition-colors text-left",
+                u.id === currentOwnerId && "bg-bg-active",
+              )}
+            >
+              <OrageAvatar
+                user={{
+                  name: u.name,
+                  initials: u.initials,
+                  color: u.color,
+                }}
+                size="sm"
+              />
+              <span className="text-xs text-text-primary flex-1">{u.name}</span>
+              <span className="font-display text-[9px] tracking-[0.15em] text-gold-500">
+                {u.role.toUpperCase()}
+              </span>
+            </button>
+          ))}
+          {filtered.length === 0 && (
+            <div className="px-2 py-3 text-center text-text-muted text-xs">
+              No matches
+            </div>
+          )}
+        </>
       )}
     </div>
   )
