@@ -201,5 +201,10 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  // Skip Next internals, /api/* (handled by route handlers themselves),
+  // common image extensions, and the PWA static files (manifest, sw,
+  // .webmanifest, .ico) so they're served as-is from /public.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|webmanifest|ico)$).*)",
+  ],
 }
