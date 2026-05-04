@@ -21,6 +21,7 @@ import {
   updateTaskDescription as updateTaskDescriptionAction,
   updateTaskPriority as updateTaskPriorityAction,
   updateTaskRock as updateTaskRockAction,
+  updateTaskOwner as updateTaskOwnerAction,
   bulkUpdateTasks as bulkUpdateTasksAction,
   bulkDeleteTasks as bulkDeleteTasksAction,
   deleteTask as deleteTaskAction,
@@ -328,12 +329,29 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       )
     }
   },
-  reassign: (id, ownerId) =>
+  reassign: (id, ownerId) => {
+    const prev = get().tasks.find((t) => t.id === id)
+    if (!prev) return
     set((state) => ({
       tasks: state.tasks.map((t) =>
         t.id === id ? { ...t, owner: ownerId } : t,
       ),
-    })),
+    }))
+    const { workspaceSlug } = get()
+    // Persist the change so the new owner sees it on their dashboard +
+    // gets a notification. Only fires for real DB rows + real member ids
+    // — the demo seed data lives in client memory only.
+    if (workspaceSlug && isDbId(id) && isDbId(ownerId)) {
+      reconcile(
+        updateTaskOwnerAction(workspaceSlug, id, ownerId),
+        () =>
+          set((state) => ({
+            tasks: state.tasks.map((t) => (t.id === id ? prev : t)),
+          })),
+        "Couldn't reassign task",
+      )
+    }
+  },
   deleteOne: (id) => {
     const prev = get().tasks.find((t) => t.id === id)
     if (!prev) return

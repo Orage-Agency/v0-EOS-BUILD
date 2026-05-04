@@ -306,9 +306,15 @@ export async function getTodayPriorities(
 ): Promise<DashboardTask[]> {
   const user = await requireUser(workspaceSlug)
   const extras = await loadExtraTasks(user)
-  const ownerKey = pickOwnerKey(userId)
+  // Only include demo tasks when the signed-in user IS one of the demo
+  // seed users. The previous fallback to USERS[0] meant every real auth
+  // user saw George's demo priorities — silent cross-user bleed that
+  // also masked whether reassignment was actually working.
+  const demoOwnerKey = USERS.find((u) => u.id === userId)?.id ?? null
   const all: DashboardTask[] = [
-    ...TASKS.filter((t) => t.owner === ownerKey).map(mockToDashboardTask),
+    ...(demoOwnerKey
+      ? TASKS.filter((t) => t.owner === demoOwnerKey).map(mockToDashboardTask)
+      : []),
     ...extras.filter((t) => t.owner === userId),
   ]
   return all.filter(isOpen).slice(0, 5)
@@ -320,9 +326,11 @@ export async function getDashboardTasks(
 ): Promise<DashboardTask[]> {
   const user = await requireUser(workspaceSlug)
   const extras = await loadExtraTasks(user)
-  const ownerKey = pickOwnerKey(userId)
+  const demoOwnerKey = USERS.find((u) => u.id === userId)?.id ?? null
   const mine: DashboardTask[] = [
-    ...TASKS.filter((t) => t.owner === ownerKey).map(mockToDashboardTask),
+    ...(demoOwnerKey
+      ? TASKS.filter((t) => t.owner === demoOwnerKey).map(mockToDashboardTask)
+      : []),
     ...extras.filter((t) => t.owner === userId),
   ]
   const open = mine.filter(isOpen).slice(0, 3)
@@ -331,13 +339,6 @@ export async function getDashboardTasks(
     .sort((a, b) => (b.completed ?? "").localeCompare(a.completed ?? ""))
     .slice(0, 2)
   return [...open, ...done]
-}
-
-/** Map the auth user id to the matching mock owner id, falling back to the first mock user. */
-function pickOwnerKey(authUserId: string): string {
-  const direct = USERS.find((u) => u.id === authUserId)
-  if (direct) return direct.id
-  return USERS[0]?.id ?? authUserId
 }
 
 // --------------------------------------------------------- Scorecard pulse

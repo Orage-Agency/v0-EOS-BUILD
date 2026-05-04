@@ -2,8 +2,27 @@
 
 import { useEffect, useRef, useState } from "react"
 import { USERS, type MockUser } from "@/lib/mock-data"
+import type { WorkspaceMember } from "@/lib/tasks-server"
 import { OrageAvatar } from "@/components/orage/avatar"
 import { cn } from "@/lib/utils"
+
+// What the popover yields when a teammate is picked. Real workspace
+// members carry a UUID `id`; demo seeded users carry the legacy
+// `u_xxx` form. Callers that send to a server action MUST handle both.
+export type AssignTarget = {
+  id: string
+  name: string
+  initials: string
+  role: string
+  color?: MockUser["color"]
+}
+
+function deriveInitials(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  if (parts.length === 0) return "??"
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
 
 export function AssignPopover({
   open,
@@ -11,12 +30,21 @@ export function AssignPopover({
   onSelect,
   onClose,
   currentOwnerId,
+  members,
 }: {
   open: boolean
   anchorRef: React.RefObject<HTMLElement | null>
-  onSelect: (user: MockUser) => void
+  onSelect: (user: AssignTarget) => void
   onClose: () => void
   currentOwnerId: string
+  /**
+   * Real workspace members from the store. When provided (and non-empty),
+   * the popover shows these instead of the demo USERS — picking one yields
+   * a real Supabase UUID so the server action actually persists. Falls
+   * back to demo USERS only if nothing was passed (e.g. early page load
+   * before the store has hydrated).
+   */
+  members?: WorkspaceMember[]
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [filter, setFilter] = useState("")
@@ -47,7 +75,23 @@ export function AssignPopover({
 
   if (!open) return null
 
-  const filtered = USERS.filter((u) =>
+  const source: AssignTarget[] =
+    members && members.length > 0
+      ? members.map((m) => ({
+          id: m.id,
+          name: m.name,
+          initials: m.initials || deriveInitials(m.name),
+          role: m.role,
+        }))
+      : USERS.map((u) => ({
+          id: u.id,
+          name: u.name,
+          initials: u.initials,
+          role: u.role,
+          color: u.color,
+        }))
+
+  const filtered = source.filter((u) =>
     u.name.toLowerCase().includes(filter.toLowerCase()),
   )
 
@@ -76,7 +120,14 @@ export function AssignPopover({
             u.id === currentOwnerId && "bg-bg-active",
           )}
         >
-          <OrageAvatar user={u} size="sm" />
+          <OrageAvatar
+            user={{
+              name: u.name,
+              initials: u.initials,
+              color: u.color,
+            }}
+            size="sm"
+          />
           <span className="text-xs text-text-primary flex-1">{u.name}</span>
           <span className="font-display text-[9px] tracking-[0.15em] text-gold-500">
             {u.role.toUpperCase()}

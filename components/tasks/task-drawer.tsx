@@ -342,6 +342,7 @@ export function TaskDrawer() {
                     open={assignOpen}
                     anchorRef={ownerBtnRef as never}
                     currentOwnerId={task.owner}
+                    members={members}
                     onClose={() => setAssignOpen(false)}
                     onSelect={(u) => {
                       setAssignOpen(false)

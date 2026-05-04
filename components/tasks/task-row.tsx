@@ -237,6 +237,7 @@ export function TaskRow({ task }: { task: MockTask }) {
           open={assignOpen}
           anchorRef={avatarBtnRef as never}
           currentOwnerId={task.owner}
+          members={members}
           onClose={() => setAssignOpen(false)}
           onSelect={(u) => {
             setAssignOpen(false)
