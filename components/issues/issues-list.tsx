@@ -100,8 +100,19 @@ export function IssuesList() {
                 />
               </div>
             ) : (
-              <div className="px-4 py-12 text-center text-text-muted text-xs font-mono uppercase tracking-wider">
-                Nothing in this queue.
+              <div className="px-4 py-12 text-center">
+                <p className="text-text-muted text-xs font-mono uppercase tracking-wider mb-2">
+                  {activeQueue === "this_week"
+                    ? "Nothing pinned for this week's L10 yet."
+                    : activeQueue === "solved"
+                      ? "No solved issues yet — keep moving them through IDS."
+                      : "Nothing tabled here."}
+                </p>
+                <p className="text-[11px] text-text-dim">
+                  {activeQueue === "this_week"
+                    ? "Pin an open issue to surface it in Monday's meeting."
+                    : "Resolved issues land here so you can audit decisions later."}
+                </p>
               </div>
             )
           ) : (

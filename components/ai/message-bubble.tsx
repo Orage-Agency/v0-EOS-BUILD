@@ -1,6 +1,8 @@
 "use client"
 
 import type { Message } from "@/lib/ai-implementer-store"
+import { useAIImplementerStore } from "@/lib/ai-implementer-store"
+import { useWorkspaceSlug } from "@/hooks/use-workspace-slug"
 import { OrageAvatar } from "@/components/orage/avatar"
 import { AIOrb } from "@/components/orage/ai-orb"
 import { ToolCall } from "./tool-call-block"
@@ -9,7 +11,20 @@ import { ChartEmbed } from "./chart-embed-block"
 import { ApprovalCard } from "./approval-card"
 import { cn } from "@/lib/utils"
 
-export function MessageBubble({ message }: { message: Message }) {
+export function MessageBubble({
+  message,
+  isLastAi = false,
+}: {
+  message: Message
+  /** True when this is the most recent AI message in the thread; controls
+   *  whether the Regenerate action row renders. */
+  isLastAi?: boolean
+}) {
+  const streaming = useAIImplementerStore((s) => s.streaming)
+  const regenerate = useAIImplementerStore((s) => s.regenerateLastResponse)
+  const workspaceSlug = useWorkspaceSlug()
+  const showActions = isLastAi && message.author === "ai" && !streaming
+
   return (
     <article className="flex gap-3 px-2">
       <div className="shrink-0 pt-0.5">
@@ -71,6 +86,18 @@ export function MessageBubble({ message }: { message: Message }) {
             }
           })}
         </div>
+        {showActions && (
+          <div className="mt-2 flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => regenerate(workspaceSlug)}
+              className="font-display text-[10px] tracking-[0.18em] uppercase px-2 py-1 rounded-sm border border-border-orage text-text-muted hover:border-gold-500/60 hover:text-gold-400 transition-colors inline-flex items-center gap-1.5"
+              title="Re-run the last prompt — gives the model another swing without retyping."
+            >
+              ↻ Regenerate
+            </button>
+          </div>
+        )}
       </div>
     </article>
   )

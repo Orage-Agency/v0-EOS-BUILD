@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useTransition } from "react"
 import { useL10Store } from "@/lib/l10-store"
 import { IDSStageView } from "./ids-stage"
 import {
@@ -28,6 +28,7 @@ export function MainStage({
   const setTimerRunning = useL10Store((s) => s.setTimerRunning)
   const addTime = useL10Store((s) => s.addTime)
   const advanceRound = useL10Store((s) => s.advanceRound)
+  const [advancing, startAdvance] = useTransition()
 
   // Drive the timer client-side
   useEffect(() => {
@@ -98,14 +99,23 @@ export function MainStage({
               +5
             </button>
             <button
+              disabled={advancing}
               onClick={() => {
-                advanceRound(meetingId)
-                toast("ROUND ADVANCED → NEXT")
+                if (advancing) return
+                startAdvance(() => {
+                  advanceRound(meetingId)
+                  toast("ROUND ADVANCED → NEXT")
+                })
               }}
-              className="h-9 px-3 flex items-center justify-center bg-gold-500 hover:bg-gold-400 text-bg-1 text-[11px] font-semibold tracking-wider uppercase rounded-sm transition-colors"
+              className={cn(
+                "h-9 px-3 flex items-center justify-center text-[11px] font-semibold tracking-wider uppercase rounded-sm transition-colors",
+                advancing
+                  ? "bg-gold-500/40 text-bg-1/60 cursor-not-allowed"
+                  : "bg-gold-500 hover:bg-gold-400 text-bg-1",
+              )}
               title="Skip to next round"
             >
-              SKIP →
+              {advancing ? "ADVANCING…" : "SKIP →"}
             </button>
           </div>
         </div>

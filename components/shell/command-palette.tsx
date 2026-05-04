@@ -10,6 +10,15 @@ import { IcSearch } from "@/components/orage/icons"
 import { cn } from "@/lib/utils"
 import { tBase, easeOut, easeSpring } from "@/lib/motion"
 import { useTenantPath } from "@/hooks/use-tenant-path"
+import { useWorkspaceSlug } from "@/hooks/use-workspace-slug"
+import type { SearchHit } from "@/app/api/search/route"
+
+const KIND_ICON: Record<SearchHit["kind"], string> = {
+  rock: "●",
+  task: "✓",
+  issue: "!",
+  note: "▤",
+}
 
 type Cmd = {
   id: string
@@ -126,8 +135,10 @@ export function CommandPalette() {
     : { id: "", role: "member" as import("@/types/permissions").Role, isMaster: false }
   const router = useRouter()
   const tp = useTenantPath()
+  const workspaceSlug = useWorkspaceSlug()
   const [query, setQuery] = useState("")
   const [activeIndex, setActiveIndex] = useState(0)
+  const [hits, setHits] = useState<SearchHit[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
 
   const filtered = useMemo(() => {
@@ -141,6 +152,26 @@ export function CommandPalette() {
     )
   }, [query])
 
+  // Debounced workspace search — fires after the user pauses typing for
+  // 200ms so we don't hammer the endpoint on every keystroke.
+  useEffect(() => {
+    const q = query.trim()
+    if (!workspaceSlug || q.length < 2) {
+      setHits([])
+      return
+    }
+    const t = setTimeout(() => {
+      fetch(
+        `/api/search?slug=${encodeURIComponent(workspaceSlug)}&q=${encodeURIComponent(q)}`,
+        { cache: "no-store" },
+      )
+        .then((r) => (r.ok ? r.json() : { hits: [] }))
+        .then((d: { hits: SearchHit[] }) => setHits(d.hits ?? []))
+        .catch(() => setHits([]))
+    }, 200)
+    return () => clearTimeout(t)
+  }, [query, workspaceSlug])
+
   useEffect(() => {
     if (open) {
       setQuery("")
@@ -149,6 +180,10 @@ export function CommandPalette() {
       requestAnimationFrame(() => inputRef.current?.focus())
     }
   }, [open])
+
+  // Combined navigable list: hits first, then commands. activeIndex
+  // walks the union; Enter routes to the right handler.
+  const totalNavigable = hits.length + filtered.length
 
   useEffect(() => {
     if (!open) return
@@ -159,20 +194,27 @@ export function CommandPalette() {
       }
       if (e.key === "ArrowDown") {
         e.preventDefault()
-        setActiveIndex((i) => Math.min(i + 1, filtered.length - 1))
+        setActiveIndex((i) => Math.min(i + 1, Math.max(0, totalNavigable - 1)))
       } else if (e.key === "ArrowUp") {
         e.preventDefault()
         setActiveIndex((i) => Math.max(i - 1, 0))
       } else if (e.key === "Enter") {
         e.preventDefault()
-        const c = filtered[activeIndex]
+        if (activeIndex < hits.length) {
+          const h = hits[activeIndex]
+          if (!h) return
+          router.push(h.href)
+          close()
+          return
+        }
+        const c = filtered[activeIndex - hits.length]
         if (!c) return
         runCommand(c)
       }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [open, filtered, activeIndex])
+  }, [open, hits, filtered, activeIndex, totalNavigable, router, close])
 
   function runCommand(c: Cmd) {
     if (c.capability && !can(actor, c.capability)) {
@@ -237,9 +279,48 @@ export function CommandPalette() {
             </div>
 
             <div className="max-h-[360px] overflow-y-auto p-1.5">
-              {grouped.length === 0 && (
+              {hits.length > 0 && (
+                <div>
+                  <div className="font-display text-[9px] tracking-[0.2em] text-text-muted px-2.5 pt-2.5 pb-1">
+                    IN THIS WORKSPACE
+                  </div>
+                  {hits.map((h, i) => {
+                    const selected = i === activeIndex
+                    return (
+                      <button
+                        key={`${h.kind}-${h.id}`}
+                        type="button"
+                        onMouseEnter={() => setActiveIndex(i)}
+                        onClick={() => {
+                          router.push(h.href)
+                          close()
+                        }}
+                        className={cn(
+                          "w-full px-2.5 py-2 flex items-center gap-3 rounded-sm transition-colors text-left",
+                          selected ? "bg-bg-active" : "hover:bg-bg-active",
+                        )}
+                      >
+                        <span className="w-7 h-7 bg-bg-3 border border-gold-500/30 rounded-sm flex items-center justify-center text-gold-400 text-xs shrink-0">
+                          {KIND_ICON[h.kind]}
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-sm text-text-primary font-medium truncate">
+                            {h.title}
+                          </span>
+                          <span className="block text-[10px] text-text-muted truncate">
+                            {h.subtitle}
+                          </span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {grouped.length === 0 && hits.length === 0 && (
                 <div className="px-3 py-8 text-center text-text-muted text-xs">
-                  No results
+                  {query.trim().length >= 2
+                    ? "No results in this workspace."
+                    : "Type to search rocks, tasks, issues, notes."}
                 </div>
               )}
               {grouped.map(({ section, items }) => (
@@ -249,14 +330,16 @@ export function CommandPalette() {
                   </div>
                   {items.map((c) => {
                     const idx = filtered.indexOf(c)
-                    const selected = idx === activeIndex
+                    // activeIndex walks hits first, so commands start at hits.length.
+                    const navIdx = hits.length + idx
+                    const selected = navIdx === activeIndex
                     const locked =
                       c.capability && !can(actor, c.capability)
                     return (
                       <button
                         key={c.id}
                         type="button"
-                        onMouseEnter={() => setActiveIndex(idx)}
+                        onMouseEnter={() => setActiveIndex(navIdx)}
                         onClick={() => runCommand(c)}
                         className={cn(
                           "w-full px-2.5 py-2 flex items-center gap-3 rounded-sm transition-colors text-left",

@@ -157,22 +157,23 @@ export function TaskListView({
 }
 
 function EmptyState({ filterLabel }: { filterLabel: string }) {
+  const isTopLevel = filterLabel === "Tasks"
   return (
     <div className="px-8 py-12">
       <div className="rounded-md border border-dashed border-border-orage bg-bg-3/30 px-6 py-10 text-center max-w-lg mx-auto">
         <div
-          className="mx-auto mb-3 w-10 h-10 rounded-full bg-bg-3 border border-border-orage flex items-center justify-center text-gold-500 text-base"
+          className="mx-auto mb-3 w-10 h-10 rounded-full bg-bg-3 border border-gold-500/40 flex items-center justify-center text-gold-400 text-base"
           aria-hidden
         >
-          ✓
+          {isTopLevel ? "+" : "◐"}
         </div>
         <h3 className="font-display text-[13px] tracking-[0.18em] uppercase text-text-primary">
-          {filterLabel === "Tasks" ? "No tasks yet" : `No tasks in ${filterLabel}`}
+          {isTopLevel ? "No tasks yet" : `No tasks in ${filterLabel}`}
         </h3>
         <p className="mt-1.5 text-[12px] leading-relaxed text-text-muted">
-          {filterLabel === "Tasks"
-            ? "Type below to add your first task — or hit ⌘K to search."
-            : "Try a different filter, or add a task with the row at the bottom."}
+          {isTopLevel
+            ? "Type a task title in the row at the bottom of the list — Enter saves, Tab moves to due date. Tag it with a client to color-code by account."
+            : "Try a different filter or clear the search. Tasks live in your workspace; the filter just narrows what you see."}
         </p>
       </div>
     </div>

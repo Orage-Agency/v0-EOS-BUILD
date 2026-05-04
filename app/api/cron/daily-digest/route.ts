@@ -56,13 +56,15 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const sb = supabaseAdmin()
-  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  // Look back 7 days so transient send failures get up to a week of
+  // retries before we give up. The MAX_ATTEMPTS gate stops us from
+  // pinging the same broken row forever.
+  const lookback = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const MAX_ATTEMPTS = 3
 
   // Page through notifications instead of capping at 2000. A large
   // workspace with thousands of unread notifications would have lost
-  // every row past the cap forever (the next run filters by `emailed_at
-  // IS NULL` plus a 24h cutoff, but anything beyond the limit never
-  // emailed and falls outside the window on the next tick).
+  // every row past the cap forever.
   const PAGE_SIZE = 1000
   const rows: Pending[] = []
   let offset = 0
@@ -70,8 +72,9 @@ export async function GET(req: Request) {
     const { data, error } = await sb
       .from("notifications")
       .select("id, recipient_id, tenant_id, kind, title, body, created_at")
-      .gte("created_at", yesterday)
+      .gte("created_at", lookback)
       .is("emailed_at", null)
+      .lt("email_attempts", MAX_ATTEMPTS)
       .order("created_at", { ascending: false })
       .range(offset, offset + PAGE_SIZE - 1)
     if (error) {
@@ -82,9 +85,6 @@ export async function GET(req: Request) {
     rows.push(...page)
     if (page.length < PAGE_SIZE) break
     offset += PAGE_SIZE
-    // Safety brake — if a workspace genuinely has 100k+ unread
-    // notifications in 24h, ship what we have and let the next cron
-    // pick up the remainder.
     if (offset >= 50_000) break
   }
 
@@ -150,7 +150,9 @@ export async function GET(req: Request) {
 
   let sentCount = 0
   let skippedCount = 0
+  let failedCount = 0
   const emailedIds: string[] = []
+  const attemptedIds: string[] = []
   for (const [k, items] of byRecipientTenant.entries()) {
     const [recipientId, tenantId] = k.split("::")
     if (!activeMembership.has(k)) {
@@ -183,14 +185,46 @@ export async function GET(req: Request) {
       html,
       text: htmlToText(html),
     })
+    // Every send is an attempt — bump the counter regardless of outcome
+    // so a hard-failing row eventually trips MAX_ATTEMPTS and stops
+    // retrying. emailed_at only stamps on success.
+    for (const i of items) attemptedIds.push(i.id)
     if (result.ok) {
       sentCount++
       for (const i of items) emailedIds.push(i.id)
     } else {
+      failedCount++
       console.error("[cron/daily-digest] send failed", {
         recipientId,
         error: result.error,
       })
+    }
+  }
+
+  // Bump email_attempts on every row we tried to send — this lets the
+  // next cron run skip rows that have already maxed out their retries.
+  if (attemptedIds.length > 0) {
+    const nowIso = new Date().toISOString()
+    // Postgres doesn't support `column = column + 1` directly through
+    // PostgREST update with .in(...), so use the RPC-equivalent pattern
+    // via raw SQL inside Supabase's `rpc` is overkill — instead we
+    // fetch current attempts then write batched updates. With small
+    // batches this is fine.
+    const { data: existing } = await sb
+      .from("notifications")
+      .select("id, email_attempts")
+      .in("id", attemptedIds)
+    const updates = ((existing ?? []) as Array<{
+      id: string
+      email_attempts: number
+    }>).map((row) => ({
+      id: row.id,
+      email_attempts: (row.email_attempts ?? 0) + 1,
+      last_email_attempt_at: nowIso,
+    }))
+    if (updates.length > 0) {
+      // upsert keeps it a single round-trip vs N updates.
+      await sb.from("notifications").upsert(updates, { onConflict: "id" })
     }
   }
 
@@ -205,6 +239,7 @@ export async function GET(req: Request) {
     ok: true,
     recipients: byRecipientTenant.size,
     sent: sentCount,
+    failed: failedCount,
     skipped: skippedCount,
     items: rows.length,
   })

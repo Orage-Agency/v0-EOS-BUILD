@@ -153,7 +153,16 @@ export function ConversationPane({
             </ul>
           </div>
         ) : (
-          messages.map((m) => <MessageBubble key={m.id} message={m} />)
+          messages.map((m, i) => {
+            const lastAiIdx = messages.map((x) => x.author).lastIndexOf("ai")
+            return (
+              <MessageBubble
+                key={m.id}
+                message={m}
+                isLastAi={i === lastAiIdx}
+              />
+            )
+          })
         )}
       </div>
 

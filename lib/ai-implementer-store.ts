@@ -379,6 +379,10 @@ type State = {
   // fetch so we stop billing the model the moment the user changes mind.
   streaming: boolean
   cancelStream: () => void
+  // Re-run the last user message in the active thread. Used by the
+  // "Regenerate" button that appears under an AI response so the user
+  // doesn't have to retype to ask the model to take another swing.
+  regenerateLastResponse: (workspaceSlug: string) => void
   // Last-seen rate-limit quota from the chat endpoint headers. The
   // composer surfaces these so the user can see how much they've used
   // before they hit the wall.
@@ -476,6 +480,32 @@ export const useAIImplementerStore = create<State>((set, get) => ({
   quotaRemainingDay: null,
   cancelStream: () => {
     if (_activeAbortController) _activeAbortController.abort()
+  },
+  regenerateLastResponse: (workspaceSlug) => {
+    if (_activeAbortController) _activeAbortController.abort()
+    const state = get()
+    const threadId = state.activeThreadId
+    // Walk back through the thread to find the last user message and
+    // strip everything after it (its AI response + any trailing turns).
+    const ofThread = state.messages.filter((m) => m.threadId === threadId)
+    const lastUserIndex = ofThread.map((m) => m.author).lastIndexOf("user")
+    if (lastUserIndex === -1) return
+    const lastUser = ofThread[lastUserIndex]
+    const lastUserText = lastUser.blocks
+      .map((b) => (b.kind === "text" ? b.html.replace(/<[^>]+>/g, "") : ""))
+      .filter(Boolean)
+      .join(" ")
+      .trim()
+    if (!lastUserText) return
+    // Drop the user message and everything that came after it from the
+    // thread — sendMessage will append a fresh user msg + ai msg.
+    const lastUserGlobalIdx = state.messages.findIndex(
+      (m) => m.id === lastUser.id,
+    )
+    set({
+      messages: state.messages.slice(0, lastUserGlobalIdx),
+    })
+    void state.sendMessage(lastUserText, workspaceSlug)
   },
 
   setActiveThread: (id) => set({ activeThreadId: id }),

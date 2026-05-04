@@ -1,8 +1,10 @@
 "use client"
 
+import { useTransition } from "react"
 import { useL10Store, type AgendaItem } from "@/lib/l10-store"
 import { TenantLink } from "@/components/tenant-link"
 import { toast } from "sonner"
+import { cn } from "@/lib/utils"
 
 function fmtClock(sec: number) {
   const m = Math.floor(sec / 60)
@@ -14,6 +16,7 @@ export function AgendaRail({ meetingId }: { meetingId: string }) {
   const meeting = useL10Store((s) => s.getMeeting(meetingId))
   const advanceRound = useL10Store((s) => s.advanceRound)
   const openConclude = useL10Store((s) => s.openConclude)
+  const [advancing, startAdvance] = useTransition()
 
   if (!meeting) return null
 
@@ -54,13 +57,22 @@ export function AgendaRail({ meetingId }: { meetingId: string }) {
 
       <footer className="px-4 py-4 border-t border-border-orage flex flex-col gap-2">
         <button
+          disabled={advancing}
           onClick={() => {
-            advanceRound(meetingId)
-            toast("ROUND ADVANCED → NEXT")
+            if (advancing) return
+            startAdvance(() => {
+              advanceRound(meetingId)
+              toast("ROUND ADVANCED → NEXT")
+            })
           }}
-          className="w-full h-9 bg-gold-500 hover:bg-gold-400 text-bg-1 text-xs font-semibold tracking-wider uppercase rounded-sm transition-colors"
+          className={cn(
+            "w-full h-9 text-xs font-semibold tracking-wider uppercase rounded-sm transition-colors",
+            advancing
+              ? "bg-gold-500/40 text-bg-1/60 cursor-not-allowed"
+              : "bg-gold-500 hover:bg-gold-400 text-bg-1",
+          )}
         >
-          Advance Round →
+          {advancing ? "Advancing…" : "Advance Round →"}
         </button>
         <TenantLink
           href={`/l10/${meetingId}`}
