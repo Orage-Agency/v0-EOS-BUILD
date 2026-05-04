@@ -240,6 +240,60 @@ export async function loginByEmail(
     .maybeSingle()
 
   if (!mem?.workspace_id) {
+    // No active membership. If they have a pending invite for this email
+    // (e.g. they signed in with the fallback password the admin shared
+    // before clicking the invite link), auto-accept it and route them to
+    // the workspace. Otherwise drop them at /signup to create their own.
+    const cleanEmail = (signInData.user.email ?? "").toLowerCase()
+    const { data: invite } = await admin
+      .from("workspace_invites")
+      .select("id, workspace_id, role, expires_at")
+      .eq("email", cleanEmail)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (invite && new Date(invite.expires_at as string) >= new Date()) {
+      // Insert membership; tolerate the unique-violation case so a double
+      // login doesn't error.
+      const { error: memErr } = await admin
+        .from("workspace_memberships")
+        .insert({
+          workspace_id: invite.workspace_id as string,
+          user_id: userId,
+          role: invite.role as string,
+          status: "active",
+        })
+      if (
+        memErr &&
+        memErr.code !== "23505" &&
+        !/duplicate|already exists/i.test(memErr.message)
+      ) {
+        return { ok: false, error: `Could not join workspace: ${memErr.message}` }
+      }
+
+      await admin
+        .from("workspace_invites")
+        .update({
+          status: "accepted",
+          accepted_at: new Date().toISOString(),
+          accepted_by: userId,
+          temp_password: null,
+        })
+        .eq("id", invite.id as string)
+
+      const { data: ws } = await admin
+        .from("workspaces")
+        .select("slug")
+        .eq("id", invite.workspace_id as string)
+        .maybeSingle()
+
+      if (ws?.slug) {
+        redirect(`/${ws.slug as string}`)
+      }
+    }
+
     redirect("/signup")
   }
 
