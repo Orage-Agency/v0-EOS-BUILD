@@ -139,22 +139,6 @@ function AcceptInviteForm() {
               className="block text-[10px] uppercase tracking-[0.18em] text-[#8a7860] mb-2"
               style={{ fontFamily: "Bebas Neue" }}
             >
-              Full name
-            </label>
-            <input
-              type="text"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              required
-              className="w-full px-4 py-3 bg-[#151515] border border-[rgba(182,128,57,0.18)] rounded-[2px] text-[#FFD69C] focus:outline-none focus:border-[#B68039]"
-            />
-          </div>
-
-          <div>
-            <label
-              className="block text-[10px] uppercase tracking-[0.18em] text-[#8a7860] mb-2"
-              style={{ fontFamily: "Bebas Neue" }}
-            >
               Set password (8+ characters)
             </label>
             <input
@@ -164,6 +148,23 @@ function AcceptInviteForm() {
               required
               minLength={8}
               className="w-full px-4 py-3 bg-[#151515] border border-[rgba(182,128,57,0.18)] rounded-[2px] text-[#FFD69C] focus:outline-none focus:border-[#B68039]"
+            />
+          </div>
+
+          <div>
+            <label
+              className="block text-[10px] uppercase tracking-[0.18em] text-[#8a7860] mb-2"
+              style={{ fontFamily: "Bebas Neue" }}
+            >
+              Display name <span className="text-[#5a4f3e] normal-case tracking-normal">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              autoComplete="name"
+              className="w-full px-4 py-3 bg-[#151515] border border-[rgba(182,128,57,0.18)] rounded-[2px] text-[#FFD69C] focus:outline-none focus:border-[#B68039]"
+              placeholder="Leave blank to use your email handle"
             />
           </div>
 

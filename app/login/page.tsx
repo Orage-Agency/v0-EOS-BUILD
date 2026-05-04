@@ -1,39 +1,53 @@
 // ═══════════════════════════════════════════════════════════
-// app/login/page.tsx — workspace-agnostic entry point
+// app/login/page.tsx — top-level email + password sign-in
+// We resolve the user's workspace server-side after a successful
+// sign-in, so the user never has to know or type a workspace slug.
 // ═══════════════════════════════════════════════════════════
 
-import { redirect } from "next/navigation"
+"use client"
+
+import { Suspense, useState } from "react"
 import Link from "next/link"
-import { createClient } from "@/lib/supabase/server"
-import { getUserWorkspaces } from "@/lib/auth"
+import { useRouter, useSearchParams } from "next/navigation"
+import { loginByEmail } from "@/app/actions/auth"
 
-/**
- * Top-level `/login` route. The middleware redirects unauthenticated visitors
- * here when they hit `/`, and `requireUser` redirects to `/{workspace}/login`
- * for known workspaces. This page handles two cases:
- *
- *   1. The visitor IS signed in but landed at `/` with no membership: send
- *      them to their first workspace, or to `/signup` to create one.
- *   2. The visitor is signed out and there is no workspace context: ask for
- *      a workspace slug so we can forward them to `/{slug}/login`.
- */
-export default async function LoginEntryPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string }>
-}) {
-  const { error } = await searchParams
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+export default function LoginEntryPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  )
+}
 
-  if (user) {
-    const workspaces = await getUserWorkspaces()
-    if (workspaces.length > 0) {
-      redirect(`/${workspaces[0].slug}`)
+function LoginForm() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const initialError = searchParams.get("error")
+
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(
+    initialError === "no_access"
+      ? "You don't have access to that workspace. Ask the owner for an invite."
+      : null,
+  )
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    const result = await loginByEmail(email, password)
+    if (!result.ok) {
+      setError(result.error)
+      setLoading(false)
+      return
     }
-    redirect("/signup")
+    if (result.slug) {
+      router.push(`/${result.slug}`)
+    } else {
+      router.push("/signup")
+    }
   }
 
   return (
@@ -42,18 +56,19 @@ export default async function LoginEntryPage({
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse 1200px 800px at 75% -10%, rgba(182,128,57,0.07) 0%, transparent 60%)",
+            "radial-gradient(ellipse 1200px 800px at 75% -10%, rgba(182,128,57,0.07) 0%, transparent 60%), radial-gradient(ellipse 800px 600px at -10% 100%, rgba(228,175,122,0.04) 0%, transparent 55%)",
         }}
       />
 
       <div className="relative z-10 w-full max-w-[420px] mx-auto px-6">
         <div className="text-center mb-10">
-          <div className="inline-flex items-center gap-3 mb-3">
+          <div className="inline-flex items-center gap-3 mb-2">
             <div
               className="w-10 h-10 rounded-[2px] flex items-center justify-center font-bold text-black"
               style={{
                 background: "linear-gradient(135deg, #B68039, #543C1C)",
                 fontFamily: "Bebas Neue",
+                letterSpacing: "0.05em",
               }}
             >
               O
@@ -65,49 +80,64 @@ export default async function LoginEntryPage({
               ORAGE CORE
             </div>
           </div>
-          <p className="text-[12px] text-[#8a7860]">
-            Sign in to your workspace
-          </p>
+          <p className="text-[12px] text-[#8a7860]">Sign in</p>
         </div>
 
-        {error === "no_access" && (
-          <div className="mb-4 px-4 py-3 bg-[rgba(194,84,80,0.1)] border-l-2 border-[#C25450] text-[12px] text-[#C25450]">
-            You don&apos;t have access to that workspace. Ask the owner for an
-            invite.
-          </div>
-        )}
-
-        <form action="/login" method="get" className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label
               className="block text-[10px] uppercase tracking-[0.18em] text-[#8a7860] mb-2"
               style={{ fontFamily: "Bebas Neue" }}
             >
-              Workspace slug
+              Email
             </label>
             <input
-              name="workspace"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
+              autoComplete="email"
               autoFocus
               className="w-full px-4 py-3 bg-[#151515] border border-[rgba(182,128,57,0.18)] rounded-[2px] text-[#FFD69C] focus:outline-none focus:border-[#B68039]"
-              placeholder="orage"
+              placeholder="you@company.com"
             />
           </div>
+
+          <div>
+            <label
+              className="block text-[10px] uppercase tracking-[0.18em] text-[#8a7860] mb-2"
+              style={{ fontFamily: "Bebas Neue" }}
+            >
+              Password
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={8}
+              autoComplete="current-password"
+              className="w-full px-4 py-3 bg-[#151515] border border-[rgba(182,128,57,0.18)] rounded-[2px] text-[#FFD69C] focus:outline-none focus:border-[#B68039]"
+              placeholder="••••••••"
+            />
+          </div>
+
+          {error && (
+            <div className="px-4 py-3 bg-[rgba(194,84,80,0.1)] border-l-2 border-[#C25450] text-[12px] text-[#C25450]">
+              {error}
+            </div>
+          )}
+
           <button
             type="submit"
-            formAction={async (formData: FormData) => {
-              "use server"
-              const slug = String(formData.get("workspace") ?? "").trim()
-              if (!slug) redirect("/login")
-              redirect(`/${slug}/login`)
-            }}
-            className="w-full py-3 rounded-[2px] text-black font-semibold text-[12px] tracking-[0.1em] uppercase"
+            disabled={loading}
+            className="w-full py-3 rounded-[2px] text-black font-semibold text-[12px] tracking-[0.1em] uppercase disabled:opacity-50"
             style={{
               background: "linear-gradient(135deg, #B68039, #E4AF7A)",
               fontFamily: "Bebas Neue",
             }}
           >
-            Continue →
+            {loading ? "Signing in…" : "Sign in"}
           </button>
         </form>
 
@@ -116,7 +146,7 @@ export default async function LoginEntryPage({
             href="/signup"
             className="text-[11px] text-[#8a7860] hover:text-[#E4AF7A] underline-offset-4 hover:underline"
           >
-            Don&apos;t have a workspace? Create one →
+            Don&apos;t have an account? Create one →
           </Link>
         </div>
       </div>

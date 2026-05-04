@@ -78,20 +78,24 @@ export type SignUpWorkspaceResult =
 export async function signUpWorkspace(input: {
   email: string
   password: string
-  fullName: string
-  workspaceName: string
+  // Optional. If blank, we derive a friendly placeholder from the email
+  // local-part — the user can rename themselves later in settings.
+  fullName?: string
+  // Optional. If blank, we use the email local-part as the workspace name
+  // and slug seed. Founder can rename anytime in settings.
+  workspaceName?: string
 }): Promise<SignUpWorkspaceResult> {
   const limit = await checkAuthRateLimit("signup")
   if (!limit.ok) return { ok: false, error: limit.message }
 
   const email = input.email.trim().toLowerCase()
-  const fullName = input.fullName.trim()
-  const wsName = input.workspaceName.trim()
-
   if (!email || !email.includes("@")) return { ok: false, error: "Enter a valid email." }
   if (input.password.length < 8) return { ok: false, error: "Password must be at least 8 characters." }
-  if (!fullName) return { ok: false, error: "Enter your full name." }
-  if (!wsName) return { ok: false, error: "Enter a workspace name." }
+
+  // Friendly defaults so signup never blocks on an unfilled name field.
+  const localPart = email.split("@")[0] ?? "founder"
+  const fullName = (input.fullName ?? "").trim() || localPart
+  const wsName = (input.workspaceName ?? "").trim() || localPart
 
   const supabase = await createClient()
   const admin = supabaseAdmin()
@@ -147,7 +151,72 @@ export async function signUpWorkspace(input: {
   return { ok: true, slug: ws.slug as string }
 }
 
-// ─── LOG IN ───
+// ─── LOG IN BY EMAIL (workspace-agnostic) ───
+//
+// Used by the top-level /login page. Authenticates by email + password,
+// then resolves the user's first active workspace and returns its slug
+// so the client can redirect. If the user has no workspace yet, we send
+// them to /signup to create one.
+export type LoginByEmailResult =
+  | { ok: true; slug: string | null }
+  | { ok: false; error: string }
+
+export async function loginByEmail(
+  email: string,
+  password: string,
+): Promise<LoginByEmailResult> {
+  const limit = await checkAuthRateLimit("login")
+  if (!limit.ok) return { ok: false, error: limit.message }
+
+  const supabase = await createClient()
+
+  const { data: signInData, error } = await supabase.auth.signInWithPassword({
+    email: email.trim().toLowerCase(),
+    password,
+  })
+  if (error || !signInData.user) {
+    return { ok: false, error: "Invalid email or password" }
+  }
+
+  // Master users can land at the picker. Everyone else gets routed to
+  // their first active workspace.
+  const admin = supabaseAdmin()
+  const userId = signInData.user.id
+
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("is_master")
+    .eq("id", userId)
+    .maybeSingle()
+
+  if (profile?.is_master) {
+    return { ok: true, slug: null }
+  }
+
+  // Two-step lookup — PostgREST FK alias filter is unreliable here.
+  const { data: mem } = await admin
+    .from("workspace_memberships")
+    .select("workspace_id, created_at")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (!mem?.workspace_id) {
+    return { ok: true, slug: null }
+  }
+
+  const { data: ws } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", mem.workspace_id)
+    .maybeSingle()
+
+  return { ok: true, slug: (ws?.slug as string | undefined) ?? null }
+}
+
+// ─── LOG IN (legacy workspace-scoped form, used by /[workspace]/login) ───
 export async function login(workspaceSlug: string, email: string, password: string, rememberMe: boolean) {
   void rememberMe
 
@@ -324,7 +393,27 @@ export async function createInvite(
     inviterName,
     role,
   })
-  // Fire-and-forget — never block the inviter waiting on the SMTP RTT.
+
+  // GUARANTEED-DELIVERY PATH: send a magic-link email through Supabase's
+  // built-in email infrastructure. This works without any external SMTP
+  // setup. The link routes through /auth/callback so the recipient lands
+  // at /accept-invite?token=T already authenticated as their email — the
+  // accept handler then just sets a password and joins the workspace.
+  // We use a fresh anonymous client so we don't disturb the inviter's
+  // session cookies on this server-action response.
+  const callbackUrl = `${appUrl()}/auth/callback?next=${encodeURIComponent(`/accept-invite?token=${token}`)}`
+  const { createAnonClient } = await import("@/lib/supabase/anon")
+  const anon = createAnonClient()
+  const { error: otpErr } = await anon.auth.signInWithOtp({
+    email,
+    options: { shouldCreateUser: true, emailRedirectTo: callbackUrl },
+  })
+  if (otpErr) {
+    console.error("[createInvite] supabase OTP send failed", otpErr.message)
+  }
+
+  // OPTIONAL BRANDED PATH: also fire the Resend email when configured. No-op
+  // when RESEND_API_KEY is unset, so this is safe in any environment.
   sendEmail({ to: email, subject, html, text: htmlToText(html) }).catch((e) => {
     console.error("[createInvite] sendEmail failed", e)
   })
@@ -342,7 +431,7 @@ export async function createInvite(
 //   • `admin` (service role) writes the workspace_membership row and
 //     marks the invite accepted, because the new user has no role yet
 //     and would be blocked by `admins_manage_memberships` RLS.
-export async function acceptInvite(token: string, password: string, fullName: string) {
+export async function acceptInvite(token: string, password: string, fullName?: string) {
   const limit = await checkAuthRateLimit("accept-invite")
   if (!limit.ok) return { error: limit.message }
 
@@ -350,6 +439,9 @@ export async function acceptInvite(token: string, password: string, fullName: st
 
   const supabase = await createClient()
   const admin = supabaseAdmin()
+  // Default the display name to the email local-part so a blank field
+  // doesn't block onboarding. Filled in below once we know the email.
+  const displayName = (fullName ?? "").trim()
 
   // Look up invite via the public RLS read policy, but go through the
   // admin client to avoid relying on `public_read_pending_invite_by_token`
@@ -364,23 +456,53 @@ export async function acceptInvite(token: string, password: string, fullName: st
   if (invite.status !== "pending") return { error: "This invite has already been used" }
   if (new Date(invite.expires_at) < new Date()) return { error: "This invite has expired" }
 
-  // Sign up. With "Confirm email" turned OFF in Supabase Auth settings,
-  // this both creates the row in auth.users (handle_new_user trigger
-  // creates the profile) and sets the session cookies on the response.
-  const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-    email: invite.email,
-    password,
-    options: { data: { full_name: fullName } },
-  })
+  const inviteeEmail = (invite.email as string).toLowerCase()
+  const resolvedName = displayName || (inviteeEmail.split("@")[0] ?? "member")
 
-  if (signUpError) return { error: signUpError.message }
-  if (!signUpData.user) return { error: "Sign up failed" }
+  // The accept page is reachable two ways:
+  //   1) The recipient clicked the Supabase magic-link in the invite email →
+  //      they already have a confirmed session for `inviteeEmail`. We just
+  //      set a password on the existing user.
+  //   2) Someone copy-pasted the /accept-invite?token=… link without going
+  //      through email → no session yet. We sign up normally.
+  const {
+    data: { user: existingSessionUser },
+  } = await supabase.auth.getUser()
 
-  const userId = signUpData.user.id
+  let userId: string
+  let createdNewUser = false
+
+  if (
+    existingSessionUser &&
+    existingSessionUser.email?.toLowerCase() === inviteeEmail
+  ) {
+    // Magic-link path. Set the password + display name on the existing
+    // auth.users row.
+    const { error: pwErr } = await supabase.auth.updateUser({
+      password,
+      data: { full_name: resolvedName },
+    })
+    if (pwErr) return { error: pwErr.message }
+    userId = existingSessionUser.id
+  } else {
+    // Direct-link path — no session yet. Sign up. (With "Confirm email"
+    // turned OFF in Supabase Auth, this also sets session cookies.)
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: inviteeEmail,
+      password,
+      options: { data: { full_name: resolvedName } },
+    })
+    if (signUpError) return { error: signUpError.message }
+    if (!signUpData.user) return { error: "Sign up failed" }
+    userId = signUpData.user.id
+    createdNewUser = true
+  }
 
   // Use the service-role client for the membership insert + invite mark
   // so RLS does not bounce the request. The new user has no role in this
   // workspace yet, so `admins_manage_memberships` would otherwise reject.
+  // The insert is idempotent against the (workspace_id, user_id) unique
+  // constraint — repeated clicks just no-op.
   const { error: membershipError } = await admin
     .from("workspace_memberships")
     .insert({
@@ -389,10 +511,19 @@ export async function acceptInvite(token: string, password: string, fullName: st
       role: invite.role,
     })
 
-  if (membershipError) {
-    // Clean up the auth.users row so the invitee can retry without
-    // hitting "email already exists" on a partially-broken state.
-    await admin.auth.admin.deleteUser(userId)
+  // Postgres unique-violation = already a member. Treat as success.
+  const isDuplicate =
+    membershipError &&
+    (membershipError.code === "23505" ||
+      /duplicate|already exists/i.test(membershipError.message))
+
+  if (membershipError && !isDuplicate) {
+    // Only roll back the auth.users row if we created it on this request.
+    // Existing users (magic-link path) must NOT be deleted — they may have
+    // memberships in other workspaces.
+    if (createdNewUser) {
+      await admin.auth.admin.deleteUser(userId).catch(() => {})
+    }
     return { error: `Could not join workspace: ${membershipError.message}` }
   }
 
