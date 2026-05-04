@@ -550,6 +550,16 @@ export async function acceptInvite(token: string, password: string, fullName?: s
     userId = created.user.id
     createdNewUser = true
 
+    // Mirror signUpWorkspace: ensure a profile row exists. There's no
+    // handle_new_user trigger in this codebase's migrations, so admin
+    // user creation alone leaves profiles empty.
+    await admin
+      .from("profiles")
+      .upsert(
+        { id: userId, email: inviteeEmail, full_name: resolvedName },
+        { onConflict: "id" },
+      )
+
     const { error: signInErr } = await supabase.auth.signInWithPassword({
       email: inviteeEmail,
       password,
