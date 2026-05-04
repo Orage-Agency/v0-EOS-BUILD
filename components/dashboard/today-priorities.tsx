@@ -4,10 +4,12 @@ import { TenantLink as Link } from "@/components/tenant-link"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { type MockTask, getUser as userById } from "@/lib/mock-data"
+import type { ClientTagOption } from "@/lib/client-tags"
 import { OrageAvatar } from "@/components/orage/avatar"
 import { dueLabel } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { IcCheck } from "@/components/orage/icons"
+import { ClientDot } from "@/components/tasks/client-tag-picker"
 
 const ROCK_LINK_LABEL: Record<string, string> = {
   r1: "↗ ROCK · OFFER",
@@ -19,7 +21,13 @@ const ROCK_LINK_LABEL: Record<string, string> = {
 
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000
 
-export function TodayPriorities({ tasks }: { tasks: MockTask[] }) {
+export function TodayPriorities({
+  tasks,
+  clientTagOptions = [],
+}: {
+  tasks: MockTask[]
+  clientTagOptions?: ClientTagOption[]
+}) {
   const [done, setDone] = useState<Set<string>>(
     new Set(tasks.filter((t) => t.status === "done").map((t) => t.id)),
   )
@@ -132,6 +140,11 @@ export function TodayPriorities({ tasks }: { tasks: MockTask[] }) {
                 )}
               </button>
               <div className="task-name text-[13px] text-text-primary flex items-center gap-2 min-w-0">
+                <ClientDot
+                  clientWorkspaceId={t.clientWorkspaceId}
+                  options={clientTagOptions}
+                  size={7}
+                />
                 <span className="truncate">{t.title}</span>
                 {link && (
                   <span className="font-display text-[9px] tracking-[0.15em] text-gold-500 bg-gold-500/10 px-1.5 py-0.5 rounded-sm shrink-0">

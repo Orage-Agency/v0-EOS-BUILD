@@ -56,6 +56,7 @@ export interface DbRock {
   status: RockStatus
   progress: number
   tag: string | null
+  client_workspace_id: string | null
   created_by: string | null
   created_at: string
   updated_at: string
@@ -76,6 +77,7 @@ export interface DbTask {
   due_date: string | null
   completed_at: string | null
   calendar_event_id: string | null
+  client_workspace_id: string | null
   created_by: string | null
   created_at: string
   updated_at: string

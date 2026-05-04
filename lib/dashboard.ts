@@ -81,6 +81,15 @@ export type DashboardTask = {
   due: string
   rockId?: string
   completed?: string
+  clientWorkspaceId?: string | null
+}
+
+/** Lightweight info for rendering the colored client tag dot. */
+export type ClientWorkspaceBadge = {
+  id: string
+  slug: string
+  name: string
+  brandColor: string | null
 }
 
 // ---------------------------------------------------------- helpers (private)
@@ -131,6 +140,7 @@ function mockToDashboardTask(t: MockTask): DashboardTask {
     due: t.due ?? "",
     rockId: t.rockId,
     completed: t.completed,
+    clientWorkspaceId: t.clientWorkspaceId ?? null,
   }
 }
 
@@ -144,6 +154,7 @@ function dbRowToDashboardTask(row: DbTask): DashboardTask {
     due: fmtDate(row.due_date),
     rockId: row.parent_rock_id ?? undefined,
     completed: row.completed_at ? fmtDate(row.completed_at) : undefined,
+    clientWorkspaceId: row.client_workspace_id ?? null,
   }
 }
 

@@ -124,6 +124,8 @@ export type MockTask = {
   rockId?: string
   completed?: string
   description?: string
+  /** Optional cross-workspace client tag. Renders a colored dot. */
+  clientWorkspaceId?: string | null
 }
 
 export const UNASSIGNED_OWNER_ID = "u_unassigned"

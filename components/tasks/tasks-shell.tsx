@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react"
 import { useTasksStore } from "@/lib/tasks-store"
 import type { MockTask } from "@/lib/mock-data"
 import type { RockOption, WorkspaceMember } from "@/lib/tasks-server"
+import type { ClientTagOption } from "@/lib/client-tags"
 import { TasksHeader } from "./tasks-header"
 import { ViewTabs } from "./view-tabs"
 import { TasksToolbar } from "./tasks-toolbar"
@@ -22,12 +23,14 @@ export function TasksShell({
   initialTasks,
   members,
   rocks,
+  clientTagOptions,
   currentUser,
 }: {
   workspaceSlug: string
   initialTasks: MockTask[]
   members: WorkspaceMember[]
   rocks: RockOption[]
+  clientTagOptions: ClientTagOption[]
   currentUser: CurrentUserCard
 }) {
   const view = useTasksStore((s) => s.view)
@@ -35,6 +38,7 @@ export function TasksShell({
   const setCurrentUserId = useTasksStore((s) => s.setCurrentUserId)
   const setRockOptions = useTasksStore((s) => s.setRockOptions)
   const setMembers = useTasksStore((s) => s.setMembers)
+  const setClientTagOptions = useTasksStore((s) => s.setClientTagOptions)
   const setWorkspaceSlug = useTasksStore((s) => s.setWorkspaceSlug)
   const openNewTask = useTasksStore((s) => s.openNewTask)
   const quickAddRef = useRef<QuickAddHandle | null>(null)
@@ -58,6 +62,10 @@ export function TasksShell({
   useEffect(() => {
     setMembers(members)
   }, [members, setMembers])
+
+  useEffect(() => {
+    setClientTagOptions(clientTagOptions)
+  }, [clientTagOptions, setClientTagOptions])
 
   return (
     <div className="flex h-full flex-col">

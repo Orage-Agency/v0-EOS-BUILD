@@ -57,6 +57,7 @@ function dbToMockTask(row: DbTask): MockTask {
     rockId: row.parent_rock_id ?? undefined,
     completed: row.completed_at ? row.completed_at.slice(0, 10) : undefined,
     description: row.description ?? undefined,
+    clientWorkspaceId: row.client_workspace_id ?? null,
   }
 }
 
@@ -377,6 +378,62 @@ export async function updateTaskRock(
       entityType: "task",
       entityId: id,
       metadata: { field: "parent_rock_id", value: parentRockId },
+    })
+    revalidateTaskRoutes(workspaceSlug)
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error"
+    return { ok: false, error: msg }
+  }
+}
+
+// ---------------------------------------------------------- update client tag
+
+/**
+ * Set or clear the cross-workspace client tag on a task. The clientWorkspaceId
+ * must be a workspace the caller is also a member of (verified via
+ * workspace_memberships). Pass null to clear the tag.
+ */
+export async function updateTaskClient(
+  workspaceSlug: string,
+  id: string,
+  clientWorkspaceId: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "tasks:write")
+    const sb = supabaseAdmin()
+
+    if (clientWorkspaceId !== null) {
+      if (!isUuid(clientWorkspaceId)) {
+        return { ok: false, error: "Invalid client workspace id" }
+      }
+      // Caller must be a member of the target client workspace — prevents
+      // tagging with a workspace they don't own.
+      const { data: tagMembership } = await sb
+        .from("workspace_memberships")
+        .select("workspace_id")
+        .eq("user_id", user.id)
+        .eq("workspace_id", clientWorkspaceId)
+        .eq("status", "active")
+        .maybeSingle()
+      if (!tagMembership) {
+        return { ok: false, error: "Not a member of that client workspace" }
+      }
+    }
+
+    const { error } = await sb
+      .from("tasks")
+      .update({ client_workspace_id: clientWorkspaceId })
+      .eq("id", id)
+      .eq("tenant_id", user.workspaceId)
+    if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "update",
+      entityType: "task",
+      entityId: id,
+      metadata: { field: "client_workspace_id", value: clientWorkspaceId },
     })
     revalidateTaskRoutes(workspaceSlug)
     return { ok: true }

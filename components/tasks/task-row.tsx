@@ -10,6 +10,7 @@ import { OrageAvatar } from "@/components/orage/avatar"
 import { AssignPopover } from "./assign-popover"
 import { InlineDateEditor } from "./inline-date-editor"
 import { RowActionMenu } from "./row-action-menu"
+import { ClientDot } from "./client-tag-picker"
 import { dueLabel } from "@/lib/format"
 import { canDragTask } from "@/lib/permissions"
 import { IcArchive, IcCheck, IcGrip } from "@/components/orage/icons"
@@ -38,6 +39,7 @@ export function TaskRow({ task }: { task: MockTask }) {
   const updateDue = useTasksStore((s) => s.updateDue)
   const archiveOne = useTasksStore((s) => s.archiveOne)
   const members = useTasksStore((s) => s.members)
+  const clientTagOptions = useTasksStore((s) => s.clientTagOptions)
 
   // Resolve owner: prefer real DB member, fall back to USERS mock for
   // legacy seeded ids. Display nothing if neither matches (better than
@@ -173,6 +175,11 @@ export function TaskRow({ task }: { task: MockTask }) {
         >
           {isDone && <IcCheck className="w-2.5 h-2.5 text-text-on-gold" />}
         </button>
+        <ClientDot
+          clientWorkspaceId={task.clientWorkspaceId}
+          options={clientTagOptions}
+          size={7}
+        />
         <span className="truncate">{task.title}</span>
         {rockLink && (
           <span className="font-display text-[9px] tracking-[0.15em] text-gold-500 bg-gold-500/10 px-1.5 py-0.5 rounded-sm shrink-0">

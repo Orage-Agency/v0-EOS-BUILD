@@ -34,6 +34,7 @@ function dbToMockTask(row: DbTask): MockTask {
     rockId: row.parent_rock_id ?? undefined,
     completed: row.completed_at ? row.completed_at.slice(0, 10) : undefined,
     description: row.description ?? undefined,
+    clientWorkspaceId: row.client_workspace_id ?? null,
   }
 }
 

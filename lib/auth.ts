@@ -203,35 +203,53 @@ export async function requireRole(
 /**
  * Get user's workspace memberships (for the workspace switcher).
  * Returns an empty list when the visitor is signed out.
+ *
+ * Uses the manual cookie/JWT decode + a two-step lookup because the
+ * @supabase/ssr auth.getUser() returns null for ES256 tokens, and the
+ * PostgREST FK alias select shape (`workspace:workspaces(...)`) has been
+ * flaky for us — see `lib/people-server.ts` for the same workaround.
  */
-export async function getUserWorkspaces() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return [] as Array<{
+export async function getUserWorkspaces(): Promise<
+  Array<{
     id: string
     slug: string
     name: string
     logo_url: string | null
+    brand_color: string | null
     role: Role
   }>
+> {
+  const userId = await getAuthUserIdFromCookie()
+  if (!userId) return []
+  const supabase = await createClient()
 
-  const { data } = await supabase
+  const { data: memberships } = await supabase
     .from("workspace_memberships")
-    .select("role, workspace:workspaces(id, slug, name, logo_url)")
-    .eq("user_id", user.id)
+    .select("role, workspace_id")
+    .eq("user_id", userId)
     .eq("status", "active")
+  const rows = (memberships ?? []) as Array<{ role: string; workspace_id: string }>
+  if (rows.length === 0) return []
 
-  return (
-    data?.map((m) => {
-      const ws = m.workspace as unknown as {
-        id: string
-        slug: string
-        name: string
-        logo_url: string | null
-      }
-      return { ...ws, role: m.role as Role }
-    }) ?? []
+  const ids = rows.map((r) => r.workspace_id)
+  const { data: workspaces } = await supabase
+    .from("workspaces")
+    .select("id, slug, name, logo_url, brand_color")
+    .in("id", ids)
+  const byId = new Map(
+    ((workspaces ?? []) as Array<{
+      id: string
+      slug: string
+      name: string
+      logo_url: string | null
+      brand_color: string | null
+    }>).map((w) => [w.id, w]),
   )
+  return rows
+    .flatMap((m) => {
+      const w = byId.get(m.workspace_id)
+      if (!w) return []
+      return [{ ...w, role: m.role as Role }]
+    })
+    .sort((a, b) => a.name.localeCompare(b.name))
 }

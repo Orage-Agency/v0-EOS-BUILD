@@ -13,6 +13,7 @@
 import { create } from "zustand"
 import type { MockTask, TaskPriority, TaskStatus } from "@/lib/mock-data"
 import type { RockOption, WorkspaceMember } from "@/lib/tasks-server"
+import type { ClientTagOption } from "@/lib/client-tags"
 import { reconcile } from "@/lib/store-helpers"
 import {
   updateTaskStatus as updateTaskStatusAction,
@@ -22,6 +23,7 @@ import {
   updateTaskPriority as updateTaskPriorityAction,
   updateTaskRock as updateTaskRockAction,
   updateTaskOwner as updateTaskOwnerAction,
+  updateTaskClient as updateTaskClientAction,
   bulkUpdateTasks as bulkUpdateTasksAction,
   bulkDeleteTasks as bulkDeleteTasksAction,
   deleteTask as deleteTaskAction,
@@ -51,6 +53,11 @@ type TasksState = {
 
   members: WorkspaceMember[]
   setMembers: (members: WorkspaceMember[]) => void
+
+  /** Other workspaces the current user is a member of — drives the
+   * cross-workspace client tag picker. Empty for single-workspace users. */
+  clientTagOptions: ClientTagOption[]
+  setClientTagOptions: (options: ClientTagOption[]) => void
 
   currentUserId: string | null
   setCurrentUserId: (id: string) => void
@@ -88,6 +95,7 @@ type TasksState = {
   updateDescription: (id: string, description: string) => void
   updatePriority: (id: string, priority: TaskPriority) => void
   updateRock: (id: string, rockId: string | null) => void
+  updateClient: (id: string, clientWorkspaceId: string | null) => void
   reassign: (id: string, ownerId: string) => void
   reorder: (ids: string[]) => void
   insertTask: (task: MockTask) => void
@@ -118,6 +126,9 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 
   members: [],
   setMembers: (members) => set({ members }),
+
+  clientTagOptions: [],
+  setClientTagOptions: (clientTagOptions) => set({ clientTagOptions }),
 
   currentUserId: null,
   setCurrentUserId: (id) => set({ currentUserId: id }),
@@ -326,6 +337,26 @@ export const useTasksStore = create<TasksState>((set, get) => ({
             tasks: state.tasks.map((t) => (t.id === id ? prev : t)),
           })),
         "Couldn't link rock",
+      )
+    }
+  },
+  updateClient: (id, clientWorkspaceId) => {
+    const prev = get().tasks.find((t) => t.id === id)
+    if (!prev) return
+    set((state) => ({
+      tasks: state.tasks.map((t) =>
+        t.id === id ? { ...t, clientWorkspaceId } : t,
+      ),
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug && isDbId(id)) {
+      reconcile(
+        updateTaskClientAction(workspaceSlug, id, clientWorkspaceId),
+        () =>
+          set((state) => ({
+            tasks: state.tasks.map((t) => (t.id === id ? prev : t)),
+          })),
+        "Couldn't tag client",
       )
     }
   },

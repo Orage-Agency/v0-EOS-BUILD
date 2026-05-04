@@ -11,6 +11,7 @@ import { dueLabel } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { AssignPopover } from "./assign-popover"
 import { InlineDateEditor } from "./inline-date-editor"
+import { ClientTagPicker } from "./client-tag-picker"
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   open: "OPEN",
@@ -30,12 +31,14 @@ export function TaskDrawer() {
 
   const rockOptions = useTasksStore((s) => s.rockOptions)
   const members = useTasksStore((s) => s.members)
+  const clientTagOptions = useTasksStore((s) => s.clientTagOptions)
   const updateTitle = useTasksStore((s) => s.updateTitle)
   const updateDescription = useTasksStore((s) => s.updateDescription)
   const updateStatus = useTasksStore((s) => s.updateStatus)
   const updatePriority = useTasksStore((s) => s.updatePriority)
   const updateDue = useTasksStore((s) => s.updateDue)
   const updateRock = useTasksStore((s) => s.updateRock)
+  const updateClient = useTasksStore((s) => s.updateClient)
   const startHandoff = useTasksStore((s) => s.startHandoff)
   const archiveOne = useTasksStore((s) => s.archiveOne)
   const deleteOne = useTasksStore((s) => s.deleteOne)
@@ -403,6 +406,29 @@ export function TaskDrawer() {
                     </ul>
                   )}
                 </dd>
+
+                {clientTagOptions.length > 0 && (
+                  <>
+                    <dt className="font-mono text-[10px] tracking-[0.1em] text-text-muted self-center">
+                      CLIENT
+                    </dt>
+                    <dd>
+                      <ClientTagPicker
+                        value={task.clientWorkspaceId ?? null}
+                        options={clientTagOptions}
+                        onChange={(next) => {
+                          updateClient(task.id, next)
+                          if (next) {
+                            const opt = clientTagOptions.find((o) => o.id === next)
+                            toast(`Tagged · ${opt?.name ?? "client"}`)
+                          } else {
+                            toast("Client tag cleared")
+                          }
+                        }}
+                      />
+                    </dd>
+                  </>
+                )}
               </dl>
 
               <section className="mb-6">

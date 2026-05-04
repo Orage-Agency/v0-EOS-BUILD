@@ -9,7 +9,7 @@ import { BottomTabBar } from "@/components/shell/bottom-tab-bar"
 import { OnboardingGate } from "@/components/onboarding/onboarding-gate"
 import { SessionInit } from "@/components/shell/session-init"
 import { WorkspaceRealtimeBridge } from "@/components/realtime/workspace-realtime-bridge"
-import { requireUser } from "@/lib/auth"
+import { requireUser, getUserWorkspaces } from "@/lib/auth"
 
 /**
  * The (app) layout is the authenticated shell for everything under
@@ -29,13 +29,29 @@ export default async function AppShellLayout({
 }) {
   const { workspace } = await params
   const user = await requireUser(workspace)
+  const allWorkspaces = await getUserWorkspaces()
+  const currentWorkspace = {
+    id: user.workspaceId,
+    slug: user.workspaceSlug,
+    name: user.workspaceName,
+    brand_color:
+      allWorkspaces.find((w) => w.id === user.workspaceId)?.brand_color ?? null,
+  }
 
   return (
     <div
       className="h-screen overflow-hidden grid grid-cols-1 md:grid-cols-[var(--sidebar-w)_1fr]"
     >
       <div className="hidden md:block">
-        <Sidebar />
+        <Sidebar
+          workspaces={allWorkspaces.map((w) => ({
+            id: w.id,
+            slug: w.slug,
+            name: w.name,
+            brand_color: w.brand_color,
+          }))}
+          currentWorkspace={currentWorkspace}
+        />
       </div>
       <main className="grid grid-rows-[var(--topbar-h)_1fr] overflow-hidden min-w-0">
         <Topbar />

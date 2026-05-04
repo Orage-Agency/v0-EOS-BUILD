@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { TenantSwitcher } from "./tenant-switcher"
+import { WorkspaceSwitcher, type WorkspaceOption } from "./workspace-switcher"
 import { AILauncher } from "./ai-launcher"
 import { UserBar } from "./user-bar"
 import { useUIStore } from "@/lib/store"
@@ -187,7 +187,13 @@ function NavGroup({
   )
 }
 
-export function Sidebar() {
+export function Sidebar({
+  workspaces,
+  currentWorkspace,
+}: {
+  workspaces: WorkspaceOption[]
+  currentWorkspace: WorkspaceOption
+}) {
   const pathname = usePathname()
   const workspaceSlug = useWorkspaceSlug()
   const sessionUser = useUIStore((s) => s.currentUser)
@@ -215,7 +221,7 @@ export function Sidebar() {
         </span>
       </div>
 
-      <TenantSwitcher />
+      <WorkspaceSwitcher current={currentWorkspace} workspaces={workspaces} />
 
       <nav className="flex-1 overflow-y-auto py-2">
         <NavGroup
