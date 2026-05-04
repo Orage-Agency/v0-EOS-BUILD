@@ -14,6 +14,7 @@ export function Composer() {
   const streaming = useAIImplementerStore((s) => s.streaming)
   const cancelStream = useAIImplementerStore((s) => s.cancelStream)
   const quotaRemainingHour = useAIImplementerStore((s) => s.quotaRemainingHour)
+  const quotaRemainingDay = useAIImplementerStore((s) => s.quotaRemainingDay)
   const workspaceSlug = useWorkspaceSlug()
 
   const handleSend = () => {
@@ -71,6 +72,19 @@ export function Composer() {
               title={`${quotaRemainingHour} AI requests remaining this hour`}
             >
               {quotaRemainingHour}/hr
+            </span>
+          )}
+          {quotaRemainingDay !== null && quotaRemainingDay <= 50 && (
+            <span
+              className={cn(
+                "font-mono text-[10px] px-1.5 py-0.5 rounded-sm",
+                quotaRemainingDay <= 10
+                  ? "text-danger bg-danger/10"
+                  : "text-warning bg-warning/10",
+              )}
+              title={`${quotaRemainingDay} AI requests remaining today`}
+            >
+              {quotaRemainingDay}/day
             </span>
           )}
           {streaming ? (

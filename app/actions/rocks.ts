@@ -364,15 +364,44 @@ export async function deleteRock(
     const user = await requireUser(workspaceSlug)
     requirePermission(user, "rocks:delete")
     const sb = supabaseAdmin()
+    // Soft delete — restore from /trash within 30 days.
     const { error } = await sb
       .from("rocks")
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
       .eq("id", id)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
     await logAudit({
       user,
       action: "delete",
+      entityType: "rock",
+      entityId: id,
+    })
+    revalidateRockRoutes(workspaceSlug)
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error"
+    return { ok: false, error: msg }
+  }
+}
+
+export async function restoreRock(
+  workspaceSlug: string,
+  id: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "rocks:write")
+    const sb = supabaseAdmin()
+    const { error } = await sb
+      .from("rocks")
+      .update({ deleted_at: null })
+      .eq("id", id)
+      .eq("tenant_id", user.workspaceId)
+    if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "restore",
       entityType: "rock",
       entityId: id,
     })

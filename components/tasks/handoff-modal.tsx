@@ -90,7 +90,7 @@ export function HandoffModal() {
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) cancel()
           }}
-          className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-md flex items-center justify-center p-10"
+          className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-md flex items-center justify-center p-3 md:p-10"
           role="dialog"
           aria-modal="true"
           aria-label="Reassign task with handoff"

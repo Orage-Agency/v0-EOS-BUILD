@@ -139,7 +139,7 @@ export function NewTaskModal({
           onMouseDown={(e) => {
             if (e.target === e.currentTarget && !pending) close()
           }}
-          className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-md flex items-center justify-center p-6"
+          className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-md flex items-center justify-center p-3 md:p-6"
           role="dialog"
           aria-modal="true"
           aria-label="Create new task"

@@ -57,7 +57,15 @@ export default async function AppShellLayout({
         <Topbar />
         <div className="overflow-y-auto pb-16 md:pb-0">{children}</div>
       </main>
-      <BottomTabBar />
+      <BottomTabBar
+        workspaces={allWorkspaces.map((w) => ({
+          id: w.id,
+          slug: w.slug,
+          name: w.name,
+          brand_color: w.brand_color,
+        }))}
+        currentWorkspace={currentWorkspace}
+      />
       <CommandPalette />
       <AIPanel />
       <KeyboardShortcuts />

@@ -31,6 +31,7 @@ export async function listRocksForWorkspace(workspaceSlug: string): Promise<Mock
       .from("rocks")
       .select("*")
       .eq("tenant_id", user.workspaceId)
+      .is("deleted_at", null)
       .order("created_at", { ascending: false })
     if (error) {
       console.error("[v0] listRocksForWorkspace error", error.message)

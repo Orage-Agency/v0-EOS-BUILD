@@ -18,8 +18,11 @@ import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
 
-const COLS =
-  "30px 24px minmax(0,1fr) 130px 100px 110px 60px 40px"
+// Desktop: drag handle, checkbox, title, rock-tag, priority, due, owner, archive
+// Mobile (< md): drop drag handle + select checkbox + rock-tag + priority columns,
+// keep only the controls a thumb actually needs — checkbox/title/due/owner/archive
+const COLS_DESKTOP = "30px 24px minmax(0,1fr) 130px 100px 110px 60px 40px"
+const COLS_MOBILE = "minmax(0,1fr) 80px 36px 32px"
 
 function deriveInitials(name: string): string {
   const parts = name.trim().split(/\s+/)
@@ -104,9 +107,18 @@ export function TaskRow({ task }: { task: MockTask }) {
     >
       <style jsx>{`
         .task-row {
-          grid-template-columns: ${COLS};
-          padding-left: 18px;
-          padding-right: 18px;
+          grid-template-columns: ${COLS_MOBILE};
+          padding-left: 14px;
+          padding-right: 14px;
+          gap: 0.5rem;
+        }
+        @media (min-width: 768px) {
+          .task-row {
+            grid-template-columns: ${COLS_DESKTOP};
+            padding-left: 18px;
+            padding-right: 18px;
+            gap: 0.875rem;
+          }
         }
         .task-row.selected {
           background: rgba(182, 128, 57, 0.08);
@@ -127,7 +139,7 @@ export function TaskRow({ task }: { task: MockTask }) {
         {...sortable.attributes}
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          "opacity-0 group-hover:opacity-60 text-text-dim flex items-center justify-center",
+          "opacity-0 group-hover:opacity-60 text-text-dim hidden md:flex items-center justify-center",
           canDrag ? "cursor-grab active:cursor-grabbing" : "cursor-not-allowed",
         )}
         disabled={!canDrag}
@@ -144,7 +156,7 @@ export function TaskRow({ task }: { task: MockTask }) {
         aria-label={isSelected ? "Unselect" : "Select"}
         aria-pressed={isSelected}
         className={cn(
-          "w-3.5 h-3.5 rounded-sm border-[1.5px] cursor-pointer transition-colors flex items-center justify-center",
+          "w-3.5 h-3.5 rounded-sm border-[1.5px] cursor-pointer transition-colors hidden md:flex items-center justify-center",
           isSelected
             ? "bg-gold-500 border-gold-500"
             : "border-border-strong hover:border-gold-500",
@@ -188,13 +200,13 @@ export function TaskRow({ task }: { task: MockTask }) {
         )}
       </div>
 
-      <span className="font-display text-[9px] tracking-[0.18em] text-gold-500 bg-bg-active px-1.5 py-0.5 rounded-sm justify-self-start">
+      <span className="hidden md:inline-block font-display text-[9px] tracking-[0.18em] text-gold-500 bg-bg-active px-1.5 py-0.5 rounded-sm justify-self-start">
         {rockTag}
       </span>
 
       <span
         className={cn(
-          "priority justify-self-start",
+          "priority justify-self-start hidden md:inline-block",
           task.priority === "high" && "priority-high",
           task.priority === "med" && "priority-med",
           task.priority === "low" && "priority-low",
@@ -261,7 +273,7 @@ export function TaskRow({ task }: { task: MockTask }) {
         />
       </div>
 
-      <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
+      <div className="md:opacity-0 md:group-hover:opacity-100 flex gap-1 transition-opacity">
         <button
           type="button"
           aria-label="Archive task"
@@ -271,9 +283,9 @@ export function TaskRow({ task }: { task: MockTask }) {
             archiveOne(task.id)
             toast(`Archived "${task.title}"`)
           }}
-          className="w-6 h-6 rounded-sm flex items-center justify-center text-text-muted hover:bg-bg-2 hover:text-gold-400"
+          className="w-7 h-7 rounded-sm flex items-center justify-center text-text-muted hover:bg-bg-2 hover:text-gold-400"
         >
-          <IcArchive className="w-3 h-3" />
+          <IcArchive className="w-3.5 h-3.5" />
         </button>
         <RowActionMenu task={task} />
       </div>

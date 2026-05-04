@@ -56,11 +56,17 @@ export async function GET(req: Request) {
         .eq("tenant_id", tenantId)
         .ilike("title", pattern)
         .limit(2),
+      // Notes uses full-text search via the generated `search_tsv` column —
+      // matches body content not just titles. websearch_to_tsquery handles
+      // user input that may have quotes, AND/OR operators, etc.
       sb
         .from("notes")
         .select("id, title, updated_at")
         .eq("tenant_id", tenantId)
-        .ilike("title", pattern)
+        .textSearch("search_tsv", q, {
+          type: "websearch",
+          config: "simple",
+        })
         .limit(2),
     ])
 

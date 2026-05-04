@@ -139,10 +139,15 @@ export function RunnerShell({
         <IcChevronLeft className="w-3 h-3" />
         EXIT RUNNER
       </Link>
+      {/* Mobile: tabbed view of the three rails so each gets full width */}
       <div className="flex flex-1 overflow-hidden">
-        <AgendaRail meetingId={id} />
+        <div className="hidden lg:block">
+          <AgendaRail meetingId={id} />
+        </div>
         <MainStage meetingId={id} segmentData={segmentData} />
-        <ParticipantsRail meetingId={id} />
+        <div className="hidden lg:block">
+          <ParticipantsRail meetingId={id} />
+        </div>
       </div>
       <ConcludeModal meetingId={id} />
     </div>

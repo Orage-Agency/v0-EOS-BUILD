@@ -7,6 +7,11 @@ import "server-only"
 
 import { requireUser } from "@/lib/auth"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import {
+  isEnabled,
+  type NotificationPrefs,
+  type NotificationKind as PrefKind,
+} from "@/lib/notification-prefs"
 
 export type NotificationKind =
   | "task_assigned"
@@ -47,6 +52,22 @@ export async function notify(args: {
   if (args.actorId && args.actorId === args.recipientId) return
 
   const sb = supabaseAdmin()
+
+  // Honor the recipient's in_app opt-out for this kind. Lookup is best-
+  // effort — if the read fails (network blip etc.) we still write the
+  // notification so we don't silently swallow it.
+  try {
+    const { data } = await sb
+      .from("profiles")
+      .select("notification_prefs")
+      .eq("id", args.recipientId)
+      .maybeSingle()
+    const prefs = (data?.notification_prefs ?? null) as NotificationPrefs | null
+    if (!isEnabled(prefs, args.kind as PrefKind, "in_app")) return
+  } catch {
+    /* fall through — opt-out check is best-effort */
+  }
+
   const { error } = await sb.from("notifications").insert({
     tenant_id: args.tenantId,
     recipient_id: args.recipientId,

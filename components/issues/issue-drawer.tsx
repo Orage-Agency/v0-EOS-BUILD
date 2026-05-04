@@ -93,7 +93,7 @@ export function IssueDrawer() {
         role="dialog"
         aria-label={issue ? `Issue · ${issue.title}` : "Issue drawer"}
         className={cn(
-          "fixed right-0 top-0 h-screen w-full max-w-[560px] z-[201] flex flex-col transition-transform glass-strong border-l border-gold-500",
+          "fixed right-0 top-0 h-screen w-full md:max-w-[560px] z-[201] flex flex-col transition-transform glass-strong border-l border-gold-500",
           drawerIssueId ? "translate-x-0" : "translate-x-full",
         )}
         style={{ boxShadow: "-12px 0 40px rgba(0,0,0,0.6)" }}

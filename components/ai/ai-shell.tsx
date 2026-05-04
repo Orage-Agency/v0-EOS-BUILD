@@ -16,8 +16,11 @@ export function AIShell() {
 
   return (
     <div
-      className="grid h-full overflow-hidden relative"
-      style={{ gridTemplateColumns: "minmax(0, 290px) minmax(0,1fr)" }}
+      className={cn(
+        "grid h-full overflow-hidden relative",
+        // Mobile: single column. Desktop: 290px rail + flex.
+        "grid-cols-1 md:grid-cols-[minmax(0,290px)_minmax(0,1fr)]",
+      )}
     >
       <div className="hidden md:block">
         <ThreadsPane />

@@ -112,7 +112,7 @@ export async function GET(req: Request) {
     await Promise.all([
       sb
         .from("profiles")
-        .select("id, email, full_name")
+        .select("id, email, full_name, notification_prefs")
         .in("id", recipientIds),
       sb
         .from("workspaces")
@@ -126,9 +126,12 @@ export async function GET(req: Request) {
         .eq("status", "active"),
     ])
   const profileById = new Map(
-    ((profiles ?? []) as Array<{ id: string; email: string; full_name: string | null }>).map(
-      (p) => [p.id, p],
-    ),
+    ((profiles ?? []) as Array<{
+      id: string
+      email: string
+      full_name: string | null
+      notification_prefs: Record<string, { email?: boolean }> | null
+    }>).map((p) => [p.id, p]),
   )
   const workspaceById = new Map(
     ((workspaces ?? []) as Array<{ id: string; name: string; slug: string }>).map((w) => [
@@ -168,11 +171,31 @@ export async function GET(req: Request) {
     const wsName = ws?.name ?? "your workspace"
     const inboxUrl = ws ? `${appUrl}/${ws.slug}/inbox` : `${appUrl}/`
 
+    // Filter out items whose kind the recipient has opted out of email.
+    // Missing entries default to enabled (opt-out model).
+    const allowedItems = items.filter((i) => {
+      const k = profile.notification_prefs?.[i.kind]
+      if (!k) return true
+      return k.email === undefined ? true : k.email
+    })
+    if (allowedItems.length === 0) {
+      // The user has opted out of email for every kind in this batch.
+      // Treat the rows as consumed (the in-app notification still
+      // exists; we just won't email about them) so the next cron tick
+      // doesn't re-evaluate the same opt-outs.
+      for (const i of items) {
+        attemptedIds.push(i.id)
+        emailedIds.push(i.id)
+      }
+      skippedCount++
+      continue
+    }
+
     const { subject, html } = digestEmail({
       recipientName: profile.full_name ?? profile.email,
       workspaceName: wsName,
       inboxUrl,
-      items: items.map((i) => ({
+      items: allowedItems.map((i) => ({
         title: i.title,
         body: i.body,
         relativeTime: fmtRelative(i.created_at),

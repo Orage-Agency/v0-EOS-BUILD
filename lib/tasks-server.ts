@@ -50,6 +50,7 @@ export async function listTasksForWorkspace(
       .from("tasks")
       .select("*")
       .eq("tenant_id", user.workspaceId)
+      .is("deleted_at", null)
       .order("created_at", { ascending: false })
     if (error) {
       console.error("[v0] listTasksForWorkspace error", error.message)

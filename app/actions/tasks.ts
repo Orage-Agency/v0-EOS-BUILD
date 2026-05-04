@@ -453,15 +453,45 @@ export async function deleteTask(
     const user = await requireUser(workspaceSlug)
     requirePermission(user, "tasks:delete")
     const sb = supabaseAdmin()
+    // Soft delete — rows go to /trash for 30 days before they're truly
+    // gone. A scheduled cleanup job can hard-delete rows older than that.
     const { error } = await sb
       .from("tasks")
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
       .eq("id", id)
       .eq("tenant_id", user.workspaceId)
     if (error) return { ok: false, error: error.message }
     await logAudit({
       user,
       action: "delete",
+      entityType: "task",
+      entityId: id,
+    })
+    revalidateTaskRoutes(workspaceSlug)
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error"
+    return { ok: false, error: msg }
+  }
+}
+
+export async function restoreTask(
+  workspaceSlug: string,
+  id: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "tasks:write")
+    const sb = supabaseAdmin()
+    const { error } = await sb
+      .from("tasks")
+      .update({ deleted_at: null })
+      .eq("id", id)
+      .eq("tenant_id", user.workspaceId)
+    if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "restore",
       entityType: "task",
       entityId: id,
     })

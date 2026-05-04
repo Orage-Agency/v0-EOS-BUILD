@@ -13,6 +13,7 @@ import {
 import { useWorkspaceSlug } from "@/hooks/use-workspace-slug"
 import { cn } from "@/lib/utils"
 import type { ComponentType, SVGProps } from "react"
+import type { WorkspaceOption } from "./workspace-switcher"
 
 type Tab = {
   href: string
@@ -36,13 +37,28 @@ const MORE_LINKS: { href: string; label: string }[] = [
   { href: "/vto", label: "V/TO" },
   { href: "/orgchart", label: "Accountability Chart" },
   { href: "/people", label: "People" },
+  { href: "/trash", label: "Trash" },
   { href: "/settings", label: "Settings" },
 ]
 
-export function BottomTabBar() {
+function initialsFor(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  if (parts.length === 0) return "??"
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+export function BottomTabBar({
+  workspaces = [],
+  currentWorkspace,
+}: {
+  workspaces?: WorkspaceOption[]
+  currentWorkspace?: WorkspaceOption
+} = {}) {
   const pathname = usePathname()
   const workspaceSlug = useWorkspaceSlug()
   const [moreOpen, setMoreOpen] = useState(false)
+  const showSwitcher = workspaces.length > 1 && !!currentWorkspace
 
   const prefixed = (href: string) =>
     href === "/" ? `/${workspaceSlug}` : `/${workspaceSlug}${href}`
@@ -99,9 +115,44 @@ export function BottomTabBar() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="absolute bottom-0 inset-x-0 bg-bg-2 border-t border-border-orage rounded-t-sm p-4"
+            className="absolute bottom-0 inset-x-0 bg-bg-2 border-t border-border-orage rounded-t-sm p-4 max-h-[80vh] overflow-y-auto"
             style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 1rem)" }}
           >
+            {showSwitcher && currentWorkspace && (
+              <>
+                <div className="font-display text-[10px] tracking-[0.25em] text-gold-500 mb-3 uppercase">
+                  Workspace
+                </div>
+                <ul className="grid grid-cols-1 gap-1.5 mb-4">
+                  {workspaces.map((w) => (
+                    <li key={w.id}>
+                      <Link
+                        href={`/${w.slug}`}
+                        prefetch={false}
+                        onClick={() => setMoreOpen(false)}
+                        className={cn(
+                          "flex items-center gap-2.5 px-3 py-2.5 rounded-sm border transition-colors",
+                          w.id === currentWorkspace.id
+                            ? "bg-bg-active border-gold-500/40"
+                            : "bg-bg-3 border-border-orage hover:border-gold-500/40",
+                        )}
+                      >
+                        <span
+                          className="w-6 h-6 rounded-sm flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                          style={{ background: w.brand_color ?? "var(--gold-500)" }}
+                          aria-hidden
+                        >
+                          {initialsFor(w.name)}
+                        </span>
+                        <span className="text-[13px] text-text-primary font-medium truncate">
+                          {w.name}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
             <div className="font-display text-[10px] tracking-[0.25em] text-gold-500 mb-3 uppercase">
               More
             </div>

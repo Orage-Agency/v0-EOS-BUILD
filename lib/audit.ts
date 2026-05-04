@@ -33,6 +33,8 @@ export type AuditAction =
   | "create"
   | "update"
   | "delete"
+  | "restore"
+  | "purge"
   | "complete"
   | "reopen"
   | "handoff"

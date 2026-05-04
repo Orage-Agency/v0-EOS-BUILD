@@ -140,7 +140,8 @@ export function TaskDrawer() {
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 30, stiffness: 280 }}
-            className="fixed right-0 top-0 z-50 flex h-full w-full max-w-[520px] flex-col border-l border-border-orage bg-bg-2 shadow-2xl"
+            className="fixed right-0 top-0 z-50 flex h-full w-full md:max-w-[520px] flex-col border-l border-border-orage bg-bg-2 shadow-2xl"
+            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
           >
             <header className="flex items-center justify-between border-b border-border-orage px-5 py-3.5">
               <div className="font-mono text-[10px] tracking-[0.12em] text-text-muted">
