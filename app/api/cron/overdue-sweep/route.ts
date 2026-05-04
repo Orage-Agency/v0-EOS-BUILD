@@ -38,20 +38,31 @@ export async function GET(req: Request) {
   const todayIso = new Date().toISOString()
   const yesterdayIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
-  const { data: tasks, error } = await sb
-    .from("tasks")
-    .select("id, tenant_id, title, owner_id, due_date")
-    .lt("due_date", todayIso)
-    .neq("status", "done")
-    .neq("status", "cancelled")
-    .not("owner_id", "is", null)
-    .limit(2000)
-
-  if (error) {
-    console.error("[cron/overdue-sweep] read failed", error.message)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  // Page through overdue tasks instead of capping at 2000. The previous
+  // hard limit silently dropped any tail rows in workspaces with >2k
+  // open overdue tasks — those owners would never get an overdue ping.
+  const PAGE_SIZE = 1000
+  const rows: Task[] = []
+  let offset = 0
+  while (true) {
+    const { data, error } = await sb
+      .from("tasks")
+      .select("id, tenant_id, title, owner_id, due_date")
+      .lt("due_date", todayIso)
+      .neq("status", "done")
+      .neq("status", "cancelled")
+      .not("owner_id", "is", null)
+      .range(offset, offset + PAGE_SIZE - 1)
+    if (error) {
+      console.error("[cron/overdue-sweep] read failed", error.message)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+    const page = (data ?? []) as Task[]
+    rows.push(...page)
+    if (page.length < PAGE_SIZE) break
+    offset += PAGE_SIZE
+    if (offset >= 50_000) break
   }
-  const rows = (tasks ?? []) as Task[]
   if (rows.length === 0) return NextResponse.json({ ok: true, created: 0 })
 
   // Pull every "overdue" notification created in the last 24 hours so we

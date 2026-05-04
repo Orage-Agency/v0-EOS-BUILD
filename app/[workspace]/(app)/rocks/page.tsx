@@ -5,6 +5,7 @@ import {
   listRocksForWorkspace,
 } from "@/lib/rocks-server"
 import { listWorkspaceMembers } from "@/lib/tasks-server"
+import { listClientTagOptions } from "@/lib/client-tags"
 import { RocksShell } from "@/components/rocks/rocks-shell"
 
 export const metadata = { title: "Rocks · Orage Core" }
@@ -15,13 +16,15 @@ export default async function RocksPage({
   params: Promise<{ workspace: string }>
 }) {
   const { workspace } = await params
-  const [user, initialRocks, members, milestones, linkedTasks] = await Promise.all([
-    requireUser(workspace),
-    listRocksForWorkspace(workspace),
-    listWorkspaceMembers(workspace),
-    listMilestonesForWorkspace(workspace),
-    listLinkedTasksForWorkspace(workspace),
-  ])
+  const [user, initialRocks, members, milestones, linkedTasks, clientTagOptions] =
+    await Promise.all([
+      requireUser(workspace),
+      listRocksForWorkspace(workspace),
+      listWorkspaceMembers(workspace),
+      listMilestonesForWorkspace(workspace),
+      listLinkedTasksForWorkspace(workspace),
+      listClientTagOptions(workspace),
+    ])
 
   return (
     <RocksShell
@@ -30,6 +33,7 @@ export default async function RocksPage({
       members={members}
       initialMilestones={milestones}
       initialLinkedTasks={linkedTasks}
+      clientTagOptions={clientTagOptions}
       currentUser={{
         id: user.id,
         name: user.fullName ?? user.email,

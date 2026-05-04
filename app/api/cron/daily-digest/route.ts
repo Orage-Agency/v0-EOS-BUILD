@@ -58,20 +58,36 @@ export async function GET(req: Request) {
   const sb = supabaseAdmin()
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
-  const { data: pending, error } = await sb
-    .from("notifications")
-    .select("id, recipient_id, tenant_id, kind, title, body, created_at")
-    .gte("created_at", yesterday)
-    .is("emailed_at", null)
-    .order("created_at", { ascending: false })
-    .limit(2000)
-
-  if (error) {
-    console.error("[cron/daily-digest] read failed", error.message)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  // Page through notifications instead of capping at 2000. A large
+  // workspace with thousands of unread notifications would have lost
+  // every row past the cap forever (the next run filters by `emailed_at
+  // IS NULL` plus a 24h cutoff, but anything beyond the limit never
+  // emailed and falls outside the window on the next tick).
+  const PAGE_SIZE = 1000
+  const rows: Pending[] = []
+  let offset = 0
+  while (true) {
+    const { data, error } = await sb
+      .from("notifications")
+      .select("id, recipient_id, tenant_id, kind, title, body, created_at")
+      .gte("created_at", yesterday)
+      .is("emailed_at", null)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + PAGE_SIZE - 1)
+    if (error) {
+      console.error("[cron/daily-digest] read failed", error.message)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+    const page = (data ?? []) as Pending[]
+    rows.push(...page)
+    if (page.length < PAGE_SIZE) break
+    offset += PAGE_SIZE
+    // Safety brake — if a workspace genuinely has 100k+ unread
+    // notifications in 24h, ship what we have and let the next cron
+    // pick up the remainder.
+    if (offset >= 50_000) break
   }
 
-  const rows = (pending ?? []) as Pending[]
   if (rows.length === 0) {
     return NextResponse.json({ ok: true, recipients: 0, items: 0 })
   }

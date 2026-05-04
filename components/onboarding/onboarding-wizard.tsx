@@ -150,8 +150,10 @@ export function OnboardingWizard({
       })
     }
 
-    // Stamp `workspaces.onboarding_completed_at` so the auth gate stops
-    // showing this wizard on subsequent loads.
+    // Stamp `profiles.onboarding_completed_at` so the auth gate stops
+    // showing this wizard on subsequent loads. Onboarding is per-user
+    // (not per-workspace) — a founder who joins multiple workspaces only
+    // walks the wizard once, the first time they sign in anywhere.
     try {
       await completeOnboarding(workspaceSlug)
     } catch (err) {

@@ -11,6 +11,7 @@ import { RockDrawer } from "./rock-drawer"
 import { NewRockModal } from "./new-rock-modal"
 import type { MockRock } from "@/lib/mock-data"
 import type { WorkspaceMember } from "@/lib/tasks-server"
+import type { ClientTagOption } from "@/lib/client-tags"
 
 type RocksCurrentUser = {
   id: string
@@ -46,6 +47,7 @@ export function RocksShell({
   members,
   initialMilestones,
   initialLinkedTasks,
+  clientTagOptions = [],
   currentUser,
 }: {
   workspaceSlug: string
@@ -53,12 +55,14 @@ export function RocksShell({
   members: WorkspaceMember[]
   initialMilestones?: Milestone[]
   initialLinkedTasks?: LinkedTaskRef[]
+  clientTagOptions?: ClientTagOption[]
   currentUser: RocksCurrentUser
 }) {
   const setRocks = useRocksStore((s) => s.setRocks)
   const setCurrentActor = useRocksStore((s) => s.setCurrentActor)
   const setWorkspaceSlug = useRocksStore((s) => s.setWorkspaceSlug)
   const setMembers = useRocksStore((s) => s.setMembers)
+  const setClientTagOptions = useRocksStore((s) => s.setClientTagOptions)
   const setMilestones = useRocksStore((s) => s.setMilestones)
   const setLinkedTasks = useRocksStore((s) => s.setLinkedTasks)
   const openNewRock = useRocksStore((s) => s.openNewRock)
@@ -73,6 +77,10 @@ export function RocksShell({
   useEffect(() => {
     setMembers(members)
   }, [members, setMembers])
+
+  useEffect(() => {
+    setClientTagOptions(clientTagOptions)
+  }, [clientTagOptions, setClientTagOptions])
 
   useEffect(() => {
     if (initialMilestones) setMilestones(initialMilestones)

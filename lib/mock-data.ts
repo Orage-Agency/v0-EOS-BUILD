@@ -98,6 +98,8 @@ export type MockRock = {
   owner: string
   due: string
   tag: string
+  /** Optional cross-workspace client tag — drives the colored dot. */
+  clientWorkspaceId?: string | null
 }
 
 /**

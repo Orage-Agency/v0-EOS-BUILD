@@ -25,6 +25,7 @@ function dbToMockRock(row: DbRock): MockRock {
     owner: row.owner_id ?? UNASSIGNED_OWNER_ID,
     due: row.due_date ? row.due_date.slice(0, 10) : "",
     tag: row.tag ?? "",
+    clientWorkspaceId: row.client_workspace_id ?? null,
   }
 }
 
@@ -292,6 +293,60 @@ export async function updateRockDue(
       entityType: "rock",
       entityId: id,
       metadata: { field: "due_date", value: dueDate },
+    })
+    revalidateRockRoutes(workspaceSlug)
+    return { ok: true }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error"
+    return { ok: false, error: msg }
+  }
+}
+
+/**
+ * Set or clear the cross-workspace client tag on a rock. Mirrors the
+ * task action — caller must be a member of the target client workspace.
+ */
+export async function updateRockClient(
+  workspaceSlug: string,
+  id: string,
+  clientWorkspaceId: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "rocks:write")
+    const sb = supabaseAdmin()
+
+    if (clientWorkspaceId !== null) {
+      if (!isUuid(clientWorkspaceId)) {
+        return { ok: false, error: "Invalid client workspace id" }
+      }
+      const { data: tagMembership } = await sb
+        .from("workspace_memberships")
+        .select("workspace_id")
+        .eq("user_id", user.id)
+        .eq("workspace_id", clientWorkspaceId)
+        .eq("status", "active")
+        .maybeSingle()
+      if (!tagMembership) {
+        return { ok: false, error: "Not a member of that client workspace" }
+      }
+    }
+
+    const { error } = await sb
+      .from("rocks")
+      .update({
+        client_workspace_id: clientWorkspaceId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("tenant_id", user.workspaceId)
+    if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "update",
+      entityType: "rock",
+      entityId: id,
+      metadata: { field: "client_workspace_id", value: clientWorkspaceId },
     })
     revalidateRockRoutes(workspaceSlug)
     return { ok: true }

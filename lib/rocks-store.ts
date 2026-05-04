@@ -4,6 +4,7 @@ import { create } from "zustand"
 import { type MockRock, type RockStatus, UNASSIGNED_OWNER_ID } from "@/lib/mock-data"
 import type { Role } from "@/types/permissions"
 import type { WorkspaceMember } from "@/lib/tasks-server"
+import type { ClientTagOption } from "@/lib/client-tags"
 import { reconcile } from "@/lib/store-helpers"
 import {
   updateRockStatus as updateRockStatusAction,
@@ -12,6 +13,7 @@ import {
   updateRockDescription as updateRockDescriptionAction,
   updateRockOwner as updateRockOwnerAction,
   updateRockDue as updateRockDueAction,
+  updateRockClient as updateRockClientAction,
   deleteRock as deleteRockAction,
   createMilestone as createMilestoneAction,
   toggleMilestone as toggleMilestoneAction,
@@ -165,6 +167,9 @@ type RocksState = {
   members: WorkspaceMember[]
   setMembers: (members: WorkspaceMember[]) => void
 
+  clientTagOptions: ClientTagOption[]
+  setClientTagOptions: (options: ClientTagOption[]) => void
+
   milestones: Milestone[]
   setMilestones: (ms: Milestone[]) => void
   updates: RockUpdate[]
@@ -191,6 +196,7 @@ type RocksState = {
   updateDescription: (id: string, description: string) => void
   updateOwner: (id: string, ownerId: string) => void
   updateDue: (id: string, due: string) => void
+  updateClient: (id: string, clientWorkspaceId: string | null) => void
   deleteRock: (id: string) => void
   toggleMilestone: (id: string) => void
   addMilestone: (rockId: string, title: string, due: string) => Promise<void>
@@ -217,6 +223,9 @@ export const useRocksStore = create<RocksState>((set, get) => ({
   setRocks: (rocks) => set({ rocks }),
   members: [],
   setMembers: (members) => set({ members }),
+
+  clientTagOptions: [],
+  setClientTagOptions: (clientTagOptions) => set({ clientTagOptions }),
   insertRock: (rock) =>
     set((state) => {
       const exists = state.rocks.some((r) => r.id === rock.id)
@@ -375,6 +384,26 @@ export const useRocksStore = create<RocksState>((set, get) => ({
             rocks: state.rocks.map((r) => (r.id === id ? prev : r)),
           })),
         "Couldn't update due date",
+      )
+    }
+  },
+  updateClient: (id, clientWorkspaceId) => {
+    const prev = get().rocks.find((r) => r.id === id)
+    if (!prev) return
+    set((state) => ({
+      rocks: state.rocks.map((r) =>
+        r.id === id ? { ...r, clientWorkspaceId } : r,
+      ),
+    }))
+    const { workspaceSlug } = get()
+    if (workspaceSlug && isDbId(id)) {
+      reconcile(
+        updateRockClientAction(workspaceSlug, id, clientWorkspaceId),
+        () =>
+          set((state) => ({
+            rocks: state.rocks.map((r) => (r.id === id ? prev : r)),
+          })),
+        "Couldn't tag client",
       )
     }
   },

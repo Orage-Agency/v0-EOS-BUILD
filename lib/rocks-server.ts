@@ -19,6 +19,7 @@ function dbToMockRock(row: DbRock): MockRock {
     owner: row.owner_id ?? UNASSIGNED_OWNER_ID,
     due: row.due_date ? row.due_date.slice(0, 10) : "",
     tag: row.tag ?? "",
+    clientWorkspaceId: row.client_workspace_id ?? null,
   }
 }
 

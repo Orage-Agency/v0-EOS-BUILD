@@ -13,6 +13,7 @@ export function Composer() {
   const toggleDeep = useAIImplementerStore((s) => s.toggleDeepMode)
   const streaming = useAIImplementerStore((s) => s.streaming)
   const cancelStream = useAIImplementerStore((s) => s.cancelStream)
+  const quotaRemainingHour = useAIImplementerStore((s) => s.quotaRemainingHour)
   const workspaceSlug = useWorkspaceSlug()
 
   const handleSend = () => {
@@ -59,6 +60,19 @@ export function Composer() {
             DEEP MODE
           </button>
           <div className="flex-1" />
+          {quotaRemainingHour !== null && quotaRemainingHour <= 10 && (
+            <span
+              className={cn(
+                "font-mono text-[10px] px-1.5 py-0.5 rounded-sm",
+                quotaRemainingHour <= 3
+                  ? "text-danger bg-danger/10"
+                  : "text-warning bg-warning/10",
+              )}
+              title={`${quotaRemainingHour} AI requests remaining this hour`}
+            >
+              {quotaRemainingHour}/hr
+            </span>
+          )}
           {streaming ? (
             <button
               onClick={cancelStream}

@@ -379,6 +379,11 @@ type State = {
   // fetch so we stop billing the model the moment the user changes mind.
   streaming: boolean
   cancelStream: () => void
+  // Last-seen rate-limit quota from the chat endpoint headers. The
+  // composer surfaces these so the user can see how much they've used
+  // before they hit the wall.
+  quotaRemainingHour: number | null
+  quotaRemainingDay: number | null
 }
 
 // ----- Helpers shared by sendMessage ----------------------------------------
@@ -467,6 +472,8 @@ export const useAIImplementerStore = create<State>((set, get) => ({
   deepMode: true,
   writeTick: 0,
   streaming: false,
+  quotaRemainingHour: null,
+  quotaRemainingDay: null,
   cancelStream: () => {
     if (_activeAbortController) _activeAbortController.abort()
   },
@@ -667,6 +674,13 @@ export const useAIImplementerStore = create<State>((set, get) => ({
         }
         throw new Error(detail)
       }
+      // Capture quota headers so the composer chip stays current.
+      const remHour = res.headers.get("X-AI-Remaining-Hour")
+      const remDay = res.headers.get("X-AI-Remaining-Day")
+      set({
+        quotaRemainingHour: remHour ? Number(remHour) : null,
+        quotaRemainingDay: remDay ? Number(remDay) : null,
+      })
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder("utf-8")

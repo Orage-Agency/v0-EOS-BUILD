@@ -18,6 +18,7 @@ import { TenantLink } from "@/components/tenant-link"
 import { IcCheck, IcClose } from "@/components/orage/icons"
 import { dueLabel } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { ClientTagPicker } from "@/components/tasks/client-tag-picker"
 
 const STATUS_TAG: Record<string, { label: string; cls: string }> = {
   on_track: { label: "● ON TRACK", cls: "bg-success/15 text-success border-success/40" },
@@ -45,6 +46,8 @@ export function RockDrawer() {
   const updateDescription = useRocksStore((s) => s.updateDescription)
   const updateOwner = useRocksStore((s) => s.updateOwner)
   const updateDue = useRocksStore((s) => s.updateDue)
+  const updateClient = useRocksStore((s) => s.updateClient)
+  const clientTagOptions = useRocksStore((s) => s.clientTagOptions)
   const deleteRock = useRocksStore((s) => s.deleteRock)
   const addLinkedTask = useRocksStore((s) => s.addLinkedTask)
   const toggleLinkedTask = useRocksStore((s) => s.toggleLinkedTask)
@@ -315,6 +318,27 @@ export function RockDrawer() {
                   />
                   <span className="text-text-muted text-[10px]">{weeksRemaining(rock.due)}</span>
                 </dd>
+
+                {clientTagOptions.length > 0 && (
+                  <>
+                    <dt className="font-mono text-[10px] tracking-[0.1em] text-text-muted self-center">CLIENT</dt>
+                    <dd>
+                      <ClientTagPicker
+                        value={rock.clientWorkspaceId ?? null}
+                        options={clientTagOptions}
+                        onChange={(next) => {
+                          updateClient(rock.id, next)
+                          if (next) {
+                            const opt = clientTagOptions.find((o) => o.id === next)
+                            toast(`Tagged · ${opt?.name ?? "client"}`)
+                          } else {
+                            toast("Client tag cleared")
+                          }
+                        }}
+                      />
+                    </dd>
+                  </>
+                )}
 
                 <dt className="font-mono text-[10px] tracking-[0.1em] text-text-muted self-center">PROGRESS</dt>
                 <dd className="flex items-center gap-3">

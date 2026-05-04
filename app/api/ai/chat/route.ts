@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache"
 import { requireUser } from "@/lib/auth"
 import { buildTools } from "@/lib/ai/tools"
 import { checkAndRecordAIRequest } from "@/lib/ai/rate-limit"
+import { summarizeToolOutput } from "@/lib/ai/summarize-tool-output"
 import { manualDigest } from "@/lib/help-manual"
 
 export const runtime = "nodejs"
@@ -70,35 +71,6 @@ Today is provided in the user's local timezone via the system. When the user say
 # EOS terminology
 
 When the user asks "how does X work?" or for definitions (rocks, scorecard, L10, IDS, V/TO, GWC, accountability chart), answer from the MANUAL DIGEST below — that's the canon for this product.`
-
-// Produce a short, human-friendly summary of a tool's output so the UI
-// can render "read_tasks · 12 results" or "create_task · ✓ created" next
-// to the tool block. Full payloads aren't shipped to the client to keep
-// SSE frames small; the model narrates the specifics in the text stream.
-function summarizeToolOutput(out: unknown): string {
-  if (out == null) return ""
-  if (typeof out !== "object") return String(out).slice(0, 120)
-  const o = out as Record<string, unknown>
-  if (typeof o.error === "string") return `error: ${o.error}`
-  if (o.created === true) return "✓ created"
-  if (o.updated === true) return "✓ updated"
-  if (o.deleted === true) return "✓ deleted"
-  for (const key of [
-    "rocks",
-    "tasks",
-    "issues",
-    "people",
-    "users",
-    "notes",
-    "milestones",
-    "metrics",
-    "entries",
-  ]) {
-    const val = o[key]
-    if (Array.isArray(val)) return `${val.length} ${key}`
-  }
-  return ""
-}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function collectToolCalls(steps: any[]): Array<{
@@ -195,6 +167,14 @@ export async function POST(req: Request) {
         { status: 429, headers: { "Retry-After": String(limit.retryAfterSec) } },
       )
     }
+    // Surface remaining quota to the client so the composer can show a
+    // chip before the user hits the wall. Custom headers because this
+    // endpoint usually returns SSE — body usage isn't an option for the
+    // streaming path.
+    const quotaHeaders = {
+      "X-AI-Remaining-Hour": String(limit.remainingHour),
+      "X-AI-Remaining-Day": String(limit.remainingDay),
+    }
 
     const tools = buildTools({ tenantId: me.workspaceId, userId: me.id })
     const messages = [
@@ -213,7 +193,10 @@ export async function POST(req: Request) {
       const toolCalls = collectToolCalls(result.steps ?? [])
       const didWrite = toolCalls.some((c) => WRITE_TOOLS.has(c.name))
       if (didWrite) revalidateAll(workspaceSlug)
-      return Response.json({ text: result.text, toolCalls, didWrite })
+      return Response.json(
+        { text: result.text, toolCalls, didWrite },
+        { headers: quotaHeaders },
+      )
     }
 
     // ---------- streaming path ----------
@@ -320,6 +303,7 @@ export async function POST(req: Request) {
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",
+        ...quotaHeaders,
       },
     })
   } catch (err) {
