@@ -968,14 +968,16 @@ export async function verifyMfaForLogin(factorId: string, code: string) {
     return { ok: false as const, error: "Enter the 6-digit code from your app" }
   }
   const supabase = await createClient()
-  const { error } = await supabase.auth.mfa.challengeAndVerify({
+  const { data, error } = await supabase.auth.mfa.challengeAndVerify({
     factorId,
     code: code.trim(),
   })
   if (error) return { ok: false as const, error: error.message }
 
-  // Resolve the user's first active workspace and route there.
-  const userId = await getAuthUserIdFromCookie()
+  // Read the user from the verify response — `cookies()` would still see
+  // the pre-verify session in this same server action, so we'd lose
+  // userId on the auth-cookie path.
+  const userId = data?.user?.id ?? (await getAuthUserIdFromCookie())
   if (!userId) redirect("/login")
 
   const admin = supabaseAdmin()
