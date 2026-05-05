@@ -31,6 +31,7 @@ function LoginForm() {
       ? "You don't have access to that workspace. Ask the owner for an invite."
       : null,
   )
+  const justReset = searchParams.get("reset") === "ok"
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -116,6 +117,12 @@ function LoginForm() {
             />
           </div>
 
+          {justReset && !error && (
+            <div className="px-4 py-3 bg-[rgba(111,170,107,0.08)] border-l-2 border-[#6FAA6B] text-[12px] text-[#6FAA6B]">
+              Password updated. Sign in with your new password below.
+            </div>
+          )}
+
           {error && (
             <div className="px-4 py-3 bg-[rgba(194,84,80,0.1)] border-l-2 border-[#C25450] text-[12px] text-[#C25450]">
               {error}
@@ -135,10 +142,16 @@ function LoginForm() {
           </button>
         </form>
 
-        <div className="mt-6 text-center">
+        <div className="mt-6 text-center space-y-2">
+          <Link
+            href="/forgot-password"
+            className="block text-[11px] text-[#8a7860] hover:text-[#E4AF7A] underline-offset-4 hover:underline"
+          >
+            Forgot your password?
+          </Link>
           <Link
             href="/signup"
-            className="text-[11px] text-[#8a7860] hover:text-[#E4AF7A] underline-offset-4 hover:underline"
+            className="block text-[11px] text-[#8a7860] hover:text-[#E4AF7A] underline-offset-4 hover:underline"
           >
             Don&apos;t have an account? Create one →
           </Link>

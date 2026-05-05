@@ -10,12 +10,13 @@ import {
   SelectField,
   TextareaField,
 } from "./ui"
+import { ChangeNameCard } from "./change-name-card"
 import { ChangePasswordCard } from "./change-password-card"
+import { TwoFactorCard } from "./two-factor-card"
 import { cn } from "@/lib/utils"
 
 export function SecuritySettings() {
   const security = useSettingsStore((s) => s.security)
-  const toggleTwoFactor = useSettingsStore((s) => s.toggleTwoFactor)
   const toggleSSO = useSettingsStore((s) => s.toggleSSO)
   const setSessionTimeout = useSettingsStore((s) => s.setSessionTimeout)
   const setIPAllowlist = useSettingsStore((s) => s.setIPAllowlist)
@@ -26,30 +27,13 @@ export function SecuritySettings() {
       title="SECURITY & API"
       description="Authentication, session controls, and API access keys"
     >
+      <ChangeNameCard />
+
       <ChangePasswordCard />
 
+      <TwoFactorCard />
+
       <SCard title="AUTHENTICATION">
-        <FieldRow
-          name="Two-Factor Authentication"
-          hint="Required for Founder + Admin · TOTP via Authy/1Password"
-          control={
-            <div className="flex items-center gap-2.5">
-              <OrageToggle
-                on={security.twoFactor}
-                onChange={toggleTwoFactor}
-                label="Two-factor authentication"
-              />
-              <span
-                className={cn(
-                  "text-xs font-display tracking-[0.15em]",
-                  security.twoFactor ? "text-success" : "text-text-muted",
-                )}
-              >
-                {security.twoFactor ? "REQUIRED" : "DISABLED"}
-              </span>
-            </div>
-          }
-        />
         <FieldRow
           name="SSO · Google Workspace"
           hint="Single sign-on via Google · uses Orage agency identity"

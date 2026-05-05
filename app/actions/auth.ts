@@ -12,7 +12,7 @@ import crypto from "crypto"
 import { ssoRequirementForEmail } from "@/app/actions/sso"
 import { sendEmail, htmlToText } from "@/lib/email"
 import { inviteEmail } from "@/lib/email-templates"
-import { getCurrentUser } from "@/lib/auth"
+import { getCurrentUser, getAuthUserIdFromCookie } from "@/lib/auth"
 import { requirePermission, PermissionError } from "@/lib/server/permissions"
 import { checkAuthRateLimit } from "@/lib/auth-rate-limit"
 import { generateTempPassword } from "@/lib/temp-password"
@@ -213,6 +213,18 @@ export async function loginByEmail(
     return { ok: false, error: "Invalid email or password" }
   }
 
+  // 2FA gate: if the user has a verified TOTP factor, the session AAL
+  // will currently be aal1 but the user's nextLevel is aal2. Send them
+  // to /login/mfa to provide the code before completing sign-in.
+  const aal = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+  if (
+    aal.data &&
+    aal.data.currentLevel === "aal1" &&
+    aal.data.nextLevel === "aal2"
+  ) {
+    redirect("/login/mfa")
+  }
+
   // Master users can land at the picker. Everyone else gets routed to
   // their first active workspace.
   const admin = supabaseAdmin()
@@ -374,6 +386,64 @@ export async function login(workspaceSlug: string, email: string, password: stri
   }
 
   redirect(`/${workspaceSlug}`)
+}
+
+// ─── FORGOT PASSWORD — SEND RECOVERY LINK ───
+//
+// Sends Supabase Auth's password-recovery email. Always returns success
+// to the caller (even when the email isn't registered) so a malicious
+// visitor can't enumerate accounts off the response. The redirect URL
+// goes through /auth/callback so we own where the user lands after they
+// click the link in the email.
+export async function sendPasswordRecovery(rawEmail: string) {
+  const limit = await checkAuthRateLimit("magic-link")
+  if (!limit.ok) return { ok: false, error: limit.message }
+
+  const email = rawEmail.trim().toLowerCase()
+  if (!email || !email.includes("@")) {
+    return { ok: false, error: "Enter a valid email." }
+  }
+
+  const { createAnonClient } = await import("@/lib/supabase/anon")
+  const anon = createAnonClient()
+
+  const redirectTo = `${appUrl()}/auth/callback?next=${encodeURIComponent("/reset-password")}`
+  const { error } = await anon.auth.resetPasswordForEmail(email, {
+    redirectTo,
+  })
+  // Soft-log only — never reveal "no such user" to the caller.
+  if (error) {
+    console.error("[sendPasswordRecovery] resetPasswordForEmail failed", error.message)
+  }
+  return { ok: true }
+}
+
+// ─── RESET PASSWORD (signed-in via recovery link) ───
+//
+// The recovery link lands the user in /auth/callback with a session
+// established by Supabase. The /reset-password page then calls this
+// action with the new password. We rotate it via supabase.auth.updateUser
+// (uses the cookie-bound session — works in server actions where
+// auth.getUser() works in Node runtime).
+export async function resetPasswordWithSession(newPassword: string) {
+  if (newPassword.length < 8) {
+    return { ok: false as const, error: "Password must be at least 8 characters" }
+  }
+
+  const userId = await getAuthUserIdFromCookie()
+  if (!userId) {
+    return {
+      ok: false as const,
+      error:
+        "Recovery session expired. Request a new link from /forgot-password.",
+    }
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase.auth.updateUser({ password: newPassword })
+  if (error) return { ok: false as const, error: error.message }
+
+  redirect("/login?reset=ok")
 }
 
 // ─── MAGIC LINK FALLBACK ───
@@ -752,6 +822,37 @@ export async function acceptInvite(token: string, password: string, fullName?: s
   redirect(`/${slug}`)
 }
 
+// ─── CHANGE DISPLAY NAME (signed-in user only) ───
+//
+// Updates `profiles.full_name` AND auth.users user_metadata.full_name so
+// the new name shows up everywhere (sidebar, AI prompts, audit log,
+// invitee notifications). Both writes succeed-or-fail together.
+export async function changeProfileName(newName: string) {
+  const trimmed = newName.trim()
+  if (!trimmed) return { error: "Name can't be empty" }
+  if (trimmed.length > 80) return { error: "Name must be 80 characters or less" }
+
+  // Manual cookie decode — supabase.auth.getUser() returns null in this
+  // project (ES256 + @supabase/ssr quirk).
+  const userId = await getAuthUserIdFromCookie()
+  if (!userId) return { error: "Not signed in" }
+
+  const supabase = await createClient()
+  const { error: metaErr } = await supabase.auth.updateUser({
+    data: { full_name: trimmed },
+  })
+  if (metaErr) return { error: metaErr.message }
+
+  const admin = supabaseAdmin()
+  const { error: profErr } = await admin
+    .from("profiles")
+    .update({ full_name: trimmed })
+    .eq("id", userId)
+  if (profErr) return { error: profErr.message }
+
+  return { success: true, name: trimmed }
+}
+
 // ─── CHANGE PASSWORD (signed-in user only) ───
 export async function changePassword(newPassword: string) {
   if (newPassword.length < 8) {
@@ -767,6 +868,141 @@ export async function changePassword(newPassword: string) {
   const { error } = await supabase.auth.updateUser({ password: newPassword })
   if (error) return { error: error.message }
   return { success: true }
+}
+
+// ─── 2FA / TOTP MFA ───
+//
+// Supabase Auth's MFA primitives. Flow:
+//   • startMfaEnrollment  → returns QR + secret. User scans w/ Authy/1Password.
+//   • finishMfaEnrollment → user types the 6-digit code → factor becomes verified.
+//   • disableMfa          → unenrolls the factor (requires another code).
+//   • listMfaFactors      → tells the UI whether 2FA is on.
+//
+// The login gate (loginByEmail) checks getAuthenticatorAssuranceLevel
+// after password sign-in. If the user has a verified factor but session
+// is only aal1, we redirect them to /login/mfa to satisfy the challenge
+// before letting them into the workspace.
+
+export async function listMfaFactors() {
+  const supabase = await createClient()
+  const { data, error } = await supabase.auth.mfa.listFactors()
+  if (error) return { ok: false as const, error: error.message }
+  // Only verified factors count as "2FA on" — unverified factors are leftover
+  // enrollment attempts the user abandoned.
+  const verifiedTotp = (data.totp ?? []).filter((f) => f.status === "verified")
+  return {
+    ok: true as const,
+    enabled: verifiedTotp.length > 0,
+    factors: verifiedTotp.map((f) => ({
+      id: f.id,
+      friendlyName: f.friendly_name ?? "Authenticator app",
+      createdAt: f.created_at,
+    })),
+  }
+}
+
+export async function startMfaEnrollment() {
+  const userId = await getAuthUserIdFromCookie()
+  if (!userId) return { ok: false as const, error: "Not signed in" }
+
+  const supabase = await createClient()
+  const admin = supabaseAdmin()
+
+  // Clean up any unverified factors from prior abandoned attempts so we
+  // don't accumulate ghost records under each user.
+  const { data: existing } = await supabase.auth.mfa.listFactors()
+  for (const f of existing?.totp ?? []) {
+    if (f.status !== "verified") {
+      await admin.auth.admin.mfa.deleteFactor({ id: f.id, userId }).catch(() => {})
+    }
+  }
+
+  const { data, error } = await supabase.auth.mfa.enroll({
+    factorType: "totp",
+    friendlyName: `Orage Core · ${new Date().toISOString().slice(0, 10)}`,
+  })
+  if (error || !data) return { ok: false as const, error: error?.message ?? "Enroll failed" }
+
+  return {
+    ok: true as const,
+    factorId: data.id,
+    qrCode: data.totp.qr_code,
+    secret: data.totp.secret,
+  }
+}
+
+export async function finishMfaEnrollment(factorId: string, code: string) {
+  if (!/^\d{6}$/.test(code.trim())) {
+    return { ok: false as const, error: "Enter the 6-digit code from your app" }
+  }
+  const supabase = await createClient()
+  const { error } = await supabase.auth.mfa.challengeAndVerify({
+    factorId,
+    code: code.trim(),
+  })
+  if (error) return { ok: false as const, error: error.message }
+  return { ok: true as const }
+}
+
+export async function disableMfa(factorId: string, code: string) {
+  if (!/^\d{6}$/.test(code.trim())) {
+    return { ok: false as const, error: "Enter the 6-digit code to confirm" }
+  }
+  const supabase = await createClient()
+  // Re-verify the code so an attacker with a temporary cookie can't strip
+  // 2FA without proving knowledge of the authenticator.
+  const verify = await supabase.auth.mfa.challengeAndVerify({
+    factorId,
+    code: code.trim(),
+  })
+  if (verify.error) return { ok: false as const, error: verify.error.message }
+
+  const { error } = await supabase.auth.mfa.unenroll({ factorId })
+  if (error) return { ok: false as const, error: error.message }
+  return { ok: true as const }
+}
+
+// Used by /login/mfa to satisfy the AAL2 step after password sign-in.
+export async function verifyMfaForLogin(factorId: string, code: string) {
+  if (!/^\d{6}$/.test(code.trim())) {
+    return { ok: false as const, error: "Enter the 6-digit code from your app" }
+  }
+  const supabase = await createClient()
+  const { error } = await supabase.auth.mfa.challengeAndVerify({
+    factorId,
+    code: code.trim(),
+  })
+  if (error) return { ok: false as const, error: error.message }
+
+  // Resolve the user's first active workspace and route there.
+  const userId = await getAuthUserIdFromCookie()
+  if (!userId) redirect("/login")
+
+  const admin = supabaseAdmin()
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("is_master")
+    .eq("id", userId)
+    .maybeSingle()
+  if (profile?.is_master) redirect("/")
+
+  const { data: mem } = await admin
+    .from("workspace_memberships")
+    .select("workspace_id")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .order("joined_at", { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  if (!mem?.workspace_id) redirect("/signup")
+
+  const { data: ws } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", mem.workspace_id)
+    .maybeSingle()
+  if (ws?.slug) redirect(`/${ws.slug as string}`)
+  redirect("/signup")
 }
 
 // ─── REVOKE INVITE ───
