@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import {
   createApiKey,
   revokeApiKey,
+  rotateApiKey,
   type ApiKeyRow,
 } from "@/app/actions/api-keys"
 import {
@@ -155,29 +156,61 @@ export function IntegrationsShell({
                   </div>
                 </div>
                 {!k.revokedAt && (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!confirm(`Revoke "${k.name}"? Any caller using it will start failing.`))
-                        return
-                      const res = await revokeApiKey(workspaceSlug, k.id)
-                      if (res.ok) {
-                        setKeys((rows) =>
-                          rows.map((r) =>
-                            r.id === k.id
-                              ? { ...r, revokedAt: new Date().toISOString() }
-                              : r,
-                          ),
+                  <>
+                    <button
+                      type="button"
+                      data-testid={`api-key-rotate-${k.id}`}
+                      onClick={async () => {
+                        if (
+                          !confirm(
+                            `Rotate "${k.name}"? The current secret stops working immediately and you'll get a new one to copy. Use this when a key may have leaked.`,
+                          )
                         )
-                        toast.success("Key revoked")
-                      } else {
-                        toast.error(res.error ?? "Revoke failed")
-                      }
-                    }}
-                    className="font-display text-[10px] tracking-[0.18em] uppercase px-2.5 py-1.5 rounded-sm border border-border-orage hover:border-danger/40 hover:text-danger transition-colors"
-                  >
-                    Revoke
-                  </button>
+                          return
+                        const res = await rotateApiKey(workspaceSlug, k.id)
+                        if (res.ok) {
+                          setKeys((rows) =>
+                            rows.map((r) =>
+                              r.id === k.id
+                                ? { ...r, prefix: res.prefix, lastUsedAt: null }
+                                : r,
+                            ),
+                          )
+                          setRevealedKey({ full: res.full, name: k.name })
+                          toast.success("Key rotated — copy the new secret")
+                        } else {
+                          toast.error(res.error ?? "Rotate failed")
+                        }
+                      }}
+                      className="font-display text-[10px] tracking-[0.18em] uppercase px-2.5 py-1.5 rounded-sm border border-border-orage hover:border-gold-500/60 hover:text-gold-400 transition-colors"
+                    >
+                      Rotate
+                    </button>
+                    <button
+                      type="button"
+                      data-testid={`api-key-revoke-${k.id}`}
+                      onClick={async () => {
+                        if (!confirm(`Revoke "${k.name}"? Any caller using it will start failing.`))
+                          return
+                        const res = await revokeApiKey(workspaceSlug, k.id)
+                        if (res.ok) {
+                          setKeys((rows) =>
+                            rows.map((r) =>
+                              r.id === k.id
+                                ? { ...r, revokedAt: new Date().toISOString() }
+                                : r,
+                            ),
+                          )
+                          toast.success("Key revoked")
+                        } else {
+                          toast.error(res.error ?? "Revoke failed")
+                        }
+                      }}
+                      className="font-display text-[10px] tracking-[0.18em] uppercase px-2.5 py-1.5 rounded-sm border border-border-orage hover:border-danger/40 hover:text-danger transition-colors"
+                    >
+                      Revoke
+                    </button>
+                  </>
                 )}
               </li>
             ))}

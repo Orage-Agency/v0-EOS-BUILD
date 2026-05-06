@@ -1,5 +1,7 @@
 "use client"
 
+import { useState } from "react"
+import { useParams } from "next/navigation"
 import { toast } from "sonner"
 import { useSettingsStore } from "@/lib/settings-store"
 import {
@@ -9,9 +11,41 @@ import {
   DangerButton,
 } from "./ui"
 import { DeleteWorkspaceModal } from "./delete-workspace-modal"
+import { exportMyData } from "@/app/actions/data-export"
 
 export function DangerZone() {
   const openDelete = useSettingsStore((s) => s.openDelete)
+  const params = useParams<{ workspace: string }>()
+  const workspaceSlug = params?.workspace ?? ""
+  const [exporting, setExporting] = useState(false)
+
+  async function handleExport() {
+    if (exporting || !workspaceSlug) return
+    setExporting(true)
+    try {
+      const res = await exportMyData(workspaceSlug)
+      if (!res.ok) {
+        toast.error(res.error)
+        return
+      }
+      // Trigger an in-browser download — no server-side storage needed for
+      // a per-user export, the JSON is small enough to ship inline.
+      const blob = new Blob([JSON.stringify(res.data, null, 2)], {
+        type: "application/json",
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `orage-core-export-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success("Export downloaded")
+    } finally {
+      setExporting(false)
+    }
+  }
 
   return (
     <SectionBlock
@@ -19,15 +53,17 @@ export function DangerZone() {
       titleClassName="text-danger"
       description="Irreversible actions · all require 2FA confirmation"
     >
-      <SCard title="EXPORT ALL DATA" variant="danger">
+      <SCard title="EXPORT MY DATA" variant="danger">
         <DangerRow
-          title="Download a full backup"
-          description="JSON export of every Rock, Issue, Task, Note, Meeting, V/TO revision, and audit log. Generates within 1 hour. Email link sent when ready."
+          title="Download a JSON dump of everything tagged to my account"
+          description="Includes profile, memberships, every Rock/Task/Issue/Note you own or created, your scorecard metrics, your audit-log entries, AI conversations, and trusted devices. Per-user GDPR-style export — does not include teammates' data."
           action={
             <SecondaryButton
-              onClick={() => toast("EXPORT QUEUED · EMAIL WHEN READY")}
+              data-testid="danger-export-my-data"
+              onClick={handleExport}
+              disabled={exporting}
             >
-              Request Export
+              {exporting ? "Generating…" : "Download Export"}
             </SecondaryButton>
           }
         />

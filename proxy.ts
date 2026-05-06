@@ -23,6 +23,7 @@ const PUBLIC_PATHS = [
   "/reset-password",
   "/accept-invite",
   "/auth",
+  "/status",
 ]
 const AUTH_PATHS = ["/login", "/signup"]
 

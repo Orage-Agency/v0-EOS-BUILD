@@ -98,6 +98,58 @@ export async function createApiKey(
   }
 }
 
+/**
+ * Rotate an API key — revoke the existing one and issue a fresh secret
+ * with the same name + scopes. Returns the new full key once so the UI
+ * can display it; subsequent reads only get the new prefix.
+ *
+ * Why "rotate" instead of "create new + revoke old": preserves the
+ * audit trail for the prior key (you can see when this key was rotated
+ * vs explicitly revoked) and keeps name/scope continuity for the
+ * caller's records.
+ */
+export async function rotateApiKey(
+  workspaceSlug: string,
+  id: string,
+): Promise<
+  | { ok: true; full: string; prefix: string }
+  | { ok: false; error: string }
+> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "tenants:admin")
+    const sb = supabaseAdmin()
+    const { data: existing } = await sb
+      .from("api_keys")
+      .select("id, name, scopes, revoked_at")
+      .eq("id", id)
+      .eq("workspace_id", user.workspaceId)
+      .maybeSingle()
+    if (!existing) return { ok: false, error: "Key not found" }
+    if (existing.revoked_at) {
+      return { ok: false, error: "Key is already revoked. Create a fresh one instead of rotating a dead key." }
+    }
+    const { full, prefix, hash } = generateApiKey()
+    const { error } = await sb
+      .from("api_keys")
+      .update({ key_prefix: prefix, key_hash: hash, last_used_at: null })
+      .eq("id", id)
+      .eq("workspace_id", user.workspaceId)
+    if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "update",
+      entityType: "tenant",
+      entityId: id,
+      metadata: { kind: "api_key_rotated", prefix, name: existing.name },
+    })
+    revalidatePath(`/${workspaceSlug}/settings/integrations`)
+    return { ok: true, full, prefix }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown" }
+  }
+}
+
 export async function revokeApiKey(
   workspaceSlug: string,
   id: string,
