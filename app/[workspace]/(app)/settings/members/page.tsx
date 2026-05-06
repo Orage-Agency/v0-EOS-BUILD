@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
-import { createInvite, revokeInvite } from "@/app/actions/auth"
+import { createInvite, resendInvite, revokeInvite } from "@/app/actions/auth"
 import { createClient } from "@/lib/supabase/client"
 
 type Member = {
@@ -134,6 +134,15 @@ export default function MembersPage() {
     if (!confirm("Revoke this invite? The link will no longer work.")) return
     await revokeInvite(workspaceSlug, id)
     loadData()
+  }
+
+  async function handleResend(id: string) {
+    const result = await resendInvite(workspaceSlug, id)
+    if (result.error) {
+      alert(result.error)
+      return
+    }
+    alert("Invite email re-sent.")
   }
 
   return (
@@ -305,6 +314,14 @@ export default function MembersPage() {
                       style={{ fontFamily: "Bebas Neue" }}
                     >
                       Copy link
+                    </button>
+                    <button
+                      onClick={() => handleResend(inv.id)}
+                      data-testid={`resend-invite-${inv.id}`}
+                      className="px-3 py-1 text-[10px] uppercase tracking-[0.1em] text-[#E4AF7A] border border-[rgba(182,128,57,0.18)] rounded-[2px] hover:border-[#B68039]"
+                      style={{ fontFamily: "Bebas Neue" }}
+                    >
+                      Resend email
                     </button>
                     {inv.temp_password && (
                       <button

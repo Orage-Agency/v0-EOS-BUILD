@@ -1104,6 +1104,107 @@ export async function revokeAllTrustedDevicesForCurrentUser() {
   return { ok: true as const }
 }
 
+// ─── RESEND INVITE EMAIL ───
+//
+// Re-fires the Supabase magic-link + branded Resend email for an
+// existing pending invite. Useful when:
+//   • The first email got lost in a spam filter
+//   • The temp password was rotated and the admin wants to share the
+//     fresh link
+//   • The expires_at is approaching and the recipient hasn't acted
+//
+// We DO NOT rotate the token here — that would invalidate any link
+// the recipient already clicked. If the admin wants a fresh token
+// they can revoke + re-create.
+export async function resendInvite(workspaceSlug: string, inviteId: string) {
+  const user = await getCurrentUser(workspaceSlug)
+  if (!user) return { error: "Not authenticated" }
+
+  try {
+    requirePermission(user, "people:invite")
+  } catch (e) {
+    if (e instanceof PermissionError) return { error: e.message }
+    throw e
+  }
+
+  const admin = supabaseAdmin()
+  const { data: invite } = await admin
+    .from("workspace_invites")
+    .select("id, workspace_id, email, role, token, status, expires_at")
+    .eq("id", inviteId)
+    .eq("workspace_id", user.workspaceId)
+    .maybeSingle()
+  if (!invite) return { error: "Invite not found" }
+  if (invite.status !== "pending") {
+    return { error: `Invite is ${invite.status as string}, can't resend.` }
+  }
+  if (new Date(invite.expires_at as string) < new Date()) {
+    return { error: "Invite has expired. Revoke it and create a fresh one." }
+  }
+
+  const { data: ws } = await admin
+    .from("workspaces")
+    .select("name")
+    .eq("id", invite.workspace_id as string)
+    .maybeSingle()
+  const wsName = (ws?.name as string | undefined) ?? "your workspace"
+
+  const { data: inviter } = await admin
+    .from("profiles")
+    .select("full_name, email")
+    .eq("id", user.id)
+    .maybeSingle()
+  const inviterName =
+    (inviter?.full_name as string | undefined) ??
+    (inviter?.email as string | undefined) ??
+    user.email ??
+    "An admin"
+
+  const link = `${appUrl()}/accept-invite?token=${invite.token as string}`
+  const callbackUrl = `${appUrl()}/auth/callback?next=${encodeURIComponent(`/accept-invite?token=${invite.token as string}`)}`
+
+  // Fire Supabase OTP path first — this is the guaranteed-delivery
+  // channel using their built-in SMTP. Then ride the branded Resend
+  // path on top when it's configured.
+  const { createAnonClient } = await import("@/lib/supabase/anon")
+  const anon = createAnonClient()
+  const { error: otpErr } = await anon.auth.signInWithOtp({
+    email: invite.email as string,
+    options: {
+      shouldCreateUser: true,
+      emailRedirectTo: callbackUrl,
+    },
+  })
+  if (otpErr) {
+    // The shared SMTP rate limit can bite — surface a friendly error
+    // so the admin knows to wait or switch to the branded path.
+    return {
+      error:
+        /rate.*limit|over_email_send_rate_limit/i.test(otpErr.message)
+          ? "Too many invite emails recently — wait a few minutes and retry."
+          : otpErr.message,
+    }
+  }
+
+  const { subject, html } = inviteEmail({
+    workspaceName: wsName,
+    inviteUrl: link,
+    inviterName,
+    role: invite.role as "admin" | "leader" | "member" | "viewer",
+  })
+  sendEmail({
+    to: invite.email as string,
+    subject,
+    html,
+    text: htmlToText(html),
+  }).catch(() => {
+    /* branded path is best-effort; OTP path is the load-bearing one */
+  })
+
+  revalidatePath(`/${workspaceSlug}/settings/members`)
+  return { success: true, link }
+}
+
 // ─── REVOKE INVITE ───
 export async function revokeInvite(workspaceSlug: string, inviteId: string) {
   const user = await getCurrentUser(workspaceSlug)

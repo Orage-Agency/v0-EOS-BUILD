@@ -13,23 +13,56 @@ curl -X POST https://orage-core.app/api/v1/tasks \\
     "due_date": "2026-05-15"
   }'`
 
-const WEBHOOK_EXAMPLE = `// n8n / express verifier
+const WEBHOOK_EXAMPLE = `// Node.js (express) — timing-safe HMAC verify
 import crypto from "crypto"
 
 app.post("/webhook/orage", express.raw({ type: "*/*" }), (req, res) => {
-  const signature = req.headers["x-orage-signature"]?.split("=")[1]
+  const signature = (req.headers["x-orage-signature"] ?? "").split("=")[1]
   const expected = crypto
     .createHmac("sha256", process.env.ORAGE_WEBHOOK_SECRET)
     .update(req.body)
     .digest("hex")
-  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+  const sigBuf = Buffer.from(signature ?? "", "hex")
+  const expBuf = Buffer.from(expected, "hex")
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
     return res.status(401).end()
   }
   const event = JSON.parse(req.body.toString())
-  // event.event === "task.created" | "rock.updated" | …
-  // event.data === the resource shape
+  // event.event === "task.created" | "l10.concluded" | …
+  // event.version === envelope schema version
+  // event.data === event-specific payload
   res.status(200).end()
 })`
+
+const WEBHOOK_EXAMPLE_PYTHON = `# Python (Flask)
+import hmac
+import hashlib
+
+@app.route("/webhook/orage", methods=["POST"])
+def receive():
+    sig_header = request.headers.get("X-Orage-Signature", "")
+    sig = sig_header.split("=", 1)[1] if "=" in sig_header else ""
+    expected = hmac.new(
+        os.environ["ORAGE_WEBHOOK_SECRET"].encode(),
+        request.data,
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(sig, expected):
+        abort(401)
+    event = request.get_json()
+    return ("", 200)`
+
+const WEBHOOK_EXAMPLE_DENO = `// Deno / Cloudflare Workers
+const enc = new TextEncoder()
+async function verify(secret: string, body: string, sig: string) {
+  const key = await crypto.subtle.importKey(
+    "raw", enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" }, false, ["verify"],
+  )
+  const hex = sig.replace(/^sha256=/, "")
+  const bytes = new Uint8Array(hex.match(/.{1,2}/g)!.map((h) => parseInt(h, 16)))
+  return crypto.subtle.verify("HMAC", key, bytes, enc.encode(body))
+}`
 
 const MCP_EXAMPLE = `# n8n MCP Client node
 URL:        https://orage-core.app/api/mcp
@@ -181,7 +214,9 @@ export default async function ApiDocsPage({
           the webhook's <code className="font-mono">consecutive_failures</code>{" "}
           surfaces in Settings.
         </p>
-        <CodeBlock label="Verify signature" code={WEBHOOK_EXAMPLE} />
+        <CodeBlock label="Verify signature · Node.js" code={WEBHOOK_EXAMPLE} />
+        <CodeBlock label="Verify signature · Python" code={WEBHOOK_EXAMPLE_PYTHON} />
+        <CodeBlock label="Verify signature · Deno / Workers" code={WEBHOOK_EXAMPLE_DENO} />
       </section>
 
       {/* ─── MCP ──────────────────────────────────────────────── */}
