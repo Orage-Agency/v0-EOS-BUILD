@@ -4,6 +4,7 @@ import { useMemo } from "react"
 import { useAIImplementerStore, type Thread } from "@/lib/ai-implementer-store"
 import { AIOrb } from "@/components/orage/ai-orb"
 import { IcPlus, IcSearch } from "@/components/orage/icons"
+import { PastThreads } from "./past-threads"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
@@ -82,6 +83,7 @@ export function ThreadsPane() {
       </header>
 
       <div className="flex-1 overflow-y-auto px-1 py-2">
+        <PastThreads />
         {(["proactive", "recent", "pinned"] as const).map((section) => {
           const list = grouped[section]
           if (!list.length) return null
