@@ -69,7 +69,17 @@ const CHECKS = [
   [`/${SLUG}/settings/audit`, ["AUDIT"]],
   [`/${SLUG}/settings/members`, ["MEMBERS"]],
   [`/${SLUG}/settings/sso`, ["SINGLE", "Single Sign-On"]],
+  [`/${SLUG}/settings/ai`, ["AI IMPLEMENTER"]],
+  [`/${SLUG}/settings/security`, ["TRUSTED DEVICES"]],
+  [`/${SLUG}/settings/integrations`, ["API keys", "Webhooks"]],
+  [`/${SLUG}/settings/danger`, ["EXPORT MY DATA"]],
+  [`/${SLUG}/docs/api`, ["API & integrations"]],
   ["/api/notifications/count?slug=orage-team", null],
+  // Public, no-auth surfaces — should respond regardless of cookie.
+  ["/status", ["SYSTEM STATUS"]],
+  ["/api/health", ["\"ok\""]],
+  ["/api/v1/openapi", ["\"openapi\""]],
+  ["/api/v1/events", ["\"events\""]],
 ]
 
 async function main() {
