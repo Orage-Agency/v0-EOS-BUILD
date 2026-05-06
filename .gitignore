@@ -28,3 +28,13 @@ scripts/final-check.mjs
 scripts/verify-dns.mjs
 .env.scout-resend
 DEPLOYMENT.md
+
+# Local-only Playwright profile state (auth cookies, browser DBs)
+scripts/.invite-*-profile/
+scripts/.invite-shots/
+scripts/.resend-profile/
+scripts/.resend-shots/
+scripts/.namecheap-state.json
+scripts/.env.namecheap.local
+.env.production.check
+.env.production.pulled

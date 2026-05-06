@@ -8,22 +8,34 @@ import { hydrateOnboardingDraft, useOnboardingStore } from "@/lib/onboarding-sto
 /**
  * Auth-aware gate for the onboarding wizard.
  *
- * Triggers on the FIRST authenticated render where the workspace has
- * `onboarding_completed_at = NULL`. The server-rendered layout passes
- * `onboardingCompleted` based on that column; we forward it into the
- * persisted client store so a re-run from Settings or the user's manual
- * "skip" still wins on subsequent renders.
+ * Two suppression flags drive whether the wizard mounts:
  *
- * The wizard's store is `persist`-backed, so we wait one tick to let zustand
- * hydrate from localStorage before deciding what to render — otherwise the
- * SSR'd HTML and the post-hydration HTML disagree.
+ *   • onboardingCompleted — per-USER flag (profiles.onboarding_completed_at).
+ *     Set when this specific user finished or skipped the wizard.
+ *
+ *   • workspaceAlreadySetup — per-WORKSPACE flag derived from
+ *     workspaces.vto_data. True when ANYONE has filled out the V/TO
+ *     (purpose, niche, ten-year target, core values, or rocks) for this
+ *     workspace. This is the bug fix: an invited team member who joins
+ *     a workspace that's already configured should NEVER see the founder's
+ *     setup wizard, regardless of their personal onboarding flag.
+ *
+ * Either flag being true suppresses the wizard. The wizard only renders
+ * when BOTH are false — i.e., the user is the first one in a fresh
+ * workspace, which is exactly the founder's first-login moment.
+ *
+ * The wizard's store is `persist`-backed, so we wait one tick to let
+ * zustand hydrate from localStorage before deciding what to render —
+ * otherwise SSR and post-hydration HTML disagree.
  */
 export function OnboardingGate({
   workspaceSlug,
   onboardingCompleted,
+  workspaceAlreadySetup,
 }: {
   workspaceSlug: string
   onboardingCompleted: boolean
+  workspaceAlreadySetup: boolean
 }) {
   const [hydrated, setHydrated] = useState(false)
   const setComplete = useOnboardingStore((s) => s.finish)
@@ -31,30 +43,34 @@ export function OnboardingGate({
   const localComplete = useOnboardingStore((s) => s.complete)
   const dismissed = useOnboardingStore((s) => s.dismissed)
 
+  // Either flag wins → wizard stays closed for this user.
+  const suppressed = onboardingCompleted || workspaceAlreadySetup
+
   useEffect(() => {
     setHydrated(true)
-    if (!onboardingCompleted) {
+    if (!suppressed) {
       // Pull any saved server-side draft so a fresh device picks up
       // wherever the user paused. Best-effort; no-op when local store
       // already has user input.
       void hydrateOnboardingDraft()
     }
-  }, [onboardingCompleted])
+  }, [suppressed])
 
   // Reconcile the persisted client flag with the server's source of truth.
-  // - DB says complete → flip the store to complete (idempotent).
-  // - DB says NOT complete AND user hasn't dismissed → reopen the wizard.
+  // - Either flag says we should skip → flip the store to complete.
+  // - Both say NOT complete AND user hasn't dismissed → reopen.
   useEffect(() => {
     if (!hydrated) return
-    if (onboardingCompleted && !localComplete) {
+    if (suppressed && !localComplete) {
       setComplete()
       return
     }
-    if (!onboardingCompleted && !localComplete && !dismissed) {
+    if (!suppressed && !localComplete && !dismissed) {
       reopen()
     }
-  }, [hydrated, onboardingCompleted, localComplete, dismissed, setComplete, reopen])
+  }, [hydrated, suppressed, localComplete, dismissed, setComplete, reopen])
 
   if (!hydrated) return null
+  if (suppressed) return null
   return <OnboardingWizard workspaceSlug={workspaceSlug} />
 }

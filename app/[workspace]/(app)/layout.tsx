@@ -9,6 +9,7 @@ import { BottomTabBar } from "@/components/shell/bottom-tab-bar"
 import { OnboardingGate } from "@/components/onboarding/onboarding-gate"
 import { SessionInit } from "@/components/shell/session-init"
 import { AiPrewarm } from "@/components/shell/ai-prewarm"
+import { supabaseAdmin } from "@/lib/supabase/admin"
 import { WorkspaceRealtimeBridge } from "@/components/realtime/workspace-realtime-bridge"
 import { requireUser, getUserWorkspaces } from "@/lib/auth"
 
@@ -31,6 +32,26 @@ export default async function AppShellLayout({
   const { workspace } = await params
   const user = await requireUser(workspace)
   const allWorkspaces = await getUserWorkspaces()
+
+  // The onboarding wizard mounts when BOTH the user hasn't finished
+  // AND the workspace's V/TO is empty. We compute the per-workspace
+  // half here so an invited member never sees the founder's wizard.
+  // Cheap query — single row by id.
+  const { data: vtoRow } = await supabaseAdmin()
+    .from("workspaces")
+    .select("vto_data")
+    .eq("id", user.workspaceId)
+    .maybeSingle()
+  const vto = (vtoRow?.vto_data ?? {}) as Record<string, unknown>
+  const workspaceAlreadySetup = Boolean(
+    (typeof vto.purpose === "string" && vto.purpose.trim()) ||
+      (typeof vto.niche === "string" && vto.niche.trim()) ||
+      (typeof vto.tenYearTarget === "string" && vto.tenYearTarget.trim()) ||
+      (Array.isArray(vto.coreValues) &&
+        vto.coreValues.some((v) => typeof v === "string" && v.trim())) ||
+      (Array.isArray(vto.oneYearGoals) &&
+        vto.oneYearGoals.some((v) => typeof v === "string" && v.trim())),
+  )
   const currentWorkspace = {
     id: user.workspaceId,
     slug: user.workspaceSlug,
@@ -74,6 +95,7 @@ export default async function AppShellLayout({
       <OnboardingGate
         workspaceSlug={workspace}
         onboardingCompleted={user.onboardingCompleted}
+        workspaceAlreadySetup={workspaceAlreadySetup}
       />
       <SessionInit
         user={{
