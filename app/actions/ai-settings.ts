@@ -99,12 +99,9 @@ export async function getAIUsage(
   ).toISOString()
 
   // Tool calls don't bill — we only count assistant messages.
-  // We don't have a model column on ai_chat_messages today, so per-model
-  // breakdown will be empty until a future migration adds it. Return
-  // the structure regardless so the UI can render zero state cleanly.
   const { data } = await sb
     .from("ai_chat_messages")
-    .select("tokens_in, tokens_out, created_at, role")
+    .select("tokens_in, tokens_out, created_at, role, model")
     .eq("workspace_id", user.workspaceId)
     .eq("role", "assistant")
     .gte("created_at", since)
@@ -114,11 +111,16 @@ export async function getAIUsage(
     tokens_in: number | null
     tokens_out: number | null
     created_at: string
+    model: string | null
   }>
 
   let totalIn = 0
   let totalOut = 0
   const byDay: AIUsageSummary["byDay"] = {}
+  const byModelMap = new Map<
+    string,
+    { tokensIn: number; tokensOut: number; messages: number }
+  >()
   for (const r of rows) {
     const tIn = r.tokens_in ?? 0
     const tOut = r.tokens_out ?? 0
@@ -130,13 +132,38 @@ export async function getAIUsage(
     bucket.tokensOut += tOut
     bucket.messages += 1
     byDay[day] = bucket
+    // Per-model bucket — null gets bucketed as "unknown" so the
+    // dashboard surfaces the gap instead of silently dropping rows.
+    const modelKey = r.model ?? "unknown"
+    const m = byModelMap.get(modelKey) ?? {
+      tokensIn: 0,
+      tokensOut: 0,
+      messages: 0,
+    }
+    m.tokensIn += tIn
+    m.tokensOut += tOut
+    m.messages += 1
+    byModelMap.set(modelKey, m)
   }
+
+  // Sort descending by total tokens so the heaviest model floats up.
+  const byModel = Array.from(byModelMap.entries())
+    .map(([model, v]) => ({
+      model: model === "unknown" ? null : model,
+      tokensIn: v.tokensIn,
+      tokensOut: v.tokensOut,
+      messages: v.messages,
+    }))
+    .sort(
+      (a, b) =>
+        b.tokensIn + b.tokensOut - (a.tokensIn + a.tokensOut),
+    )
 
   return {
     totalTokensIn: totalIn,
     totalTokensOut: totalOut,
     totalMessages: rows.length,
-    byModel: [], // populated once we add model column to ai_chat_messages
+    byModel,
     byDay,
   }
 }

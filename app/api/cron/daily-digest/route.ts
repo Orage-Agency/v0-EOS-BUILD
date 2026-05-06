@@ -11,6 +11,7 @@ import { NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { sendEmail, htmlToText } from "@/lib/email"
 import { digestEmail } from "@/lib/email-templates"
+import { recordCronRun } from "@/lib/cron-log"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -55,6 +56,7 @@ export async function GET(req: Request) {
   if (!authorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+  const t0 = Date.now()
   const sb = supabaseAdmin()
   // Look back 7 days so transient send failures get up to a week of
   // retries before we give up. The MAX_ATTEMPTS gate stops us from
@@ -79,6 +81,12 @@ export async function GET(req: Request) {
       .range(offset, offset + PAGE_SIZE - 1)
     if (error) {
       console.error("[cron/daily-digest] read failed", error.message)
+      void recordCronRun({
+        job: "daily-digest",
+        ok: false,
+        durationMs: Date.now() - t0,
+        details: { error: error.message },
+      })
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     const page = (data ?? []) as Pending[]
@@ -89,6 +97,12 @@ export async function GET(req: Request) {
   }
 
   if (rows.length === 0) {
+    void recordCronRun({
+      job: "daily-digest",
+      ok: true,
+      durationMs: Date.now() - t0,
+      details: { recipients: 0, items: 0 },
+    })
     return NextResponse.json({ ok: true, recipients: 0, items: 0 })
   }
 
@@ -258,12 +272,18 @@ export async function GET(req: Request) {
       .in("id", emailedIds)
   }
 
-  return NextResponse.json({
-    ok: true,
+  const summary = {
     recipients: byRecipientTenant.size,
     sent: sentCount,
     failed: failedCount,
     skipped: skippedCount,
     items: rows.length,
+  }
+  void recordCronRun({
+    job: "daily-digest",
+    ok: true,
+    durationMs: Date.now() - t0,
+    details: summary,
   })
+  return NextResponse.json({ ok: true, ...summary })
 }

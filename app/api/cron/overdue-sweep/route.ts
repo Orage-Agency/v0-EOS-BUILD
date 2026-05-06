@@ -6,6 +6,7 @@
  */
 import { NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { recordCronRun } from "@/lib/cron-log"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -34,6 +35,7 @@ export async function GET(req: Request) {
   if (!authorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+  const t0 = Date.now()
   const sb = supabaseAdmin()
   const todayIso = new Date().toISOString()
   const yesterdayIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
@@ -55,6 +57,12 @@ export async function GET(req: Request) {
       .range(offset, offset + PAGE_SIZE - 1)
     if (error) {
       console.error("[cron/overdue-sweep] read failed", error.message)
+      void recordCronRun({
+        job: "overdue-sweep",
+        ok: false,
+        durationMs: Date.now() - t0,
+        details: { error: error.message },
+      })
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
     const page = (data ?? []) as Task[]
@@ -63,7 +71,15 @@ export async function GET(req: Request) {
     offset += PAGE_SIZE
     if (offset >= 50_000) break
   }
-  if (rows.length === 0) return NextResponse.json({ ok: true, created: 0 })
+  if (rows.length === 0) {
+    void recordCronRun({
+      job: "overdue-sweep",
+      ok: true,
+      durationMs: Date.now() - t0,
+      details: { scanned: 0, created: 0 },
+    })
+    return NextResponse.json({ ok: true, created: 0 })
+  }
 
   // Pull every "overdue" notification created in the last 24 hours so we
   // can skip tasks we already pinged about.
@@ -96,5 +112,11 @@ export async function GET(req: Request) {
     if (!insErr) created++
   }
 
+  void recordCronRun({
+    job: "overdue-sweep",
+    ok: true,
+    durationMs: Date.now() - t0,
+    details: { scanned: rows.length, created },
+  })
   return NextResponse.json({ ok: true, scanned: rows.length, created })
 }

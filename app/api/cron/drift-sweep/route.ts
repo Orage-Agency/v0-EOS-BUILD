@@ -27,6 +27,7 @@
  */
 import { NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { recordCronRun } from "@/lib/cron-log"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -159,6 +160,7 @@ export async function GET(req: Request) {
   if (!authorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+  const t0 = Date.now()
   const sb = supabaseAdmin()
   const counters = { rocks: 0, velocity: 0, scorecard: 0, vto: 0 }
 
@@ -351,5 +353,11 @@ export async function GET(req: Request) {
     }
   }
 
+  void recordCronRun({
+    job: "drift-sweep",
+    ok: true,
+    durationMs: Date.now() - t0,
+    details: counters,
+  })
   return NextResponse.json({ ok: true, ...counters })
 }

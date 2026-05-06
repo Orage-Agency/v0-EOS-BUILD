@@ -10,6 +10,7 @@
  */
 import { NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { recordCronRun } from "@/lib/cron-log"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -29,6 +30,7 @@ export async function GET(req: Request) {
   if (!authorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+  const t0 = Date.now()
   const sb = supabaseAdmin()
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   const { error, count } = await sb
@@ -36,7 +38,19 @@ export async function GET(req: Request) {
     .delete({ count: "exact" })
     .lt("created_at", cutoff)
   if (error) {
+    void recordCronRun({
+      job: "idempotency-cleanup",
+      ok: false,
+      durationMs: Date.now() - t0,
+      details: { error: error.message },
+    })
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+  void recordCronRun({
+    job: "idempotency-cleanup",
+    ok: true,
+    durationMs: Date.now() - t0,
+    details: { deleted: count ?? 0 },
+  })
   return NextResponse.json({ ok: true, deleted: count ?? 0 })
 }

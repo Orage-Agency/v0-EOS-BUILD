@@ -12,6 +12,7 @@
  */
 import { NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { recordCronRun } from "@/lib/cron-log"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -31,6 +32,7 @@ export async function GET(req: Request) {
   if (!authorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+  const t0 = Date.now()
   const sb = supabaseAdmin()
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
 
@@ -44,6 +46,12 @@ export async function GET(req: Request) {
     .not("delivered_at", "is", null)
     .lt("delivered_at", cutoff)
   if (e1) {
+    void recordCronRun({
+      job: "webhook-deliveries-cleanup",
+      ok: false,
+      durationMs: Date.now() - t0,
+      details: { error: e1.message, stage: "delivered" },
+    })
     return NextResponse.json({ error: e1.message }, { status: 500 })
   }
   const { error: e2, count: deadDeleted } = await sb
@@ -53,12 +61,24 @@ export async function GET(req: Request) {
     .gte("attempts", 5)
     .lt("last_attempt_at", cutoff)
   if (e2) {
+    void recordCronRun({
+      job: "webhook-deliveries-cleanup",
+      ok: false,
+      durationMs: Date.now() - t0,
+      details: { error: e2.message, stage: "dead" },
+    })
     return NextResponse.json({ error: e2.message }, { status: 500 })
   }
 
-  return NextResponse.json({
-    ok: true,
+  const summary = {
     delivered_deleted: deliveredDeleted ?? 0,
     dead_deleted: deadDeleted ?? 0,
+  }
+  void recordCronRun({
+    job: "webhook-deliveries-cleanup",
+    ok: true,
+    durationMs: Date.now() - t0,
+    details: summary,
   })
+  return NextResponse.json({ ok: true, ...summary })
 }

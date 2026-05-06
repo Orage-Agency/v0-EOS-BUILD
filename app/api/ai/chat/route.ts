@@ -349,6 +349,7 @@ export async function POST(req: Request) {
           toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
           tokensIn,
           tokensOut,
+          model,
         })
       }
       return Response.json(
@@ -464,6 +465,7 @@ export async function POST(req: Request) {
                 toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
                 tokensIn,
                 tokensOut,
+                model,
               })
             }
             send({ kind: "done", didWrite, threadId: activeThreadId })

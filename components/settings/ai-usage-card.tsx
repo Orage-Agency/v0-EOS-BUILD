@@ -97,6 +97,43 @@ export function AIUsageCard({ usage }: { usage: AIUsageSummary }) {
             automatically as the implementer is used.
           </p>
         )}
+
+        {usage.byModel.length > 0 && (
+          <div className="mt-6">
+            <div className="font-display tracking-[0.18em] text-[10px] text-text-muted mb-2">
+              BY MODEL
+            </div>
+            <ul className="space-y-1.5">
+              {usage.byModel.map((m) => {
+                const totalTokens = m.tokensIn + m.tokensOut
+                const pct =
+                  usage.totalTokensIn + usage.totalTokensOut > 0
+                    ? Math.round(
+                        (totalTokens /
+                          (usage.totalTokensIn + usage.totalTokensOut)) *
+                          100,
+                      )
+                    : 0
+                return (
+                  <li
+                    key={m.model ?? "unknown"}
+                    className="flex items-center gap-3 px-3 py-2 rounded-sm bg-bg-3 border border-border-orage"
+                  >
+                    <span className="font-mono text-[11px] text-gold-300 flex-1 truncate">
+                      {m.model ?? "(legacy / unattributed)"}
+                    </span>
+                    <span className="font-mono text-[10px] text-text-muted">
+                      {m.messages} msg · {formatNumber(totalTokens)} tok
+                    </span>
+                    <span className="font-mono text-[10px] text-gold-400 w-10 text-right">
+                      {pct}%
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
       </SCard>
     </SectionBlock>
   )

@@ -21,6 +21,7 @@ import { NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { signPayload } from "@/lib/webhooks"
 import { WEBHOOK_PAYLOAD_VERSION } from "@/lib/webhooks-types"
+import { recordCronRun } from "@/lib/cron-log"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -64,6 +65,7 @@ export async function GET(req: Request) {
   if (!authorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+  const t0 = Date.now()
   const sb = supabaseAdmin()
   const nowIso = new Date().toISOString()
 
@@ -78,6 +80,12 @@ export async function GET(req: Request) {
 
   const rows = (pending ?? []) as Pending[]
   if (rows.length === 0) {
+    void recordCronRun({
+      job: "webhook-delivery",
+      ok: true,
+      durationMs: Date.now() - t0,
+      details: { processed: 0 },
+    })
     return NextResponse.json({ ok: true, processed: 0 })
   }
 
@@ -196,10 +204,12 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({
+  const summary = { processed: rows.length, success, failure }
+  void recordCronRun({
+    job: "webhook-delivery",
     ok: true,
-    processed: rows.length,
-    success,
-    failure,
+    durationMs: Date.now() - t0,
+    details: summary,
   })
+  return NextResponse.json({ ok: true, ...summary })
 }

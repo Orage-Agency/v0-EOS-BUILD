@@ -107,6 +107,8 @@ export async function appendMessage(args: {
   toolCalls?: unknown
   tokensIn?: number | null
   tokensOut?: number | null
+  /** AI Gateway model id used for this turn — e.g. "openai/gpt-5-mini". */
+  model?: string | null
 }): Promise<void> {
   const sb = supabaseAdmin()
   await sb.from("ai_chat_messages").insert({
@@ -118,5 +120,6 @@ export async function appendMessage(args: {
     tool_calls: args.toolCalls ?? null,
     tokens_in: args.tokensIn ?? null,
     tokens_out: args.tokensOut ?? null,
+    model: args.model ?? null,
   })
 }
