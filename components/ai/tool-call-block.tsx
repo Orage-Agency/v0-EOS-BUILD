@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import type { ToolCallBlock } from "@/lib/ai-implementer-store"
 import { cn } from "@/lib/utils"
 
@@ -12,14 +13,23 @@ const STATUS_LABEL: Record<ToolCallBlock["status"], string> = {
 
 export function ToolCall({ block }: { block: ToolCallBlock }) {
   const isRunning = block.status === "running"
+  const [expanded, setExpanded] = useState(block.status === "error")
+  const hasArgs = Object.keys(block.args).length > 0
+
   return (
     <div className="my-3 bg-bg-3/60 border border-border-orage rounded-sm overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border-orage bg-bg-2/60">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        className="w-full flex items-center gap-2 px-3 py-2 border-b border-border-orage bg-bg-2/60 hover:bg-bg-2 transition-colors text-left"
+      >
         <span
           className={cn(
             "text-gold-400 text-xs",
             isRunning && "animate-pulse",
           )}
+          aria-hidden
         >
           ◆
         </span>
@@ -38,19 +48,46 @@ export function ToolCall({ block }: { block: ToolCallBlock }) {
         >
           {STATUS_LABEL[block.status]}
         </span>
-      </div>
-      <dl className="px-3 py-2.5 space-y-1 font-mono text-[11px] leading-relaxed">
-        {Object.entries(block.args).map(([k, v]) => (
-          <div key={k} className="flex gap-2">
-            <dt className="text-text-muted shrink-0">{k}:</dt>
-            <dd className="text-gold-300 break-all">{v}</dd>
-          </div>
-        ))}
-      </dl>
-      {block.summary && (
-        <div className="px-3 py-1.5 border-t border-border-orage bg-bg-2/40 font-mono text-[10px] text-text-muted">
+        <span
+          aria-hidden
+          className="text-text-dim text-[10px] font-mono ml-1 select-none"
+        >
+          {expanded ? "▾" : "▸"}
+        </span>
+      </button>
+
+      {/* Compact summary line — always visible. */}
+      {!expanded && block.summary && (
+        <div className="px-3 py-1.5 font-mono text-[10px] text-text-muted truncate">
           {block.summary}
         </div>
+      )}
+
+      {expanded && (
+        <>
+          {hasArgs ? (
+            <dl className="px-3 py-2.5 space-y-1 font-mono text-[11px] leading-relaxed">
+              {Object.entries(block.args).map(([k, v]) => (
+                <div key={k} className="flex gap-2">
+                  <dt className="text-text-muted shrink-0">{k}:</dt>
+                  <dd className="text-gold-300 break-all">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <div className="px-3 py-2.5 font-mono text-[11px] text-text-muted">
+              No arguments.
+            </div>
+          )}
+          {block.summary && (
+            <div className="px-3 py-2 border-t border-border-orage bg-bg-2/40 font-mono text-[10px] text-text-muted whitespace-pre-wrap break-words">
+              <div className="font-display tracking-[0.18em] text-text-dim mb-1">
+                {block.status === "error" ? "ERROR" : "RESULT"}
+              </div>
+              {block.summary}
+            </div>
+          )}
+        </>
       )}
     </div>
   )

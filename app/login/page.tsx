@@ -133,7 +133,15 @@ function LoginForm() {
 
           {error && (
             <div className="px-4 py-3 bg-[rgba(194,84,80,0.1)] border-l-2 border-[#C25450] text-[12px] text-[#C25450]">
-              {error}
+              <div>{error}</div>
+              {initialError === "no_access" && (
+                <a
+                  href="/auth/signout"
+                  className="inline-block mt-2 text-[11px] text-[#E4AF7A] underline-offset-4 hover:underline"
+                >
+                  Sign out and try a different account →
+                </a>
+              )}
             </div>
           )}
 

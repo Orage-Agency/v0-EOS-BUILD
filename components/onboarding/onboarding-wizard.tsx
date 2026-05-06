@@ -205,9 +205,11 @@ export function OnboardingWizard({
           <button
             type="button"
             onClick={dismiss}
+            data-testid="onboarding-skip"
             className="shrink-0 text-[10px] font-mono uppercase tracking-[0.18em] text-text-muted hover:text-gold-300 transition-colors"
+            title="You can reopen this wizard from Settings → Workspace anytime."
           >
-            Skip setup →
+            Skip for now →
           </button>
         </header>
 
