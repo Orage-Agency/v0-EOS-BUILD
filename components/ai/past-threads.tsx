@@ -97,6 +97,42 @@ export function PastThreads() {
     toast.success("Resumed — continue where you left off")
   }
 
+  function handleDownload() {
+    if (!active) return
+    const lines: string[] = []
+    lines.push(`# ${active.title}`)
+    lines.push("")
+    lines.push(`*Exported ${new Date().toISOString().slice(0, 10)} from Orage Core*`)
+    lines.push("")
+    lines.push("---")
+    lines.push("")
+    for (const m of active.messages) {
+      const speaker =
+        m.role === "user" ? "**You**" : m.role === "assistant" ? "**Implementer**" : "**System**"
+      lines.push(`### ${speaker}`)
+      lines.push("")
+      lines.push(m.content.trim())
+      lines.push("")
+    }
+    const blob = new Blob([lines.join("\n")], {
+      type: "text/markdown;charset=utf-8",
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    const safeTitle = active.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "conversation"
+    a.href = url
+    a.download = `orage-thread-${safeTitle}-${new Date().toISOString().slice(0, 10)}.md`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    toast.success("Downloaded as Markdown")
+  }
+
   async function handleRename(id: string, currentTitle: string) {
     const next = window.prompt("Rename thread", currentTitle)
     if (next === null) return
@@ -208,6 +244,15 @@ export function PastThreads() {
               <h3 className="font-display tracking-[0.06em] text-text-primary text-base flex-1 truncate">
                 {active.title}
               </h3>
+              <button
+                type="button"
+                onClick={handleDownload}
+                data-testid="download-thread"
+                className="font-display tracking-[0.18em] text-[10px] uppercase px-2.5 py-1.5 rounded-sm border border-border-orage hover:border-gold-500/60 hover:text-gold-400 transition-colors"
+                title="Download as Markdown"
+              >
+                ↓ MD
+              </button>
               <button
                 type="button"
                 onClick={handleResume}

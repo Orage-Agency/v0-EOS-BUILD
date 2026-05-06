@@ -12,6 +12,7 @@ import {
   TextareaField,
   PrimaryButton,
 } from "./ui"
+import { CronRunsCard } from "./cron-runs-card"
 import { cn } from "@/lib/utils"
 
 const FEATURE_FLAGS: {
@@ -109,11 +110,13 @@ export function MasterSystemSettings() {
         />
       </SCard>
 
+      <CronRunsCard />
+
       <SCard
-        title="SCHEDULED JOBS · CRON STATUS"
+        title="SCHEDULED JOBS · LEGACY CONFIG"
         variant="master"
         action={
-          <span className="text-[10px] text-text-muted font-mono">INNGEST</span>
+          <span className="text-[10px] text-text-muted font-mono">CONFIG</span>
         }
       >
         <div
