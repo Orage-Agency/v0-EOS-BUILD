@@ -9,6 +9,7 @@ import {
   loadThread,
   type ThreadListItem,
 } from "@/app/actions/ai-threads"
+import { useAIImplementerStore } from "@/lib/ai-implementer-store"
 import { cn } from "@/lib/utils"
 
 /**
@@ -41,10 +42,16 @@ export function PastThreads() {
   const [open, setOpen] = useState(false)
   const [threads, setThreads] = useState<ThreadListItem[] | null>(null)
   const [active, setActive] = useState<{
+    id: string
     title: string
-    messages: { id: string; role: string; content: string }[]
+    messages: {
+      id: string
+      role: "user" | "assistant" | "system"
+      content: string
+    }[]
   } | null>(null)
   const [loading, setLoading] = useState(false)
+  const resumeDbThread = useAIImplementerStore((s) => s.resumeDbThread)
 
   async function refresh() {
     if (!workspaceSlug) return
@@ -65,6 +72,7 @@ export function PastThreads() {
       return
     }
     setActive({
+      id: res.thread.id,
       title: res.thread.title,
       messages: res.messages.map((m) => ({
         id: m.id,
@@ -72,6 +80,20 @@ export function PastThreads() {
         content: m.content,
       })),
     })
+  }
+
+  function handleResume() {
+    if (!active) return
+    resumeDbThread({
+      dbThreadId: active.id,
+      title: active.title,
+      messages: active.messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      })),
+    })
+    setActive(null)
+    toast.success("Resumed — continue where you left off")
   }
 
   async function handleDelete(id: string) {
@@ -155,10 +177,18 @@ export function PastThreads() {
             className="w-full max-w-2xl max-h-[80vh] flex flex-col bg-bg-2 border border-border-orage rounded-md overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <header className="px-4 py-3 border-b border-border-orage flex items-center justify-between">
-              <h3 className="font-display tracking-[0.06em] text-text-primary text-base">
+            <header className="px-4 py-3 border-b border-border-orage flex items-center justify-between gap-3">
+              <h3 className="font-display tracking-[0.06em] text-text-primary text-base flex-1 truncate">
                 {active.title}
               </h3>
+              <button
+                type="button"
+                onClick={handleResume}
+                data-testid="resume-thread"
+                className="font-display tracking-[0.18em] text-[10px] uppercase px-3 py-1.5 rounded-sm bg-gold-500 hover:bg-gold-400 text-text-on-gold transition-colors"
+              >
+                Resume →
+              </button>
               <button
                 type="button"
                 onClick={() => setActive(null)}

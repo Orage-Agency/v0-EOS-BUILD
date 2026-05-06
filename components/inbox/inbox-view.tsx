@@ -17,6 +17,21 @@ const KIND_LABEL: Record<string, string> = {
   mention: "Mention",
   overdue: "Overdue",
   invite_accepted: "Invite accepted",
+  // Drift-watcher signals — produced by the daily /api/cron/drift-sweep
+  // job and surfaced here so the user notices stalled work without
+  // needing to open every module.
+  drift_rock_status: "Rock at risk",
+  drift_rock_velocity: "Rock falling behind",
+  drift_scorecard_miss: "Scorecard miss",
+  drift_vto_stale: "Vision needs a refresh",
+}
+
+const KIND_TONE: Record<string, string> = {
+  drift_rock_status: "border-l-2 border-l-[#C25450]",
+  drift_rock_velocity: "border-l-2 border-l-[#E0B040]",
+  drift_scorecard_miss: "border-l-2 border-l-[#C25450]",
+  drift_vto_stale: "border-l-2 border-l-[#7E9C7B]",
+  overdue: "border-l-2 border-l-[#C25450]",
 }
 
 function fmtRelative(iso: string): string {
@@ -114,12 +129,14 @@ export function InboxView({
       ) : (
         <div className="rounded-[2px] border border-[rgba(182,128,57,0.18)] bg-[#0a0a0a] divide-y divide-[rgba(182,128,57,0.12)]">
           {filtered.map((it) => {
+            const tone = KIND_TONE[it.kind] ?? ""
             const inner = (
               <div
                 onClick={() => handleClickItem(it)}
                 className={
                   "flex items-start gap-3 px-4 py-3 hover:bg-[#151515] transition-colors cursor-pointer " +
-                  (!it.readAt ? "bg-[rgba(182,128,57,0.06)]" : "")
+                  tone +
+                  (!it.readAt ? " bg-[rgba(182,128,57,0.06)]" : "")
                 }
               >
                 <div className="w-7 h-7 rounded-full bg-[#262019] flex items-center justify-center text-[#E4AF7A] text-[10px] font-semibold shrink-0">

@@ -33,6 +33,13 @@ const securityHeaders = [
     value: "max-age=63072000; includeSubDomains; preload",
   },
   { key: "Content-Security-Policy", value: cspDirectives },
+  // Modern cross-origin isolation headers — recommended by Mozilla
+  // observatory + Vercel's security cheatsheet. COOP isolates the top
+  // window so a popup can't reach back into us; CORP locks loaded
+  // sub-resources to same-origin to prevent Spectre-style cross-origin
+  // reads.
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
 ]
 
 /** @type {import('next').NextConfig} */

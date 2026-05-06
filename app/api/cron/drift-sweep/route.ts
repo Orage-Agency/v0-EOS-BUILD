@@ -110,6 +110,7 @@ async function notify(
     entity_id: string
     title: string
     body: string
+    link?: string | null
   },
 ): Promise<boolean> {
   const { error } = await sb.from("notifications").insert({
@@ -121,9 +122,37 @@ async function notify(
     entity_id: args.entity_id,
     title: args.title,
     body: args.body,
-    link: null,
+    link: args.link ?? null,
   })
   return !error
+}
+
+/**
+ * Map a drift notification to the URL the inbox card should jump to.
+ * The cron runs without HTTP context so we have to compute the
+ * workspace slug from the tenant_id — kept as a small helper to avoid
+ * leaking that lookup into every call site.
+ */
+async function buildLink(
+  sb: ReturnType<typeof supabaseAdmin>,
+  workspaceId: string,
+  entityType: "rock" | "metric" | "workspace",
+): Promise<string | null> {
+  const { data } = await sb
+    .from("workspaces")
+    .select("slug")
+    .eq("id", workspaceId)
+    .maybeSingle()
+  const slug = data?.slug as string | undefined
+  if (!slug) return null
+  switch (entityType) {
+    case "rock":
+      return `/${slug}/rocks`
+    case "metric":
+      return `/${slug}/scorecard`
+    case "workspace":
+      return `/${slug}/vto`
+  }
 }
 
 export async function GET(req: Request) {
@@ -132,6 +161,21 @@ export async function GET(req: Request) {
   }
   const sb = supabaseAdmin()
   const counters = { rocks: 0, velocity: 0, scorecard: 0, vto: 0 }
+
+  // Cache slug-by-workspace lookups so each kind of drift loop doesn't
+  // re-query workspaces N times. Populated lazily.
+  const linkCache = new Map<string, string | null>()
+  async function linkFor(
+    workspaceId: string,
+    entityType: "rock" | "metric" | "workspace",
+  ): Promise<string | null> {
+    const key = `${workspaceId}:${entityType}`
+    const cached = linkCache.get(key)
+    if (cached !== undefined) return cached
+    const link = await buildLink(sb, workspaceId, entityType)
+    linkCache.set(key, link)
+    return link
+  }
 
   // ─── ROCK CHECKS (at risk + slow velocity) ───
   const { data: rocksData } = await sb
@@ -157,6 +201,7 @@ export async function GET(req: Request) {
         entity_id: r.id,
         title: `Rock at ${r.status === "off_track" ? "off-track" : "risk"}`,
         body: r.title,
+        link: await linkFor(r.tenant_id, "rock"),
       })
       if (ok) {
         counters.rocks++
@@ -187,6 +232,7 @@ export async function GET(req: Request) {
             entity_id: r.id,
             title: "Rock falling behind pace",
             body: `${r.title} — ${Math.round(r.progress)}% complete vs ${Math.round(expectedPct)}% expected`,
+            link: await linkFor(r.tenant_id, "rock"),
           })
           if (ok) {
             counters.velocity++
@@ -248,6 +294,7 @@ export async function GET(req: Request) {
         entity_id: m.id,
         title: `${m.name} missed target 2 weeks running`,
         body: `Latest: ${recent[0].value ?? "—"} vs target ${target}`,
+        link: await linkFor(m.tenant_id, "metric"),
       })
       if (ok) counters.scorecard++
     }
@@ -288,6 +335,7 @@ export async function GET(req: Request) {
       .eq("workspace_id", w.id)
       .eq("status", "active")
       .in("role", ["owner", "founder", "admin"])
+    const vtoLink = await linkFor(w.id, "workspace")
     for (const l of (leaders ?? []) as Array<{ user_id: string }>) {
       const ok = await notify(sb, {
         tenant_id: w.id,
@@ -297,6 +345,7 @@ export async function GET(req: Request) {
         entity_id: w.id,
         title: "VTO hasn't moved in 90+ days",
         body: `${w.name} — refresh the vision/traction overview at the next quarterly`,
+        link: vtoLink,
       })
       if (ok) counters.vto++
     }

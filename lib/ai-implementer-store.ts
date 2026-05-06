@@ -347,6 +347,13 @@ type RightTab = "capabilities" | "briefings" | "audit"
 
 type State = {
   threads: Thread[]
+  /**
+   * Map: in-memory thread id → DB ai_chat_threads.id. Set by the chat
+   * route's response (the server returns threadId on every turn) so a
+   * resumed conversation appends to the same on-disk thread instead of
+   * creating a new one.
+   */
+  dbThreadIds: Record<string, string>
   messages: Message[]
   capabilities: Capability[]
   briefings: Briefing[]
@@ -369,6 +376,16 @@ type State = {
   removeContextChip: (threadId: string, chipId: string) => void
   pinContextChip: (threadId: string, chipId: string, kind: ContextChip["kind"], label: string) => void
   newThread: () => string
+  /**
+   * Resume a saved DB-backed thread: create a new in-memory thread,
+   * preload its past messages, and remember the dbThreadId so the next
+   * sendMessage continues the same on-disk conversation.
+   */
+  resumeDbThread: (args: {
+    dbThreadId: string
+    title: string
+    messages: { role: "user" | "assistant" | "system"; content: string }[]
+  }) => string
     sendMessage: (text: string, workspaceSlug: string) => void | Promise<void>
   prependAudit: (row: Omit<AuditRow, "id" | "time">) => void
   // Bumped every time a sendMessage round trip completes with a write.
@@ -466,6 +483,7 @@ const nowTime = () =>
 
 export const useAIImplementerStore = create<State>((set, get) => ({
   threads: SEED_THREADS,
+  dbThreadIds: {},
   messages: SEED_MESSAGES,
   capabilities: SEED_CAPABILITIES,
   briefings: SEED_BRIEFINGS,
@@ -613,6 +631,41 @@ export const useAIImplementerStore = create<State>((set, get) => ({
     return id
   },
 
+  resumeDbThread: ({ dbThreadId, title, messages }) => {
+    const id = newThreadId()
+    const thread: Thread = {
+      id,
+      section: "recent",
+      kind: "draft",
+      title: title || "Resumed thread",
+      preview: messages[messages.length - 1]?.content?.slice(0, 80) ?? "",
+      time: "NOW",
+      tag: "RESUMED",
+    }
+    // Hydrate the message log for the new in-memory thread from the
+    // saved on-disk turns. Filter system rows out — those are prompt
+    // scaffolding, not conversational content.
+    const hydrated: Message[] = messages
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .map((m) => ({
+        id: newMsgId(),
+        threadId: id,
+        author: m.role === "user" ? ("user" as const) : ("ai" as const),
+        authorName: m.role === "user" ? "YOU" : "IMPLEMENTER",
+        authorInitials: m.role === "user" ? "YO" : undefined,
+        authorColor: m.role === "user" ? ("geo" as const) : undefined,
+        time: nowTime(),
+        blocks: [{ kind: "text" as const, id: newMsgId(), html: m.content }],
+      }))
+    set((s) => ({
+      threads: [thread, ...s.threads],
+      activeThreadId: id,
+      messages: [...s.messages, ...hydrated],
+      dbThreadIds: { ...s.dbThreadIds, [id]: dbThreadId },
+    }))
+    return id
+  },
+
   sendMessage: async (text, workspaceSlug) => {
     const trimmed = text.trim()
     if (!trimmed) return
@@ -683,6 +736,11 @@ export const useAIImplementerStore = create<State>((set, get) => ({
     _activeAbortController = controller
     set({ streaming: true })
     try {
+      // If this thread maps to a DB row, pass its id so the route
+      // appends to the same on-disk conversation. Otherwise the route
+      // creates a fresh ai_chat_threads row and we'll capture its id
+      // out of the 'done' frame below.
+      const dbThreadId = get().dbThreadIds[threadId]
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
@@ -690,6 +748,7 @@ export const useAIImplementerStore = create<State>((set, get) => ({
           message: trimmed,
           history: priorHistory,
           workspaceSlug,
+          threadId: dbThreadId ?? null,
         }),
         signal: controller.signal,
       })
@@ -825,6 +884,15 @@ export const useAIImplementerStore = create<State>((set, get) => ({
             // complete response, not whatever fell on the last RAF.
             flushTextRender()
             didWrite = Boolean(frame.didWrite)
+            // Remember the DB thread id the route used so subsequent
+            // turns in this in-memory thread append to the same
+            // on-disk conversation.
+            const respThreadId = frame.threadId as string | undefined
+            if (respThreadId && !get().dbThreadIds[threadId]) {
+              set((s) => ({
+                dbThreadIds: { ...s.dbThreadIds, [threadId]: respThreadId },
+              }))
+            }
           } else if (frame.kind === "error") {
             throw new Error((frame.message as string) ?? "Stream error")
           }
