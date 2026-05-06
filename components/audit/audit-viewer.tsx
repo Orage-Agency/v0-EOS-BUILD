@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { useParams } from "next/navigation"
 import type { AuditRow } from "@/lib/audit-server"
 
 const ENTITY_LABEL: Record<string, string> = {
@@ -133,6 +134,8 @@ export function AuditViewer({
   rows: AuditRow[]
   canSeeAll: boolean
 }) {
+  const params = useParams<{ workspace: string }>()
+  const workspaceSlug = params?.workspace ?? "workspace"
   const [filterEntity, setFilterEntity] = useState<string>("")
   const [filterActor, setFilterActor] = useState<string>("")
   const [filterAction, setFilterAction] = useState<string>("")
@@ -256,10 +259,11 @@ export function AuditViewer({
           type="button"
           onClick={() =>
             downloadCsv(
-              `orage-audit-${new Date().toISOString().slice(0, 10)}.csv`,
+              `orage-audit-${workspaceSlug}-${new Date().toISOString().slice(0, 10)}.csv`,
               toCsv(filtered),
             )
           }
+          data-testid="audit-export-csv"
           className="font-display text-[10px] tracking-[0.18em] uppercase px-3 py-2 rounded-[2px] border border-gold-500/40 text-gold-400 hover:bg-gold-500/10 transition-colors"
         >
           Export CSV
