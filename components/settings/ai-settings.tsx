@@ -6,11 +6,8 @@ import { TenantLink as Link } from "@/components/tenant-link"
 import { useSettingsStore } from "@/lib/settings-store"
 import { OrageToggle } from "@/components/orage/toggle"
 import { SectionBlock, SCard, FieldRow, SelectField } from "./ui"
-import {
-  saveAISettings,
-  type AIModelId,
-  type AISettings as AISettingsShape,
-} from "@/app/actions/ai-settings"
+import { saveAISettings } from "@/app/actions/ai-settings"
+import type { AIModelId, AISettings as AISettingsShape } from "@/lib/ai-settings"
 
 type Props = {
   workspaceSlug: string

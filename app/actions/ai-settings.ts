@@ -5,47 +5,27 @@ import { requireUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/server/permissions"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { logAudit } from "@/lib/audit"
+import {
+  ALLOWED_AI_MODELS,
+  DEFAULT_AI_SETTINGS,
+  type AIModelId,
+  type AISettings,
+} from "@/lib/ai-settings"
 
 /**
  * Per-workspace AI configuration. Persisted on workspaces.ai_settings
  * (jsonb). Read by the chat route on every request so a model swap is
  * effective immediately — no redeploy.
+ *
+ * IMPORTANT: this file is a "use server" module — Next 16 only allows
+ * async function exports here. Types + DEFAULT_AI_SETTINGS live in
+ * lib/ai-settings.ts so the constants are reusable from client and
+ * server without breaking the production build.
  */
-
-export type AISettings = {
-  model: AIModelId
-  contextScope: "full" | "operational" | "minimal"
-  voiceTone: "direct" | "coaching" | "concise" | "custom"
-}
-
-export type AIModelId =
-  // OpenAI via AI Gateway
-  | "openai/gpt-5"
-  | "openai/gpt-5-mini"
-  | "openai/gpt-5-nano"
-  // Anthropic via AI Gateway (Vercel surfaces these as `anthropic/...`)
-  | "anthropic/claude-opus-4-7"
-  | "anthropic/claude-sonnet-4-6"
-  | "anthropic/claude-haiku-4-5"
-
-export const DEFAULT_AI_SETTINGS: AISettings = {
-  model: "openai/gpt-5-mini",
-  contextScope: "full",
-  voiceTone: "direct",
-}
-
-const ALLOWED_MODELS: AIModelId[] = [
-  "openai/gpt-5",
-  "openai/gpt-5-mini",
-  "openai/gpt-5-nano",
-  "anthropic/claude-opus-4-7",
-  "anthropic/claude-sonnet-4-6",
-  "anthropic/claude-haiku-4-5",
-]
 
 function fromRow(raw: unknown): AISettings {
   const row = (raw ?? {}) as Record<string, unknown>
-  const model = ALLOWED_MODELS.includes(row.model as AIModelId)
+  const model = ALLOWED_AI_MODELS.includes(row.model as AIModelId)
     ? (row.model as AIModelId)
     : DEFAULT_AI_SETTINGS.model
   const contextScope = (
@@ -100,7 +80,7 @@ export async function saveAISettings(
       ).data?.ai_settings,
     )
     const next: AISettings = { ...current, ...patch }
-    if (!ALLOWED_MODELS.includes(next.model)) {
+    if (!ALLOWED_AI_MODELS.includes(next.model)) {
       return { ok: false, error: `Unknown model: ${next.model}` }
     }
     const { error } = await sb
