@@ -7,6 +7,14 @@ import {
   type ApiKeyContext,
 } from "@/lib/api-key-auth"
 import { enqueueWebhookEvent } from "@/lib/webhooks"
+import {
+  checkAndRecordApiRequest,
+  rateLimitHeaders,
+} from "@/lib/api-rate-limit"
+import {
+  checkIdempotency,
+  idempotencyReplayResponse,
+} from "@/lib/api-idempotency"
 
 /**
  * Shared handler skeleton for the public REST API. Each resource (tasks,
@@ -52,15 +60,26 @@ export async function handleListOrCreate(
   const ctx = await authenticateApiRequest(req)
   if (!ctx) return jsonError(401, "Invalid or missing API key", "Send `Authorization: Bearer oc_<prefix>_<secret>`.")
 
+  const limit = await checkAndRecordApiRequest(ctx.keyId)
+  const rlHeaders = rateLimitHeaders(limit)
+  if (!limit.ok) {
+    return jsonErrorWithHeaders(429, limit.message, undefined, {
+      ...rlHeaders,
+      "Retry-After": String(limit.retryAfterSec),
+    })
+  }
+
   if (req.method === "GET") {
-    if (!requiresScope(ctx, "read")) return jsonError(403, "Key missing 'read' scope")
-    return listResource(req, ctx, cfg)
+    if (!requiresScope(ctx, "read"))
+      return jsonErrorWithHeaders(403, "Key missing 'read' scope", undefined, rlHeaders)
+    return withHeaders(await listResource(req, ctx, cfg), rlHeaders)
   }
   if (req.method === "POST") {
-    if (!requiresScope(ctx, "write")) return jsonError(403, "Key missing 'write' scope")
-    return createResource(req, ctx, cfg)
+    if (!requiresScope(ctx, "write"))
+      return jsonErrorWithHeaders(403, "Key missing 'write' scope", undefined, rlHeaders)
+    return withHeaders(await createResource(req, ctx, cfg), rlHeaders)
   }
-  return jsonError(405, "Method not allowed")
+  return jsonErrorWithHeaders(405, "Method not allowed", undefined, rlHeaders)
 }
 
 export async function handleSingleResource(
@@ -71,19 +90,57 @@ export async function handleSingleResource(
   const ctx = await authenticateApiRequest(req)
   if (!ctx) return jsonError(401, "Invalid or missing API key")
 
+  const limit = await checkAndRecordApiRequest(ctx.keyId)
+  const rlHeaders = rateLimitHeaders(limit)
+  if (!limit.ok) {
+    return jsonErrorWithHeaders(429, limit.message, undefined, {
+      ...rlHeaders,
+      "Retry-After": String(limit.retryAfterSec),
+    })
+  }
+
   if (req.method === "GET") {
-    if (!requiresScope(ctx, "read")) return jsonError(403, "Key missing 'read' scope")
-    return getResource(ctx, id, cfg)
+    if (!requiresScope(ctx, "read"))
+      return jsonErrorWithHeaders(403, "Key missing 'read' scope", undefined, rlHeaders)
+    return withHeaders(await getResource(ctx, id, cfg), rlHeaders)
   }
   if (req.method === "PATCH") {
-    if (!requiresScope(ctx, "write")) return jsonError(403, "Key missing 'write' scope")
-    return updateResource(req, ctx, id, cfg)
+    if (!requiresScope(ctx, "write"))
+      return jsonErrorWithHeaders(403, "Key missing 'write' scope", undefined, rlHeaders)
+    return withHeaders(await updateResource(req, ctx, id, cfg), rlHeaders)
   }
   if (req.method === "DELETE") {
-    if (!requiresScope(ctx, "write")) return jsonError(403, "Key missing 'write' scope")
-    return deleteResource(ctx, id, cfg)
+    if (!requiresScope(ctx, "write"))
+      return jsonErrorWithHeaders(403, "Key missing 'write' scope", undefined, rlHeaders)
+    return withHeaders(await deleteResource(ctx, id, cfg), rlHeaders)
   }
-  return jsonError(405, "Method not allowed")
+  return jsonErrorWithHeaders(405, "Method not allowed", undefined, rlHeaders)
+}
+
+// Helpers that re-emit a Response with extra headers — the public REST
+// endpoints want both the rate-limit telemetry and the idempotency-replay
+// flag to ride alongside the resource payload.
+function withHeaders(res: Response, headers: HeadersInit): Response {
+  const merged = new Headers(res.headers)
+  for (const [k, v] of new Headers(headers)) merged.set(k, v)
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers: merged,
+  })
+}
+
+function jsonErrorWithHeaders(
+  status: number,
+  message: string,
+  hint: string | undefined,
+  headers: HeadersInit,
+): Response {
+  const body = hint ? { error: message, hint } : { error: message }
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...Object.fromEntries(new Headers(headers)) },
+  })
 }
 
 // ─────────────────────────────────────── list ────────────────────────────
@@ -146,12 +203,22 @@ async function createResource(
   ctx: ApiKeyContext,
   cfg: ResourceConfig,
 ): Promise<Response> {
+  // Read the body as text first so the idempotency hash sees the exact
+  // bytes the caller sent (JSON.stringify would normalize key order).
+  const rawBody = await req.text()
   let body: Record<string, unknown>
   try {
-    body = await req.json()
+    body = rawBody.length > 0 ? (JSON.parse(rawBody) as Record<string, unknown>) : {}
   } catch {
     return jsonError(400, "Body must be JSON")
   }
+
+  const idem = await checkIdempotency(req, ctx.keyId, rawBody)
+  if (idem.kind === "conflict") return jsonError(422, idem.message)
+  if (idem.kind === "replay") {
+    return idempotencyReplayResponse(idem.status, idem.body)
+  }
+
   for (const k of cfg.requiredOnCreate) {
     if (body[k] == null) return jsonError(400, `Missing required field: ${k}`)
   }
@@ -169,6 +236,9 @@ async function createResource(
   if (error) return jsonError(500, error.message)
   const json = cfg.toJson(data as unknown as Record<string, unknown>)
   void enqueueWebhookEvent(ctx.workspaceId, `${cfg.eventKind}.created`, json)
+  if (idem.kind === "first-time") {
+    void idem.record(201, json)
+  }
   return new Response(JSON.stringify(json), {
     status: 201,
     headers: { "Content-Type": "application/json" },

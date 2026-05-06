@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { requireUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/server/permissions"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { enqueueWebhookEvent } from "@/lib/webhooks"
 import type { Meeting } from "@/lib/l10-store"
 
 function revalidateL10(slug: string, id?: string) {
@@ -233,6 +234,25 @@ export async function sendMeetingRecap(
         error: lastError ?? "All recap emails failed to send",
       }
     }
+
+    // Fire the public webhook so n8n / Zapier integrations can sync
+    // L10 outcomes (todos, headlines, IDS resolved) into downstream
+    // systems — Slack channels, Notion, project trackers, etc.
+    void enqueueWebhookEvent(user.workspaceId, "l10.concluded", {
+      meeting_id: meeting.id,
+      name: meeting.name,
+      scheduled_at: new Date(meeting.scheduledAt).toISOString(),
+      concluded_at: meeting.concludedAt
+        ? new Date(meeting.concludedAt).toISOString()
+        : new Date().toISOString(),
+      avg_rating: avgRating,
+      ids_resolved: idsResolved,
+      ids_total: idsTotal,
+      todos: todos.map((t) => ({ text: t.text, owner: t.ownerLabel ?? null })),
+      headlines: headlines.map((h) => h.text),
+      cascading_message: meeting.cascadingMessage ?? null,
+    })
+
     return { ok: true, sent, failed }
   } catch (err) {
     return {

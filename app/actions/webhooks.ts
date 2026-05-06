@@ -113,6 +113,152 @@ export async function createWebhook(
   }
 }
 
+export type DeliveryRow = {
+  id: string
+  webhookId: string
+  eventType: string
+  attempts: number
+  deliveredAt: string | null
+  lastAttemptAt: string | null
+  lastStatus: number | null
+  lastError: string | null
+  createdAt: string
+}
+
+export async function listDeliveries(
+  workspaceSlug: string,
+  webhookId: string,
+  limit = 25,
+): Promise<{ ok: true; deliveries: DeliveryRow[] } | { ok: false; error: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    const sb = supabaseAdmin()
+    const { data, error } = await sb
+      .from("webhook_deliveries")
+      .select(
+        "id, webhook_id, event_type, attempts, delivered_at, last_attempt_at, last_status, last_error, created_at",
+      )
+      .eq("webhook_id", webhookId)
+      .eq("workspace_id", user.workspaceId)
+      .order("created_at", { ascending: false })
+      .limit(Math.min(limit, 100))
+    if (error) return { ok: false, error: error.message }
+    return {
+      ok: true,
+      deliveries: ((data ?? []) as Array<{
+        id: string
+        webhook_id: string
+        event_type: string
+        attempts: number
+        delivered_at: string | null
+        last_attempt_at: string | null
+        last_status: number | null
+        last_error: string | null
+        created_at: string
+      }>).map((r) => ({
+        id: r.id,
+        webhookId: r.webhook_id,
+        eventType: r.event_type,
+        attempts: r.attempts,
+        deliveredAt: r.delivered_at,
+        lastAttemptAt: r.last_attempt_at,
+        lastStatus: r.last_status,
+        lastError: r.last_error,
+        createdAt: r.created_at,
+      })),
+    }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown" }
+  }
+}
+
+/**
+ * Re-queue an existing delivery so the next pg_cron / Vercel cron pass
+ * picks it up again. Resets `delivered_at`, decrements attempts back to
+ * 0, and pushes `next_attempt_at` to NOW so it goes out on the very next
+ * minute. Caller must be a workspace admin.
+ */
+export async function redeliverWebhookDelivery(
+  workspaceSlug: string,
+  deliveryId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "tenants:admin")
+    const sb = supabaseAdmin()
+    const { data: existing } = await sb
+      .from("webhook_deliveries")
+      .select("id, webhook_id, workspace_id")
+      .eq("id", deliveryId)
+      .eq("workspace_id", user.workspaceId)
+      .maybeSingle()
+    if (!existing) return { ok: false, error: "Delivery not found" }
+    const { error } = await sb
+      .from("webhook_deliveries")
+      .update({
+        delivered_at: null,
+        last_attempt_at: null,
+        last_status: null,
+        last_error: null,
+        attempts: 0,
+        next_attempt_at: new Date().toISOString(),
+      })
+      .eq("id", deliveryId)
+    if (error) return { ok: false, error: error.message }
+    await logAudit({
+      user,
+      action: "update",
+      entityType: "tenant",
+      entityId: existing.webhook_id as string,
+      metadata: { kind: "webhook_redeliver", delivery_id: deliveryId },
+    })
+    revalidatePath(`/${workspaceSlug}/settings/integrations`)
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown" }
+  }
+}
+
+/**
+ * Rotate a webhook's signing secret. Returns the new secret once so the
+ * UI can display it; subsequent reads will only return the prefix.
+ * Existing pending deliveries get the new secret on next attempt.
+ */
+export async function rotateWebhookSecret(
+  workspaceSlug: string,
+  webhookId: string,
+): Promise<
+  | { ok: true; secret: string }
+  | { ok: false; error: string }
+> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "tenants:admin")
+    const sb = supabaseAdmin()
+    const newSecret = `whsec_${crypto.randomBytes(24).toString("hex")}`
+    const { data, error } = await sb
+      .from("webhooks")
+      .update({ secret: newSecret })
+      .eq("id", webhookId)
+      .eq("workspace_id", user.workspaceId)
+      .select("id")
+      .maybeSingle()
+    if (error) return { ok: false, error: error.message }
+    if (!data) return { ok: false, error: "Webhook not found" }
+    await logAudit({
+      user,
+      action: "update",
+      entityType: "tenant",
+      entityId: webhookId,
+      metadata: { kind: "webhook_secret_rotated" },
+    })
+    revalidatePath(`/${workspaceSlug}/settings/integrations`)
+    return { ok: true, secret: newSecret }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown" }
+  }
+}
+
 export async function deleteWebhook(
   workspaceSlug: string,
   id: string,

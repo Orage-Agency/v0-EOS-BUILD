@@ -17,6 +17,7 @@ supabase/.temp/
 .cookie-value.tmp
 scripts/.smoke-screenshots/
 .env.namecheap.local
+.env.production.pulled
 
 # Local-only DNS / one-shot scripts (Namecheap dance, deploy probes)
 scripts/.namecheap-*/

@@ -79,6 +79,36 @@ async function main() {
     }
   }
 
+  // Configure pg_cron GUCs so trigger_webhook_delivery() knows what URL
+  // and bearer secret to call. ALTER DATABASE persists across restarts;
+  // we re-apply on every migration run so a rotated CRON_SECRET picks up.
+  const appUrl =
+    env.NEXT_PUBLIC_APP_URL ||
+    (env.VERCEL_URL ? `https://${env.VERCEL_URL}` : null)
+  const cronSecret = env.CRON_SECRET ?? null
+  if (appUrl && cronSecret) {
+    try {
+      // Store config in app_settings (created in 20260505000001).
+      // Supabase doesn't grant ALTER DATABASE SET to the connect role,
+      // so a GUC-based approach was a non-starter.
+      await client.query(`
+        INSERT INTO app_settings (key, value, updated_at)
+        VALUES ('app_url', $1, NOW()),
+               ('cron_secret', $2, NOW())
+        ON CONFLICT (key) DO UPDATE SET
+          value = EXCLUDED.value,
+          updated_at = NOW()
+      `, [appUrl, cronSecret])
+      console.log(`-- app_settings updated: app_url=${appUrl}`)
+    } catch (err) {
+      console.warn(`-- app_settings update skipped: ${err.message}`)
+    }
+  } else {
+    console.warn(
+      "-- pg_cron config skipped: NEXT_PUBLIC_APP_URL or CRON_SECRET missing in .env.production",
+    )
+  }
+
   await client.end()
   console.log(`\nDone. Applied ${ranCount} migration${ranCount === 1 ? "" : "s"}.`)
 }

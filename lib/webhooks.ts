@@ -1,12 +1,14 @@
 import "server-only"
 import crypto from "crypto"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { WEBHOOK_PAYLOAD_VERSION } from "@/lib/webhooks-types"
 
 // Re-export client-safe pieces so existing server callers keep working
 // without changing imports.
 export {
   ALL_WEBHOOK_EVENTS,
   type WebhookEventType,
+  WEBHOOK_PAYLOAD_VERSION,
 } from "@/lib/webhooks-types"
 
 /**
@@ -75,6 +77,7 @@ export async function enqueueWebhookEvent(
         const body = JSON.stringify({
           id: deliveryId ?? null,
           event: eventType,
+          version: WEBHOOK_PAYLOAD_VERSION,
           workspace_id: workspaceId,
           created_at: nowIso,
           data: payload,

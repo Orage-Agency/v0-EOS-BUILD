@@ -10,6 +10,10 @@ import {
 import {
   createWebhook,
   deleteWebhook,
+  listDeliveries,
+  redeliverWebhookDelivery,
+  rotateWebhookSecret,
+  type DeliveryRow,
   type WebhookRow,
 } from "@/app/actions/webhooks"
 import { ALL_WEBHOOK_EVENTS } from "@/lib/webhooks-types"
@@ -246,51 +250,15 @@ export function IntegrationsShell({
         ) : (
           <ul className="space-y-1.5">
             {hooks.map((h) => (
-              <li
+              <WebhookListItem
                 key={h.id}
-                className="flex items-center gap-3 px-3 py-2.5 bg-bg-3 border border-border-orage rounded-sm"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13px] text-text-primary truncate">
-                    {h.name}
-                  </div>
-                  <div className="text-[10px] text-text-muted font-mono mt-0.5 truncate">
-                    {h.targetUrl} ·{" "}
-                    {h.eventTypes.length === 0
-                      ? "all events"
-                      : `${h.eventTypes.length} events`}{" "}
-                    · last delivered {timeAgo(h.lastDeliveredAt)}
-                  </div>
-                </div>
-                {h.consecutiveFailures > 0 && (
-                  <span
-                    className={cn(
-                      "font-display text-[9px] tracking-[0.18em] uppercase px-1.5 py-0.5 rounded-sm",
-                      h.consecutiveFailures >= 3
-                        ? "bg-danger/15 text-danger"
-                        : "bg-warning/15 text-warning",
-                    )}
-                  >
-                    {h.consecutiveFailures} fail{h.consecutiveFailures === 1 ? "" : "s"}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!confirm(`Delete "${h.name}"?`)) return
-                    const res = await deleteWebhook(workspaceSlug, h.id)
-                    if (res.ok) {
-                      setHooks((rows) => rows.filter((r) => r.id !== h.id))
-                      toast.success("Webhook deleted")
-                    } else {
-                      toast.error(res.error ?? "Delete failed")
-                    }
-                  }}
-                  className="font-display text-[10px] tracking-[0.18em] uppercase px-2.5 py-1.5 rounded-sm border border-border-orage hover:border-danger/40 hover:text-danger transition-colors"
-                >
-                  Delete
-                </button>
-              </li>
+                webhook={h}
+                workspaceSlug={workspaceSlug}
+                onDelete={() => setHooks((rows) => rows.filter((r) => r.id !== h.id))}
+                onSecretRotated={(secret) =>
+                  setRevealedSecret({ secret, name: h.name })
+                }
+              />
             ))}
           </ul>
         )}
@@ -322,6 +290,190 @@ export function IntegrationsShell({
         </a>
       </section>
     </div>
+  )
+}
+
+function WebhookListItem({
+  webhook,
+  workspaceSlug,
+  onDelete,
+  onSecretRotated,
+}: {
+  webhook: WebhookRow
+  workspaceSlug: string
+  onDelete: () => void
+  onSecretRotated: (newSecret: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [deliveries, setDeliveries] = useState<DeliveryRow[] | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  async function loadDeliveries() {
+    setLoading(true)
+    const res = await listDeliveries(workspaceSlug, webhook.id, 25)
+    setLoading(false)
+    if (res.ok) setDeliveries(res.deliveries)
+    else toast.error(res.error)
+  }
+
+  return (
+    <li className="bg-bg-3 border border-border-orage rounded-sm">
+      <div className="flex items-center gap-3 px-3 py-2.5">
+        <div className="flex-1 min-w-0">
+          <div className="text-[13px] text-text-primary truncate">
+            {webhook.name}
+          </div>
+          <div className="text-[10px] text-text-muted font-mono mt-0.5 truncate">
+            {webhook.targetUrl} ·{" "}
+            {webhook.eventTypes.length === 0
+              ? "all events"
+              : `${webhook.eventTypes.length} events`}{" "}
+            · last delivered {timeAgo(webhook.lastDeliveredAt)}
+          </div>
+        </div>
+        {webhook.consecutiveFailures > 0 && (
+          <span
+            className={cn(
+              "font-display text-[9px] tracking-[0.18em] uppercase px-1.5 py-0.5 rounded-sm",
+              webhook.consecutiveFailures >= 3
+                ? "bg-danger/15 text-danger"
+                : "bg-warning/15 text-warning",
+            )}
+          >
+            {webhook.consecutiveFailures} fail
+            {webhook.consecutiveFailures === 1 ? "" : "s"}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            const willOpen = !open
+            setOpen(willOpen)
+            if (willOpen && deliveries === null) void loadDeliveries()
+          }}
+          className="font-display text-[10px] tracking-[0.18em] uppercase px-2.5 py-1.5 rounded-sm border border-border-orage hover:border-gold-500/60 hover:text-gold-400 transition-colors"
+        >
+          {open ? "Close" : "Deliveries"}
+        </button>
+        <button
+          type="button"
+          onClick={async () => {
+            if (
+              !confirm(
+                `Rotate signing secret for "${webhook.name}"? Existing consumers will need the new secret to verify signatures.`,
+              )
+            )
+              return
+            const res = await rotateWebhookSecret(workspaceSlug, webhook.id)
+            if (res.ok) {
+              onSecretRotated(res.secret)
+              toast.success("Secret rotated")
+            } else {
+              toast.error(res.error ?? "Rotate failed")
+            }
+          }}
+          className="font-display text-[10px] tracking-[0.18em] uppercase px-2.5 py-1.5 rounded-sm border border-border-orage hover:border-gold-500/60 hover:text-gold-400 transition-colors"
+        >
+          Rotate
+        </button>
+        <button
+          type="button"
+          onClick={async () => {
+            if (!confirm(`Delete "${webhook.name}"?`)) return
+            const res = await deleteWebhook(workspaceSlug, webhook.id)
+            if (res.ok) {
+              onDelete()
+              toast.success("Webhook deleted")
+            } else {
+              toast.error(res.error ?? "Delete failed")
+            }
+          }}
+          className="font-display text-[10px] tracking-[0.18em] uppercase px-2.5 py-1.5 rounded-sm border border-border-orage hover:border-danger/40 hover:text-danger transition-colors"
+        >
+          Delete
+        </button>
+      </div>
+      {open && (
+        <div className="border-t border-border-orage px-3 py-3 bg-bg-2">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-display text-[10px] tracking-[0.18em] uppercase text-text-muted">
+              Recent deliveries (last 25)
+            </span>
+            <button
+              type="button"
+              onClick={() => void loadDeliveries()}
+              disabled={loading}
+              className="font-display text-[10px] tracking-[0.18em] uppercase px-2 py-1 rounded-sm border border-border-orage hover:border-gold-500/60 hover:text-gold-400 transition-colors"
+            >
+              {loading ? "Loading…" : "Refresh"}
+            </button>
+          </div>
+          {deliveries === null ? (
+            <p className="text-[11px] text-text-muted">Loading…</p>
+          ) : deliveries.length === 0 ? (
+            <p className="text-[11px] text-text-muted">No deliveries yet.</p>
+          ) : (
+            <ul className="space-y-1">
+              {deliveries.map((d) => (
+                <li
+                  key={d.id}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-sm bg-bg-3 border border-border-orage"
+                >
+                  <span
+                    className={cn(
+                      "font-display text-[9px] tracking-[0.18em] uppercase px-1.5 py-0.5 rounded-sm shrink-0",
+                      d.deliveredAt
+                        ? "bg-success/15 text-success"
+                        : d.attempts >= 5
+                          ? "bg-danger/15 text-danger"
+                          : "bg-warning/15 text-warning",
+                    )}
+                  >
+                    {d.deliveredAt
+                      ? d.lastStatus ?? 200
+                      : d.attempts >= 5
+                        ? "dead"
+                        : `try ${d.attempts}`}
+                  </span>
+                  <span className="font-mono text-[10px] text-text-secondary truncate flex-1">
+                    {d.eventType}
+                  </span>
+                  <span className="font-mono text-[10px] text-text-muted shrink-0">
+                    {timeAgo(d.lastAttemptAt ?? d.createdAt)}
+                  </span>
+                  {d.lastError && (
+                    <span
+                      className="font-mono text-[10px] text-danger truncate max-w-[160px]"
+                      title={d.lastError}
+                    >
+                      {d.lastError}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const res = await redeliverWebhookDelivery(
+                        workspaceSlug,
+                        d.id,
+                      )
+                      if (res.ok) {
+                        toast.success("Re-queued — fires within 1 minute")
+                        void loadDeliveries()
+                      } else {
+                        toast.error(res.error ?? "Redeliver failed")
+                      }
+                    }}
+                    className="font-display text-[9px] tracking-[0.18em] uppercase px-1.5 py-0.5 rounded-sm border border-border-orage hover:border-gold-500/60 hover:text-gold-400 transition-colors shrink-0"
+                  >
+                    Retry
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </li>
   )
 }
 

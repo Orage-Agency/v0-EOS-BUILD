@@ -8,12 +8,19 @@
  * consecutive_failures counter accumulates so the UI can warn when a
  * subscription has been broken for a while.
  *
- * Schedule via vercel.json: "*\/2 * * * *" (every 2 minutes) is plenty for
- * a fresh setup; bump to "* * * * *" (every minute) once volume warrants.
+ * Schedule:
+ *   • Primary driver: Supabase pg_cron job `orage-webhook-delivery`
+ *     pokes this endpoint every minute (see migration
+ *     20260505000001). Drives the documented backoff ladder
+ *     (30s → 2m → 8m → 30m → 2h) at minute granularity.
+ *   • Belt-and-suspenders: vercel.json schedules a daily run so any
+ *     deliveries that land in the queue while pg_cron is paused (e.g.
+ *     during a Supabase maintenance window) still drain within 24h.
  */
 import { NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { signPayload } from "@/lib/webhooks"
+import { WEBHOOK_PAYLOAD_VERSION } from "@/lib/webhooks-types"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -106,6 +113,7 @@ export async function GET(req: Request) {
     const body = JSON.stringify({
       id: r.id,
       event: r.event_type,
+      version: WEBHOOK_PAYLOAD_VERSION,
       workspace_id: r.workspace_id,
       created_at: nowIso,
       data: r.payload,
