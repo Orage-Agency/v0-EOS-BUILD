@@ -8,6 +8,7 @@ import { OrageToaster } from "@/components/shell/orage-toaster"
 import { BottomTabBar } from "@/components/shell/bottom-tab-bar"
 import { OnboardingGate } from "@/components/onboarding/onboarding-gate"
 import { SessionInit } from "@/components/shell/session-init"
+import { AiPrewarm } from "@/components/shell/ai-prewarm"
 import { WorkspaceRealtimeBridge } from "@/components/realtime/workspace-realtime-bridge"
 import { requireUser, getUserWorkspaces } from "@/lib/auth"
 
@@ -87,6 +88,7 @@ export default async function AppShellLayout({
         }}
       />
       <WorkspaceRealtimeBridge tenantId={user.workspaceId} />
+      <AiPrewarm />
     </div>
   )
 }

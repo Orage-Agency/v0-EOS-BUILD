@@ -719,6 +719,30 @@ export const useAIImplementerStore = create<State>((set, get) => ({
       let didWrite = false
       let textBlockId: string | null = null
 
+      // Coalesce text-delta frames into one render per frame (~16ms).
+      // Without this the model fires ~50 deltas/sec on long responses
+      // and each forces a full Zustand subscriber re-render. Slow
+      // devices hitch; fast devices waste CPU.
+      let rafScheduled = false
+      const flushTextRender = () => {
+        if (!textBlockId) return
+        patch((bs) =>
+          bs.map((b) =>
+            b.kind === "text" && b.id === textBlockId
+              ? { ...b, html: renderMarkdownLite(accumulatedText) }
+              : b,
+          ),
+        )
+      }
+      const scheduleTextRender = () => {
+        if (rafScheduled) return
+        rafScheduled = true
+        requestAnimationFrame(() => {
+          rafScheduled = false
+          flushTextRender()
+        })
+      }
+
       while (true) {
         const { value, done } = await reader.read()
         if (done) break
@@ -793,15 +817,13 @@ export const useAIImplementerStore = create<State>((set, get) => ({
                 { kind: "text", id: textBlockId!, html: renderMarkdownLite(accumulatedText) },
               ])
             } else {
-              patch((bs) =>
-                bs.map((b) =>
-                  b.kind === "text" && b.id === textBlockId
-                    ? { ...b, html: renderMarkdownLite(accumulatedText) }
-                    : b,
-                ),
-              )
+              // Coalesce subsequent token deltas into a single RAF tick.
+              scheduleTextRender()
             }
           } else if (frame.kind === "done") {
+            // Flush any pending text render so the final paint is the
+            // complete response, not whatever fell on the last RAF.
+            flushTextRender()
             didWrite = Boolean(frame.didWrite)
           } else if (frame.kind === "error") {
             throw new Error((frame.message as string) ?? "Stream error")

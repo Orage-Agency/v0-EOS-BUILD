@@ -61,17 +61,18 @@ async function checkAi(): Promise<CheckResult> {
   const t0 = Date.now()
   try {
     await withTimeout(3000, async () => {
-      // The Vercel AI Gateway responds to HEAD on its base URL when an
-      // API key is set. We don't validate the body — a 200/401 is enough
-      // to confirm DNS + TLS + routing.
-      const res = await fetch("https://gateway.ai.vercel.com/v1", {
-        method: "HEAD",
+      // Cheap reachability probe — the AI Gateway doesn't expose a
+      // health-check endpoint, so we just resolve DNS + open a TCP/TLS
+      // connection by hitting any path. A non-2xx (401, 404) is fine —
+      // we only fail on connection-level errors or 5xx (gateway-side
+      // outages). This keeps the probe spend-free.
+      const res = await fetch("https://gateway.ai.vercel.com/v1/models", {
+        method: "GET",
         headers: process.env.AI_GATEWAY_API_KEY
           ? { Authorization: `Bearer ${process.env.AI_GATEWAY_API_KEY}` }
           : undefined,
         signal: AbortSignal.timeout(2500),
       })
-      // Any sub-500 response is a healthy upstream.
       if (res.status >= 500) {
         throw new Error(`upstream HTTP ${res.status}`)
       }
@@ -88,7 +89,11 @@ async function checkAi(): Promise<CheckResult> {
 
 export async function GET() {
   const [db, ai] = await Promise.all([checkDb(), checkAi()])
-  const ok = db.ok && ai.ok
+  // DB is the only check that can block overall health — AI is
+  // informational. The app still serves auth, dashboards, scorecards
+  // etc. without the AI implementer, so we don't want a flaky gateway
+  // dependency to flip status pages red.
+  const ok = db.ok
   return NextResponse.json(
     {
       ok,
@@ -105,12 +110,11 @@ export async function GET() {
 }
 
 export async function HEAD() {
-  // Lightweight uptime ping — same checks, no body. Useful for tools
+  // Lightweight uptime ping — only DB is required. Useful for tools
   // (Better Stack) that just want a 200/non-200.
-  const [db, ai] = await Promise.all([checkDb(), checkAi()])
-  const ok = db.ok && ai.ok
+  const db = await checkDb()
   return new Response(null, {
-    status: ok ? 200 : 503,
+    status: db.ok ? 200 : 503,
     headers: { "Cache-Control": "no-store" },
   })
 }

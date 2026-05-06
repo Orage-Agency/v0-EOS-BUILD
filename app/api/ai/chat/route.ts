@@ -189,6 +189,22 @@ function logLatency(args: {
  * the final text without an SSE parser.
  */
 
+/**
+ * Cheap pre-warm probe — short-circuits before any work so the first
+ * real chat turn doesn't pay a cold TLS handshake. Mounted on the
+ * authenticated shell's <AiPrewarm /> island. HEAD only.
+ */
+export async function HEAD(req: Request) {
+  const url = new URL(req.url)
+  if (url.searchParams.get("ping") === "1") {
+    return new Response(null, {
+      status: 204,
+      headers: { "X-AI-Prewarm": "ok" },
+    })
+  }
+  return new Response(null, { status: 405 })
+}
+
 export async function POST(req: Request) {
   // Pull debug + URL params up here so the catch block at the bottom
   // can see whether the caller asked for raw error messages.
