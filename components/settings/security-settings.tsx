@@ -13,6 +13,7 @@ import {
 import { ChangeNameCard } from "./change-name-card"
 import { ChangePasswordCard } from "./change-password-card"
 import { TwoFactorCard } from "./two-factor-card"
+import { TrustedDevicesCard } from "./trusted-devices-card"
 import { cn } from "@/lib/utils"
 
 export function SecuritySettings() {
@@ -32,6 +33,8 @@ export function SecuritySettings() {
       <ChangePasswordCard />
 
       <TwoFactorCard />
+
+      <TrustedDevicesCard />
 
       <SCard title="AUTHENTICATION">
         <FieldRow

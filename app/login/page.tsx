@@ -9,7 +9,7 @@
 import { Suspense, useState } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { loginByEmail } from "@/app/actions/auth"
+import { loginByEmail, startOAuthSignIn } from "@/app/actions/auth"
 
 export default function LoginEntryPage() {
   return (
@@ -76,6 +76,14 @@ function LoginForm() {
             </div>
           </div>
           <p className="text-[12px] text-[#8a7860]">Sign in</p>
+        </div>
+
+        <SsoButtons setError={setError} />
+
+        <div className="my-5 flex items-center gap-3">
+          <div className="flex-1 h-px bg-[rgba(182,128,57,0.18)]" />
+          <span className="text-[10px] tracking-[0.18em] text-[#5a4f3e] font-mono uppercase">or</span>
+          <div className="flex-1 h-px bg-[rgba(182,128,57,0.18)]" />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -164,6 +172,65 @@ function LoginForm() {
           </Link>
         </div>
       </div>
+    </div>
+  )
+}
+
+// SSO buttons render only when the project has the corresponding
+// provider enabled in Supabase Auth. We surface that via two public env
+// flags so the buttons don't render dead and confuse customers — flip
+// them to "true" once Google/Microsoft are configured in the dashboard.
+function SsoButtons({
+  setError,
+}: {
+  setError: (s: string | null) => void
+}) {
+  const googleOn =
+    process.env.NEXT_PUBLIC_AUTH_GOOGLE_ENABLED === "true"
+  const microsoftOn =
+    process.env.NEXT_PUBLIC_AUTH_MICROSOFT_ENABLED === "true"
+  if (!googleOn && !microsoftOn) return null
+
+  async function go(provider: "google" | "azure") {
+    setError(null)
+    const result = await startOAuthSignIn(provider)
+    if (result && !result.ok) setError(result.error)
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {googleOn && (
+        <button
+          type="button"
+          data-testid="login-google"
+          onClick={() => void go("google")}
+          className="w-full py-2.5 rounded-[2px] bg-white text-black font-semibold text-[12px] flex items-center justify-center gap-2 hover:bg-gray-100 transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 48 48" aria-hidden>
+            <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.6-6 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.4-.4-3.5z" />
+            <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16 19 13 24 13c3.1 0 5.8 1.1 8 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.4 6.3 14.7z" />
+            <path fill="#4CAF50" d="M24 44c5.2 0 10-2 13.6-5.3l-6.3-5.3c-1.9 1.3-4.5 2.1-7.3 2.1-5.3 0-9.7-3.4-11.3-8H6.2v5C9.6 39.6 16.3 44 24 44z" />
+            <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.7 2-2.1 3.7-3.9 5l6.3 5.3C40.8 35.5 44 30.2 44 24c0-1.2-.1-2.4-.4-3.5z" />
+          </svg>
+          Continue with Google
+        </button>
+      )}
+      {microsoftOn && (
+        <button
+          type="button"
+          data-testid="login-microsoft"
+          onClick={() => void go("azure")}
+          className="w-full py-2.5 rounded-[2px] bg-[#2f2f2f] text-white font-semibold text-[12px] flex items-center justify-center gap-2 hover:bg-[#3a3a3a] transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 23 23" aria-hidden>
+            <rect x="1" y="1" width="10" height="10" fill="#f25022" />
+            <rect x="12" y="1" width="10" height="10" fill="#7fba00" />
+            <rect x="1" y="12" width="10" height="10" fill="#00a4ef" />
+            <rect x="12" y="12" width="10" height="10" fill="#ffb900" />
+          </svg>
+          Continue with Microsoft
+        </button>
+      )}
     </div>
   )
 }

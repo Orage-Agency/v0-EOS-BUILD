@@ -1051,6 +1051,42 @@ export async function verifyMfaForLogin(
   redirect("/signup")
 }
 
+// ─── PUBLIC OAUTH SIGN-IN ───
+//
+// Kick off a Google or Microsoft (Azure AD) OAuth flow at the workspace
+// level. The Supabase project must have these providers enabled in the
+// Auth dashboard (the actions surface NEXT_PUBLIC_AUTH_GOOGLE_ENABLED /
+// _MICROSOFT_ENABLED to the UI so we can hide the buttons cleanly when
+// not configured).
+//
+// The post-redirect handler at /auth/callback sets the session cookies,
+// upserts the profile, and routes the user to their first active
+// workspace (same path the password flow uses).
+
+export async function startOAuthSignIn(
+  provider: "google" | "azure",
+): Promise<{ ok: false; error: string } | undefined> {
+  const supabase = await createClient()
+  const redirectTo = `${appUrl()}/auth/callback`
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider,
+    options: { redirectTo },
+  })
+  if (error) {
+    return {
+      ok: false,
+      error:
+        error.message.includes("not enabled") || error.message.includes("provider")
+          ? `${provider === "google" ? "Google" : "Microsoft"} sign-in isn't configured for this project yet.`
+          : error.message,
+    }
+  }
+  if (data?.url) {
+    redirect(data.url)
+  }
+  return { ok: false, error: "OAuth redirect failed" }
+}
+
 // ─── TRUSTED DEVICES (MFA "remember device") ───
 
 export async function listTrustedDevicesForCurrentUser() {

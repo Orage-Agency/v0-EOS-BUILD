@@ -6,6 +6,7 @@ import { checkAndRecordAIRequest } from "@/lib/ai/rate-limit"
 import { summarizeToolOutput } from "@/lib/ai/summarize-tool-output"
 import { manualDigest } from "@/lib/help-manual"
 import { getAISettings } from "@/app/actions/ai-settings"
+import { appendMessage, ensureThread, loadThreadMessages } from "@/lib/ai/threads"
 import * as Sentry from "@sentry/nextjs"
 
 export const runtime = "nodejs"
@@ -189,13 +190,20 @@ function logLatency(args: {
  */
 
 export async function POST(req: Request) {
+  // Pull debug + URL params up here so the catch block at the bottom
+  // can see whether the caller asked for raw error messages.
+  const url = new URL(req.url)
+  const wantsDebugFlag = url.searchParams.get("debug") === "1"
   try {
-    const url = new URL(req.url)
     const wantsStream = url.searchParams.get("stream") !== "false"
-    const { message, history, workspaceSlug } = (await req.json()) as {
+    // ?debug=1 surfaces raw model/provider error strings instead of
+    // sanitized hints. Gated server-side to admins only — see below.
+    const wantsDebug = wantsDebugFlag
+    const { message, history, workspaceSlug, threadId } = (await req.json()) as {
       message: string
       history?: { role: "user" | "assistant"; content: string }[]
       workspaceSlug?: string
+      threadId?: string | null
     }
     if (!message || typeof message !== "string") {
       return Response.json({ error: "Missing message" }, { status: 400 })
@@ -205,6 +213,14 @@ export async function POST(req: Request) {
     }
 
     const me = await requireUser(workspaceSlug)
+    // Only admins can opt into debug mode — protects regular users from
+    // seeing internal error messages, but lets the founder triage live.
+    const debugAllowed =
+      wantsDebug &&
+      (me.role === "master" ||
+        me.role === "owner" ||
+        me.role === "founder" ||
+        me.role === "admin")
 
     const limit = await checkAndRecordAIRequest({
       tenantId: me.workspaceId,
@@ -227,10 +243,51 @@ export async function POST(req: Request) {
     }
 
     const tools = buildTools({ tenantId: me.workspaceId, userId: me.id })
+
+    // Resolve / create the durable thread for this user, then load any
+    // prior messages so the model has continuity across sessions. The
+    // client-supplied `history` is treated as a hint when threadId is
+    // missing, but the DB is canonical when present.
+    let activeThreadId: string | null = null
+    let prior: { role: "user" | "assistant"; content: string }[] = []
+    try {
+      activeThreadId = await ensureThread(
+        me.workspaceId,
+        me.id,
+        threadId ?? null,
+        message,
+      )
+      const stored = await loadThreadMessages(
+        activeThreadId,
+        me.workspaceId,
+        me.id,
+        50,
+      )
+      prior = stored
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }))
+    } catch (err) {
+      Sentry.captureException(err, { tags: { route: "ai.chat", phase: "thread" } })
+      // Fall back to client-supplied history rather than failing the turn.
+      prior = (history ?? []).map((m) => ({ role: m.role, content: m.content }))
+    }
+
     const messages = [
-      ...(history ?? []).map((m) => ({ role: m.role, content: m.content })),
+      ...(prior.length > 0 ? prior : (history ?? []).map((m) => ({ role: m.role, content: m.content }))),
       { role: "user" as const, content: message },
     ]
+
+    // Best-effort persist the user turn now so it shows up in the
+    // sidebar even if the model errors out below.
+    if (activeThreadId) {
+      void appendMessage({
+        threadId: activeThreadId,
+        workspaceId: me.workspaceId,
+        userId: me.id,
+        role: "user",
+        content: message,
+      })
+    }
 
     // Read the per-workspace model + voice/tone. Fail-soft: if the read
     // throws, fall back to the defaults so a transient DB blip never
@@ -252,8 +309,19 @@ export async function POST(req: Request) {
       const toolCalls = collectToolCalls(result.steps ?? [])
       const didWrite = toolCalls.some((c) => WRITE_TOOLS.has(c.name))
       if (didWrite) revalidateAll(workspaceSlug)
+      // Persist the assistant turn so it round-trips on the next load.
+      if (activeThreadId) {
+        void appendMessage({
+          threadId: activeThreadId,
+          workspaceId: me.workspaceId,
+          userId: me.id,
+          role: "assistant",
+          content: result.text,
+          toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        })
+      }
       return Response.json(
-        { text: result.text, toolCalls, didWrite },
+        { text: result.text, toolCalls, didWrite, threadId: activeThreadId },
         { headers: quotaHeaders },
       )
     }
@@ -340,7 +408,19 @@ export async function POST(req: Request) {
               firstTokenMs: firstTokenAt ? firstTokenAt - tStart : null,
               mode: "stream",
             })
-            send({ kind: "done", didWrite })
+            // Persist the assistant text so the next load includes it.
+            if (activeThreadId) {
+              const finalText = await result.text
+              void appendMessage({
+                threadId: activeThreadId,
+                workspaceId: me.workspaceId,
+                userId: me.id,
+                role: "assistant",
+                content: finalText,
+                toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+              })
+            }
+            send({ kind: "done", didWrite, threadId: activeThreadId })
           }
         } catch (err) {
           // Aborts surface as either DOMException AbortError or the AI
@@ -394,6 +474,11 @@ export async function POST(req: Request) {
     } else if (lower.includes("model") && (lower.includes("not found") || lower.includes("does not exist"))) {
       hint = "Configured model isn't available to this account. Update app/api/ai/chat/route.ts model id."
     }
-    return Response.json({ error: raw, hint }, { status: 500 })
+    // Without ?debug=1 we strip the raw vendor message to avoid leaking
+    // internal details to non-admin users. The hint is always safe.
+    const userMessage = wantsDebugFlag
+      ? raw
+      : "The implementer hit an unexpected error. Try again, or rephrase your request."
+    return Response.json({ error: userMessage, hint }, { status: 500 })
   }
 }
