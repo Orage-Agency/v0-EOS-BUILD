@@ -39,6 +39,7 @@ export function DangerZone() {
           description="Selected member becomes the primary Founder · you become Admin. Cannot be undone without their consent."
           action={
             <DangerButton
+              data-testid="danger-transfer-ownership"
               onClick={() => toast("TRANSFER · 2FA REQUIRED")}
             >
               Transfer
@@ -51,7 +52,14 @@ export function DangerZone() {
         <DangerRow
           title="Permanently delete this tenant"
           description="All data destroyed after 30-day grace period · no recovery possible after grace ends. Type the workspace name to confirm."
-          action={<DangerButton onClick={openDelete}>Delete</DangerButton>}
+          action={
+            <DangerButton
+              data-testid="danger-delete-workspace"
+              onClick={openDelete}
+            >
+              Delete
+            </DangerButton>
+          }
         />
       </SCard>
 
