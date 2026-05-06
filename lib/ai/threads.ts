@@ -105,6 +105,8 @@ export async function appendMessage(args: {
   role: "user" | "assistant" | "system"
   content: string
   toolCalls?: unknown
+  tokensIn?: number | null
+  tokensOut?: number | null
 }): Promise<void> {
   const sb = supabaseAdmin()
   await sb.from("ai_chat_messages").insert({
@@ -114,5 +116,7 @@ export async function appendMessage(args: {
     role: args.role,
     content: args.content,
     tool_calls: args.toolCalls ?? null,
+    tokens_in: args.tokensIn ?? null,
+    tokens_out: args.tokensOut ?? null,
   })
 }

@@ -325,6 +325,19 @@ export async function POST(req: Request) {
       const toolCalls = collectToolCalls(result.steps ?? [])
       const didWrite = toolCalls.some((c) => WRITE_TOOLS.has(c.name))
       if (didWrite) revalidateAll(workspaceSlug)
+      // Token telemetry — usage is { promptTokens, completionTokens,
+      // totalTokens } across providers via the AI SDK. We snapshot
+      // both so a future spend dashboard can graph by model.
+      const usage = (await result.usage) as
+        | {
+            inputTokens?: number
+            outputTokens?: number
+            promptTokens?: number
+            completionTokens?: number
+          }
+        | undefined
+      const tokensIn = usage?.inputTokens ?? usage?.promptTokens ?? null
+      const tokensOut = usage?.outputTokens ?? usage?.completionTokens ?? null
       // Persist the assistant turn so it round-trips on the next load.
       if (activeThreadId) {
         void appendMessage({
@@ -334,6 +347,8 @@ export async function POST(req: Request) {
           role: "assistant",
           content: result.text,
           toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+          tokensIn,
+          tokensOut,
         })
       }
       return Response.json(
@@ -424,9 +439,22 @@ export async function POST(req: Request) {
               firstTokenMs: firstTokenAt ? firstTokenAt - tStart : null,
               mode: "stream",
             })
-            // Persist the assistant text so the next load includes it.
+            // Persist the assistant text so the next load includes it,
+            // along with token usage for spend telemetry.
             if (activeThreadId) {
               const finalText = await result.text
+              const usage = (await result.usage) as
+                | {
+                    inputTokens?: number
+                    outputTokens?: number
+                    promptTokens?: number
+                    completionTokens?: number
+                  }
+                | undefined
+              const tokensIn =
+                usage?.inputTokens ?? usage?.promptTokens ?? null
+              const tokensOut =
+                usage?.outputTokens ?? usage?.completionTokens ?? null
               void appendMessage({
                 threadId: activeThreadId,
                 workspaceId: me.workspaceId,
@@ -434,6 +462,8 @@ export async function POST(req: Request) {
                 role: "assistant",
                 content: finalText,
                 toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+                tokensIn,
+                tokensOut,
               })
             }
             send({ kind: "done", didWrite, threadId: activeThreadId })
