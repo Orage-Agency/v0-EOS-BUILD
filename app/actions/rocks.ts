@@ -12,6 +12,7 @@ import { requirePermission } from "@/lib/server/permissions"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { logAudit } from "@/lib/audit"
 import { notify } from "@/lib/notifications-server"
+import { enqueueWebhookEvent } from "@/lib/webhooks"
 import { UNASSIGNED_OWNER_ID, type MockRock, type RockStatus } from "@/lib/mock-data"
 import type { DbRock } from "@/lib/db-types"
 import { logError } from "@/lib/log"
@@ -561,6 +562,12 @@ export async function toggleMilestone(
       entityType: "rock_milestone",
       entityId: milestoneId,
       metadata: { rockId: ms.rock_id },
+    })
+    void enqueueWebhookEvent(user.workspaceId, "milestone.toggled", {
+      milestone_id: milestoneId,
+      rock_id: ms.rock_id,
+      done,
+      toggled_by: user.id,
     })
     revalidateRockRoutes(workspaceSlug)
     return { ok: true }

@@ -7,6 +7,7 @@ import "server-only"
 
 import { requireUser } from "@/lib/auth"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { enqueueWebhookEvent } from "@/lib/webhooks"
 import { logError } from "@/lib/log"
 
 // Mirror the client-side types to avoid cross-boundary imports from "use client" module
@@ -192,6 +193,7 @@ export async function upsertScorecardEntry(
   value: number | null,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
+    const user = await requireUser(workspaceSlug)
     const idMap = await getMetricIdMap(workspaceSlug)
     const dbId = idMap[clientMetricId]
     if (!dbId) return { ok: false, error: `Metric ${clientMetricId} not seeded in DB` }
@@ -203,6 +205,21 @@ export async function upsertScorecardEntry(
     )
 
     if (error) return { ok: false, error: error.message }
+
+    // Fire the public webhook so Slack / n8n / Zapier can react to a
+    // weekly scorecard post (e.g. ping the channel when MRR misses
+    // target). Skip on null values — those are explicit "no data this
+    // week" entries that consumers shouldn't react to.
+    if (value !== null) {
+      void enqueueWebhookEvent(user.workspaceId, "scorecard.metric.posted", {
+        metric_id: dbId,
+        client_metric_id: clientMetricId,
+        week,
+        value,
+        posted_by: user.id,
+      })
+    }
+
     return { ok: true }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Unknown error" }
