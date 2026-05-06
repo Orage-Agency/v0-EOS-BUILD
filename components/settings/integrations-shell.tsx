@@ -362,6 +362,10 @@ function WebhookListItem({
             {webhook.eventTypes.length === 0
               ? "all events"
               : `${webhook.eventTypes.length} events`}{" "}
+            · {webhook.totalDeliveries} sent
+            {webhook.failedDeliveries > 0
+              ? ` · ${webhook.failedDeliveries} dead`
+              : ""}{" "}
             · last delivered {timeAgo(webhook.lastDeliveredAt)}
           </div>
         </div>
@@ -615,6 +619,8 @@ function WebhookCreateForm({
               lastDeliveredAt: null,
               lastDeliveryStatus: null,
               consecutiveFailures: 0,
+              totalDeliveries: 0,
+              failedDeliveries: 0,
             },
             secret: res.secret,
           })

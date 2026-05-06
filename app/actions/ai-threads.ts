@@ -103,6 +103,34 @@ export async function loadThread(
   }
 }
 
+/**
+ * Rename a saved thread. Trim + cap to 200 chars so the sidebar list
+ * doesn't break layout if a user pastes a wall of text.
+ */
+export async function renameThread(
+  workspaceSlug: string,
+  threadId: string,
+  title: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const me = await requireUser(workspaceSlug)
+    const trimmed = title.trim().slice(0, 200)
+    if (!trimmed) return { ok: false, error: "Title cannot be empty" }
+    const sb = supabaseAdmin()
+    const { error } = await sb
+      .from("ai_chat_threads")
+      .update({ title: trimmed })
+      .eq("id", threadId)
+      .eq("workspace_id", me.workspaceId)
+      .eq("user_id", me.id)
+    if (error) return { ok: false, error: error.message }
+    revalidatePath(`/${workspaceSlug}/ai`)
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown" }
+  }
+}
+
 export async function deleteThread(
   workspaceSlug: string,
   threadId: string,

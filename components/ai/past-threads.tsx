@@ -7,6 +7,7 @@ import {
   deleteThread,
   listMyThreads,
   loadThread,
+  renameThread,
   type ThreadListItem,
 } from "@/app/actions/ai-threads"
 import { useAIImplementerStore } from "@/lib/ai-implementer-store"
@@ -96,6 +97,23 @@ export function PastThreads() {
     toast.success("Resumed — continue where you left off")
   }
 
+  async function handleRename(id: string, currentTitle: string) {
+    const next = window.prompt("Rename thread", currentTitle)
+    if (next === null) return
+    const trimmed = next.trim()
+    if (!trimmed || trimmed === currentTitle) return
+    const res = await renameThread(workspaceSlug, id, trimmed)
+    if (!res.ok) {
+      toast.error(res.error ?? "Rename failed")
+      return
+    }
+    setThreads((cur) =>
+      (cur ?? []).map((t) => (t.id === id ? { ...t, title: trimmed } : t)),
+    )
+    if (active?.id === id) setActive({ ...active, title: trimmed })
+    toast.success("Renamed")
+  }
+
   async function handleDelete(id: string) {
     if (!confirm("Delete this thread? The conversation can't be recovered.")) return
     const res = await deleteThread(workspaceSlug, id)
@@ -151,6 +169,15 @@ export function PastThreads() {
                     <span className="font-mono text-[9px] text-text-dim shrink-0">
                       {relTime(t.updatedAt)}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => void handleRename(t.id, t.title)}
+                      aria-label={`Rename ${t.title}`}
+                      className="opacity-0 group-hover:opacity-100 text-text-dim hover:text-gold-400 text-xs font-mono px-1 transition-opacity"
+                      title="Rename"
+                    >
+                      ✎
+                    </button>
                     <button
                       type="button"
                       onClick={() => void handleDelete(t.id)}

