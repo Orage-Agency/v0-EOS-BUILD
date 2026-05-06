@@ -161,9 +161,18 @@ export default async function ApiDocsPage({
         </h2>
         <p className="text-[13px] text-text-secondary leading-relaxed">
           Subscribe to <code className="font-mono">task.created</code>,{" "}
-          <code className="font-mono">rock.updated</code>, etc. and we'll POST
-          a JSON envelope to your URL within ~2 minutes of the change. Each
-          delivery is signed with HMAC-SHA-256 in the{" "}
+          <code className="font-mono">rock.updated</code>,{" "}
+          <code className="font-mono">l10.concluded</code>,{" "}
+          <code className="font-mono">scorecard.metric.posted</code>,{" "}
+          <code className="font-mono">milestone.toggled</code>, and others —{" "}
+          <a
+            href="/api/v1/events"
+            className="text-gold-400 underline hover:text-gold-300"
+          >
+            full catalog at /api/v1/events
+          </a>
+          . We POST a JSON envelope to your URL within 60 seconds of the
+          change. Each delivery is signed with HMAC-SHA-256 in the{" "}
           <code className="font-mono">X-Orage-Signature</code> header.
         </p>
         <p className="text-[13px] text-text-secondary leading-relaxed">
