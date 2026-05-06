@@ -96,6 +96,11 @@ export default async function AppShellLayout({
         workspaceSlug={workspace}
         onboardingCompleted={user.onboardingCompleted}
         workspaceAlreadySetup={workspaceAlreadySetup}
+        isWorkspaceCreator={
+          user.role === "founder" ||
+          user.role === "owner" ||
+          user.role === "master"
+        }
       />
       <SessionInit
         user={{

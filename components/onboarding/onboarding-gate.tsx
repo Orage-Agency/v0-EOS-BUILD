@@ -8,21 +8,27 @@ import { hydrateOnboardingDraft, useOnboardingStore } from "@/lib/onboarding-sto
 /**
  * Auth-aware gate for the onboarding wizard.
  *
- * Two suppression flags drive whether the wizard mounts:
+ * Three suppression flags drive whether the wizard mounts. Any one of
+ * them being true keeps the wizard closed:
  *
  *   • onboardingCompleted — per-USER flag (profiles.onboarding_completed_at).
  *     Set when this specific user finished or skipped the wizard.
  *
  *   • workspaceAlreadySetup — per-WORKSPACE flag derived from
- *     workspaces.vto_data. True when ANYONE has filled out the V/TO
- *     (purpose, niche, ten-year target, core values, or rocks) for this
- *     workspace. This is the bug fix: an invited team member who joins
- *     a workspace that's already configured should NEVER see the founder's
- *     setup wizard, regardless of their personal onboarding flag.
+ *     workspaces.vto_data. True when ANYONE has filled out the V/TO.
+ *     Prevents a founder skipping the wizard from inadvertently
+ *     showing it to teammates later.
  *
- * Either flag being true suppresses the wizard. The wizard only renders
- * when BOTH are false — i.e., the user is the first one in a fresh
- * workspace, which is exactly the founder's first-login moment.
+ *   • !isWorkspaceCreator — per-MEMBERSHIP flag. Only founder / owner /
+ *     master roles see the V/TO setup flow. Invited members
+ *     (admin / leader / member / viewer) NEVER see it, full stop.
+ *     This is the load-bearing one: the wizard's whole job is to
+ *     capture the workspace's vision; non-creators have nothing to
+ *     contribute there.
+ *
+ * The wizard renders only when ALL three say "fresh" — which is exactly
+ * the moment a brand-new founder logs in for the first time on a brand-
+ * new workspace.
  *
  * The wizard's store is `persist`-backed, so we wait one tick to let
  * zustand hydrate from localStorage before deciding what to render —
@@ -32,10 +38,12 @@ export function OnboardingGate({
   workspaceSlug,
   onboardingCompleted,
   workspaceAlreadySetup,
+  isWorkspaceCreator,
 }: {
   workspaceSlug: string
   onboardingCompleted: boolean
   workspaceAlreadySetup: boolean
+  isWorkspaceCreator: boolean
 }) {
   const [hydrated, setHydrated] = useState(false)
   const setComplete = useOnboardingStore((s) => s.finish)
@@ -43,8 +51,9 @@ export function OnboardingGate({
   const localComplete = useOnboardingStore((s) => s.complete)
   const dismissed = useOnboardingStore((s) => s.dismissed)
 
-  // Either flag wins → wizard stays closed for this user.
-  const suppressed = onboardingCompleted || workspaceAlreadySetup
+  // Any one wins → wizard stays closed for this user.
+  const suppressed =
+    onboardingCompleted || workspaceAlreadySetup || !isWorkspaceCreator
 
   useEffect(() => {
     setHydrated(true)
