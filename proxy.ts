@@ -5,14 +5,15 @@
 // We intentionally do NOT use @supabase/ssr's auth.getUser() in this
 // middleware. In production v0.10.2 + ES256 JWTs, getUser() returned
 // null even with a valid cookie — likely a JWKS fetch quirk under the
-// Edge runtime. Instead we decode the cookie ourselves, verify expiry,
-// and trust the JWT's `sub`. The downstream layout/page still calls
-// requireUser() which uses the SDK on Node runtime where it works.
+// Edge runtime. Instead we read the cookie ourselves and verify the JWT
+// signature against the project JWKS via lib/auth/jwt.ts. The downstream
+// layout/page still calls requireUser() which uses the same verifier.
 // ═══════════════════════════════════════════════════════════
 
 import { createServerClient } from "@supabase/ssr"
 import { createClient as createServiceClient } from "@supabase/supabase-js"
 import { NextResponse, type NextRequest } from "next/server"
+import { verifyAccessToken } from "@/lib/auth/jwt"
 
 const PUBLIC_PATHS = [
   "/login",
@@ -61,19 +62,6 @@ function readSessionFromCookies(request: NextRequest): SessionShape | null {
   }
 }
 
-function decodeJwt(token: string): { sub?: string; exp?: number } | null {
-  const parts = token.split(".")
-  if (parts.length !== 3) return null
-  try {
-    // base64url → base64
-    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/")
-    const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4)
-    return JSON.parse(atob(padded))
-  } catch {
-    return null
-  }
-}
-
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })
 
@@ -114,28 +102,21 @@ export async function proxy(request: NextRequest) {
     { auth: { persistSession: false, autoRefreshToken: false } },
   )
 
-  // Manual session resolution — bypasses auth.getUser() to avoid the Edge
-  // runtime / JWKS issue mentioned at the top of this file.
+  // Verified session resolution — read the cookie, then verify the JWT
+  // signature against the project JWKS (or HS256 secret) before trusting
+  // any claim. Without verification a forged cookie with any `sub` would
+  // pass admission, since the downstream lookups go through service role.
   const session = readSessionFromCookies(request)
   let userId: string | null = null
-  let debugReason = "no-session"
   if (session?.access_token) {
-    const claims = decodeJwt(session.access_token)
+    const claims = await verifyAccessToken(session.access_token)
     const now = Math.floor(Date.now() / 1000)
-    if (!claims?.sub) debugReason = "no-sub"
-    else if (claims.exp && claims.exp <= now) debugReason = "expired"
-    else {
+    if (claims?.sub && (!claims.exp || claims.exp > now)) {
       userId = claims.sub
-      debugReason = "ok"
     }
-  } else if (session) {
-    debugReason = "no-token"
   }
 
   const path = request.nextUrl.pathname
-  // Mark debugReason consumed so eslint doesn't flag it now that the
-  // header dump has been removed.
-  void debugReason
 
   // Allow root sign-up + auth pages without session
   if (PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + "/"))) {

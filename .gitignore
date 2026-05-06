@@ -16,3 +16,14 @@ tsconfig.tsbuildinfo
 supabase/.temp/
 .cookie-value.tmp
 scripts/.smoke-screenshots/
+.env.namecheap.local
+
+# Local-only DNS / one-shot scripts (Namecheap dance, deploy probes)
+scripts/.namecheap-*/
+scripts/.flow-check-profile/
+scripts/namecheap-*.mjs
+scripts/extract-chrome-creds.py
+scripts/final-check.mjs
+scripts/verify-dns.mjs
+.env.scout-resend
+DEPLOYMENT.md

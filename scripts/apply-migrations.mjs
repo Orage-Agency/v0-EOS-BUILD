@@ -1,11 +1,11 @@
 // One-shot migration runner. Reads POSTGRES_URL_NON_POOLING (or POSTGRES_URL)
-// from .env.production and applies the four SQL migrations under
-// supabase/migrations in order, idempotently. Tracks state in a
-// `_app_migrations` table so re-running is a no-op.
+// from .env.production and applies every *.sql file under
+// supabase/migrations in lexicographic order, idempotently. Tracks state
+// in a `_app_migrations` table so re-running is a no-op.
 //
 // Usage: node scripts/apply-migrations.mjs
 
-import { readFile } from "node:fs/promises"
+import { readdir, readFile } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
 import pg from "pg"
@@ -23,14 +23,11 @@ async function loadEnv() {
   return env
 }
 
-const FILES_TO_APPLY = [
-  "20260502000000_ai_rate_limit.sql",
-  "20260502000001_notifications.sql",
-  "20260502000002_realtime.sql",
-  "20260502000003_workspace_sso.sql",
-  "20260503000000_workspaces_vto_data.sql",
-  "20260503000001_repoint_tenant_fks.sql",
-]
+async function discoverMigrations() {
+  const dir = join(ROOT, "supabase/migrations")
+  const entries = await readdir(dir)
+  return entries.filter((f) => f.endsWith(".sql")).sort()
+}
 
 async function main() {
   const env = await loadEnv()
@@ -58,9 +55,10 @@ async function main() {
 
   const { rows: applied } = await client.query("SELECT filename FROM _app_migrations")
   const done = new Set(applied.map((r) => r.filename))
+  const filesToApply = await discoverMigrations()
 
   let ranCount = 0
-  for (const file of FILES_TO_APPLY) {
+  for (const file of filesToApply) {
     if (done.has(file)) {
       console.log(`-- SKIP ${file} (already applied)`)
       continue

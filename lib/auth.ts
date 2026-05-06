@@ -7,16 +7,14 @@ import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { cache } from "react"
 import { cookies } from "next/headers"
+import { verifyAccessToken } from "@/lib/auth/jwt"
 
 /**
- * Manual session resolver — bypasses supabase.auth.getUser() because
- * @supabase/ssr 0.10.2 + ES256 JWTs return null even with a valid auth-
- * token cookie. We read the cookie ourselves, decode the JWT payload,
- * and trust the `sub` claim (after expiry check). The downstream
- * Supabase queries use the service-role admin client, not auth, so
- * RLS+JWT verification doesn't matter for our reads.
+ * Pull the Supabase access-token JWT out of the cookie jar, regardless of
+ * whether @supabase/ssr stored it whole or chunked into `.0`/`.1`. The
+ * caller is expected to verify the JWT before trusting any claim.
  */
-export async function getAuthUserIdFromCookie(): Promise<string | null> {
+async function readAccessTokenFromCookies(): Promise<string | null> {
   try {
     const store = await cookies()
     const all = store.getAll()
@@ -30,21 +28,29 @@ export async function getAuthUserIdFromCookie(): Promise<string | null> {
       raw = Buffer.from(raw.slice(7), "base64").toString("utf8")
     }
     const session = JSON.parse(raw) as { access_token?: string }
-    if (!session.access_token) return null
-    const parts = session.access_token.split(".")
-    if (parts.length !== 3) return null
-    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/")
-    const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4)
-    const claims = JSON.parse(Buffer.from(padded, "base64").toString("utf8")) as {
-      sub?: string
-      exp?: number
-    }
-    if (!claims.sub) return null
-    if (claims.exp && claims.exp <= Math.floor(Date.now() / 1000)) return null
-    return claims.sub
+    return session.access_token ?? null
   } catch {
     return null
   }
+}
+
+/**
+ * Authoritative session resolver — verifies the JWT signature against the
+ * project JWKS (ES256) or shared secret (HS256) before trusting any claim.
+ *
+ * Background: @supabase/ssr 0.10.2 + ES256 JWTs returns null from
+ * auth.getUser() in both Edge and Node runtimes. The codebase used to
+ * decode the JWT body without checking the signature, which was a forgery
+ * risk because the proxy then service-roles its way to admit by `sub`.
+ * verifyAccessToken closes that hole.
+ */
+export async function getAuthUserIdFromCookie(): Promise<string | null> {
+  const token = await readAccessTokenFromCookies()
+  if (!token) return null
+  const claims = await verifyAccessToken(token)
+  if (!claims) return null
+  if (claims.exp && claims.exp <= Math.floor(Date.now() / 1000)) return null
+  return claims.sub
 }
 
 /**

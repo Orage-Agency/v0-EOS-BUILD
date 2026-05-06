@@ -343,41 +343,43 @@ export async function login(workspaceSlug: string, email: string, password: stri
 
   const supabase = await createClient()
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password })
+  const { data: signInData, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  })
 
   if (error) return { error: "Invalid email or password" }
+  // signInWithPassword returns the user directly — no need to round-trip
+  // through auth.getUser(), which is broken in this codebase anyway.
+  const userId = signInData.user?.id
+  if (!userId) return { error: "Authentication failed" }
 
-  // Verify user has access to this workspace
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return { error: "Authentication failed" }
-
-  const { data: profile } = await supabase
+  const admin = supabaseAdmin()
+  const { data: profile } = await admin
     .from("profiles")
     .select("is_master")
-    .eq("id", user.id)
-    .single()
+    .eq("id", userId)
+    .maybeSingle()
 
   if (!profile?.is_master) {
-    const { data: ws } = await supabase
+    const { data: ws } = await admin
       .from("workspaces")
       .select("id")
       .eq("slug", workspaceSlug)
-      .single()
+      .maybeSingle()
 
     if (!ws) {
       await supabase.auth.signOut()
       return { error: "Workspace not found" }
     }
 
-    const { data: membership } = await supabase
+    const { data: membership } = await admin
       .from("workspace_memberships")
       .select("id")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .eq("workspace_id", ws.id)
       .eq("status", "active")
-      .single()
+      .maybeSingle()
 
     if (!membership) {
       await supabase.auth.signOut()
@@ -685,9 +687,24 @@ export async function acceptInvite(token: string, password: string, fullName?: s
   //      set a password on the existing user.
   //   2) Someone copy-pasted the /accept-invite?token=… link without going
   //      through email → no session yet. We sign up normally.
-  const {
-    data: { user: existingSessionUser },
-  } = await supabase.auth.getUser()
+  // Use the verified-cookie identity (lib/auth.ts) to detect path 1 —
+  // supabase.auth.getUser() returns null in this codebase even with a
+  // valid session cookie (ES256 + @supabase/ssr quirk).
+  const sessionUserId = await getAuthUserIdFromCookie()
+  let existingSessionUser: { id: string; email: string | null } | null = null
+  if (sessionUserId) {
+    const { data: prof } = await admin
+      .from("profiles")
+      .select("id, email")
+      .eq("id", sessionUserId)
+      .maybeSingle()
+    if (prof) {
+      existingSessionUser = {
+        id: prof.id as string,
+        email: (prof.email as string | null) ?? null,
+      }
+    }
+  }
 
   let userId: string
   let createdNewUser = false
@@ -859,12 +876,12 @@ export async function changePassword(newPassword: string) {
     return { error: "Password must be at least 8 characters" }
   }
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return { error: "Not signed in" }
+  // Manual verified decode — supabase.auth.getUser() returns null in
+  // this codebase (ES256 + @supabase/ssr quirk).
+  const userId = await getAuthUserIdFromCookie()
+  if (!userId) return { error: "Not signed in" }
 
+  const supabase = await createClient()
   const { error } = await supabase.auth.updateUser({ password: newPassword })
   if (error) return { error: error.message }
   return { success: true }

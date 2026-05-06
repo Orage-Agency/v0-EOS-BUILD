@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 
 import { OnboardingWizard } from "./onboarding-wizard"
-import { useOnboardingStore } from "@/lib/onboarding-store"
+import { hydrateOnboardingDraft, useOnboardingStore } from "@/lib/onboarding-store"
 
 /**
  * Auth-aware gate for the onboarding wizard.
@@ -33,7 +33,13 @@ export function OnboardingGate({
 
   useEffect(() => {
     setHydrated(true)
-  }, [])
+    if (!onboardingCompleted) {
+      // Pull any saved server-side draft so a fresh device picks up
+      // wherever the user paused. Best-effort; no-op when local store
+      // already has user input.
+      void hydrateOnboardingDraft()
+    }
+  }, [onboardingCompleted])
 
   // Reconcile the persisted client flag with the server's source of truth.
   // - DB says complete → flip the store to complete (idempotent).
