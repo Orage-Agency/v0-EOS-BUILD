@@ -5,6 +5,15 @@ import { AIOrb } from "@/components/orage/ai-orb"
 import { useWorkspaceSlug } from "@/hooks/use-workspace-slug"
 import { cn } from "@/lib/utils"
 
+const QUICK_ACTIONS: { label: string; prompt: string }[] = [
+  { label: "Show overdue", prompt: "Show me every task that's past its due date and list each owner." },
+  { label: "Rocks at risk", prompt: "Which rocks are at risk or off-track right now? Group by owner." },
+  { label: "This week's L10 prep", prompt: "Summarize what should be on the agenda for this week's L10 — top issues to discuss, todos still open from last week, and headlines." },
+  { label: "Create a rock", prompt: "Help me create a new quarterly rock. Ask me one question at a time." },
+  { label: "Who owns what", prompt: "List every active rock with its owner and current progress." },
+  { label: "Stale notes", prompt: "Show notes that haven't been touched in 30+ days but are still pinned to active rocks." },
+]
+
 export function Composer() {
   const draft = useAIImplementerStore((s) => s.composerDraft)
   const setDraft = useAIImplementerStore((s) => s.setComposerDraft)
@@ -26,6 +35,23 @@ export function Composer() {
 
   return (
     <footer className="border-t border-border-orage bg-bg-2/60 p-4">
+      {!streaming && draft.trim().length === 0 && (
+        <div
+          className="flex flex-wrap gap-1.5 mb-2.5"
+          aria-label="Quick actions"
+        >
+          {QUICK_ACTIONS.map((qa) => (
+            <button
+              key={qa.label}
+              type="button"
+              onClick={() => setDraft(qa.prompt)}
+              className="font-display tracking-[0.14em] text-[10px] px-2.5 py-1 rounded-sm border border-border-orage text-text-secondary hover:border-gold-500/40 hover:text-gold-400 transition-colors"
+            >
+              {qa.label.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="rounded-md border border-border-orage bg-bg-3/60 focus-within:border-gold-500/60 transition">
         <textarea
           value={draft}

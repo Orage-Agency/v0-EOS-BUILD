@@ -10,6 +10,7 @@ export default function LoginMfaPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [bootstrapping, setBootstrapping] = useState(true)
+  const [remember, setRemember] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -35,7 +36,7 @@ export default function LoginMfaPage() {
     if (!factorId) return
     setLoading(true)
     setError(null)
-    const result = await verifyMfaForLogin(factorId, code)
+    const result = await verifyMfaForLogin(factorId, code, remember)
     if (result && !result.ok) {
       setError(result.error)
       setLoading(false)
@@ -119,16 +120,34 @@ export default function LoginMfaPage() {
             </div>
           )}
 
+          <label className="flex items-center gap-2.5 px-1 cursor-pointer select-none text-[11px] text-[#8a7860]">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+              className="appearance-none w-4 h-4 rounded-sm border border-[rgba(182,128,57,0.4)] checked:bg-[#B68039] checked:border-[#B68039] cursor-pointer relative
+                checked:after:content-['✓'] checked:after:absolute checked:after:inset-0 checked:after:flex checked:after:items-center checked:after:justify-center checked:after:text-black checked:after:text-[10px] checked:after:font-bold"
+            />
+            <span>Trust this device for 30 days</span>
+          </label>
+
           <button
             type="submit"
             disabled={loading || code.length !== 6}
-            className="w-full py-3 rounded-[2px] text-black font-semibold text-[12px] tracking-[0.1em] uppercase disabled:opacity-50"
+            data-testid="mfa-submit"
+            className="w-full py-3 rounded-[2px] text-black font-semibold text-[12px] tracking-[0.1em] uppercase disabled:opacity-50 flex items-center justify-center gap-2"
             style={{
               background: "linear-gradient(135deg, #B68039, #E4AF7A)",
               fontFamily: "Bebas Neue",
             }}
           >
-            {loading ? "Verifying…" : "Verify"}
+            {loading && (
+              <span
+                aria-hidden
+                className="inline-block w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin"
+              />
+            )}
+            <span>{loading ? "Verifying…" : "Verify"}</span>
           </button>
 
           <div className="text-center">

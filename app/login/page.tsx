@@ -28,7 +28,7 @@ function LoginForm() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(
     initialError === "no_access"
-      ? "You don't have access to that workspace. Ask the owner for an invite."
+      ? "That workspace isn't linked to your account yet — sign in with the email you were invited under, or ask a teammate to add you."
       : null,
   )
   const justReset = searchParams.get("reset") === "ok"

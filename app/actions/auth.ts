@@ -16,6 +16,11 @@ import { getCurrentUser, getAuthUserIdFromCookie } from "@/lib/auth"
 import { requirePermission, PermissionError } from "@/lib/server/permissions"
 import { checkAuthRateLimit } from "@/lib/auth-rate-limit"
 import { generateTempPassword } from "@/lib/temp-password"
+import {
+  deviceIsTrusted,
+  issueTrustedDevice,
+  revokeAllTrustedDevices,
+} from "@/lib/mfa-trusted-devices"
 
 function appUrl() {
   if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL
@@ -215,14 +220,21 @@ export async function loginByEmail(
 
   // 2FA gate: if the user has a verified TOTP factor, the session AAL
   // will currently be aal1 but the user's nextLevel is aal2. Send them
-  // to /login/mfa to provide the code before completing sign-in.
+  // to /login/mfa to provide the code before completing sign-in — UNLESS
+  // they previously opted into "remember this device" and the cookie
+  // is still valid for this user.
   const aal = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
   if (
     aal.data &&
     aal.data.currentLevel === "aal1" &&
     aal.data.nextLevel === "aal2"
   ) {
-    redirect("/login/mfa")
+    const trusted = await deviceIsTrusted(signInData.user.id)
+    if (!trusted) {
+      redirect("/login/mfa")
+    }
+    // Otherwise fall through — we treat the trusted device as having
+    // satisfied the MFA challenge for this session.
   }
 
   // Master users can land at the picker. Everyone else gets routed to
@@ -980,7 +992,11 @@ export async function disableMfa(factorId: string, code: string) {
 }
 
 // Used by /login/mfa to satisfy the AAL2 step after password sign-in.
-export async function verifyMfaForLogin(factorId: string, code: string) {
+export async function verifyMfaForLogin(
+  factorId: string,
+  code: string,
+  rememberDevice = false,
+) {
   if (!/^\d{6}$/.test(code.trim())) {
     return { ok: false as const, error: "Enter the 6-digit code from your app" }
   }
@@ -996,6 +1012,17 @@ export async function verifyMfaForLogin(factorId: string, code: string) {
   // userId on the auth-cookie path.
   const userId = data?.user?.id ?? (await getAuthUserIdFromCookie())
   if (!userId) redirect("/login")
+
+  // Issue the "remember this device" cookie ONLY when the user opted in
+  // on the form. Without the explicit checkbox we never silently exempt
+  // them from MFA next time.
+  if (rememberDevice) {
+    try {
+      await issueTrustedDevice(userId)
+    } catch {
+      /* non-fatal — login still succeeds even if the trust write fails */
+    }
+  }
 
   const admin = supabaseAdmin()
   const { data: profile } = await admin
@@ -1022,6 +1049,23 @@ export async function verifyMfaForLogin(factorId: string, code: string) {
     .maybeSingle()
   if (ws?.slug) redirect(`/${ws.slug as string}`)
   redirect("/signup")
+}
+
+// ─── TRUSTED DEVICES (MFA "remember device") ───
+
+export async function listTrustedDevicesForCurrentUser() {
+  const userId = await getAuthUserIdFromCookie()
+  if (!userId) return { ok: false as const, error: "Not signed in" }
+  const { listTrustedDevices } = await import("@/lib/mfa-trusted-devices")
+  const devices = await listTrustedDevices(userId)
+  return { ok: true as const, devices }
+}
+
+export async function revokeAllTrustedDevicesForCurrentUser() {
+  const userId = await getAuthUserIdFromCookie()
+  if (!userId) return { ok: false as const, error: "Not signed in" }
+  await revokeAllTrustedDevices(userId)
+  return { ok: true as const }
 }
 
 // ─── REVOKE INVITE ───
