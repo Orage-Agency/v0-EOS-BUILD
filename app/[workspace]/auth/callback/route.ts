@@ -8,6 +8,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { NextResponse, type NextRequest } from "next/server"
+import { logError } from "@/lib/log"
 
 export async function GET(
   request: NextRequest,
@@ -41,7 +42,7 @@ export async function GET(
             { onConflict: "user_id,workspace_id" },
           )
           .then(({ error: e }) => {
-            if (e) console.error("[v0] invite membership upsert error", e.message)
+            if (e) logError("invite membership upsert error", e.message)
           })
       }
 

@@ -6,6 +6,7 @@ import { requirePermission } from "@/lib/server/permissions"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { enqueueWebhookEvent } from "@/lib/webhooks"
 import type { Meeting } from "@/lib/l10-store"
+import { logError } from "@/lib/log"
 
 function revalidateL10(slug: string, id?: string) {
   revalidatePath(`/${slug}/l10`)
@@ -47,7 +48,7 @@ export async function createL10Meeting(
       .single()
 
     if (error || !data) {
-      console.error("[v0] createL10Meeting error", error?.message)
+      logError("createL10Meeting error", error?.message)
       return { ok: false, error: error?.message ?? "Insert failed" }
     }
 

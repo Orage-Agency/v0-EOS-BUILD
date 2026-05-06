@@ -8,6 +8,7 @@ import "server-only"
 import { requireUser } from "@/lib/auth"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import type { Meeting } from "@/lib/l10-store"
+import { logError } from "@/lib/log"
 
 type DbMeeting = {
   id: string
@@ -58,13 +59,13 @@ export async function listL10Meetings(workspaceSlug: string): Promise<Meeting[]>
       .order("scheduled_at", { ascending: false })
 
     if (error) {
-      console.error("[v0] listL10Meetings error", error.message)
+      logError("listL10Meetings error", error.message)
       return []
     }
 
     return ((data as DbMeeting[] | null) ?? []).map(dbToMeeting)
   } catch (err) {
-    console.error("[v0] listL10Meetings exception", err)
+    logError("listL10Meetings exception", err)
     return []
   }
 }

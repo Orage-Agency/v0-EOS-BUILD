@@ -1,6 +1,7 @@
 "use client"
 
 import { create } from "zustand"
+import { logError } from "@/lib/log"
 
 // ============================================================================
 // TYPES
@@ -616,7 +617,7 @@ export const useAIImplementerStore = create<State>((set, get) => ({
     const trimmed = text.trim()
     if (!trimmed) return
     if (!workspaceSlug) {
-      console.error("[v0] AI store sendMessage missing workspaceSlug")
+      logError("AI store sendMessage missing workspaceSlug")
       return
     }
     const threadId = get().activeThreadId

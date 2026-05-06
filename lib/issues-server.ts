@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/auth"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import type { DbIssue } from "@/lib/db-types"
 import type { Issue } from "@/lib/issues-seed"
+import { logError } from "@/lib/log"
 
 function ageLabel(createdAt: string): string {
   const diffMs = Date.now() - new Date(createdAt).getTime()
@@ -54,12 +55,12 @@ export async function listIssuesForWorkspace(workspaceSlug: string): Promise<Iss
       .eq("tenant_id", user.workspaceId)
       .order("rank", { ascending: true, nullsFirst: false })
     if (error) {
-      console.error("[v0] listIssuesForWorkspace error", error.message)
+      logError("listIssuesForWorkspace error", error.message)
       return []
     }
     return ((data as DbIssue[] | null) ?? []).map(dbToIssue)
   } catch (err) {
-    console.error("[v0] listIssuesForWorkspace exception", err)
+    logError("listIssuesForWorkspace exception", err)
     return []
   }
 }

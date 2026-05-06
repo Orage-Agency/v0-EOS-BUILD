@@ -1,14 +1,39 @@
 "use client"
 
+import { useState, useTransition } from "react"
+import { toast } from "sonner"
 import { TenantLink as Link } from "@/components/tenant-link"
 import { useSettingsStore } from "@/lib/settings-store"
 import { OrageToggle } from "@/components/orage/toggle"
 import { SectionBlock, SCard, FieldRow, SelectField } from "./ui"
+import {
+  saveAISettings,
+  type AIModelId,
+  type AISettings as AISettingsShape,
+} from "@/app/actions/ai-settings"
 
-export function AISettings() {
-  const ai = useSettingsStore((s) => s.ai)
-  const updateAI = useSettingsStore((s) => s.updateAI)
+type Props = {
+  workspaceSlug: string
+  initial: AISettingsShape
+}
+
+export function AISettings({ workspaceSlug, initial }: Props) {
+  const [settings, setSettings] = useState<AISettingsShape>(initial)
+  const [pending, startTransition] = useTransition()
+  const briefings = useSettingsStore((s) => s.ai.briefings)
   const toggleBriefing = useSettingsStore((s) => s.toggleBriefing)
+
+  function persist(patch: Partial<AISettingsShape>) {
+    setSettings((cur) => ({ ...cur, ...patch }))
+    startTransition(async () => {
+      const res = await saveAISettings(workspaceSlug, patch)
+      if (!res.ok) {
+        toast.error(res.error)
+        return
+      }
+      toast.success("AI settings saved", { duration: 1200 })
+    })
+  }
 
   return (
     <SectionBlock
@@ -18,24 +43,38 @@ export function AISettings() {
       <SCard title="MODEL & CONTEXT">
         <FieldRow
           name="Default Model"
-          hint="Used for all AI Implementer interactions"
+          hint={
+            pending
+              ? "Saving…"
+              : "Used for all AI Implementer interactions · changes take effect immediately"
+          }
           control={
             <SelectField
-              value={ai.model}
+              value={settings.model}
               onChange={(e) =>
-                updateAI({
-                  model: e.target.value as typeof ai.model,
-                })
+                persist({ model: e.target.value as AIModelId })
               }
-              className="max-w-[300px]"
+              className="max-w-[340px]"
+              data-testid="ai-model-select"
             >
-              <option value="claude-opus-4.7">
-                Claude Opus 4.7 (recommended)
-              </option>
-              <option value="claude-sonnet-4.6">Claude Sonnet 4.6</option>
-              <option value="claude-haiku-4.5">
-                Claude Haiku 4.5 (faster, cheaper)
-              </option>
+              <optgroup label="OpenAI · via AI Gateway">
+                <option value="openai/gpt-5">GPT-5 (most capable)</option>
+                <option value="openai/gpt-5-mini">
+                  GPT-5 Mini (recommended · fastest)
+                </option>
+                <option value="openai/gpt-5-nano">GPT-5 Nano (cheapest)</option>
+              </optgroup>
+              <optgroup label="Anthropic · via AI Gateway">
+                <option value="anthropic/claude-opus-4-7">
+                  Claude Opus 4.7 (deepest reasoning)
+                </option>
+                <option value="anthropic/claude-sonnet-4-6">
+                  Claude Sonnet 4.6 (balanced)
+                </option>
+                <option value="anthropic/claude-haiku-4-5">
+                  Claude Haiku 4.5 (fastest Anthropic)
+                </option>
+              </optgroup>
             </SelectField>
           }
         />
@@ -44,13 +83,15 @@ export function AISettings() {
           hint="How much business data the AI sees automatically"
           control={
             <SelectField
-              value={ai.contextScope}
+              value={settings.contextScope}
               onChange={(e) =>
-                updateAI({
-                  contextScope: e.target.value as typeof ai.contextScope,
+                persist({
+                  contextScope: e.target
+                    .value as AISettingsShape["contextScope"],
                 })
               }
               className="max-w-[420px]"
+              data-testid="ai-context-select"
             >
               <option value="full">
                 Full (V/TO + Rocks + Issues + Scorecard + Tasks + Notes + People)
@@ -67,13 +108,14 @@ export function AISettings() {
           hint="How the AI communicates · matches your culture"
           control={
             <SelectField
-              value={ai.voiceTone}
+              value={settings.voiceTone}
               onChange={(e) =>
-                updateAI({
-                  voiceTone: e.target.value as typeof ai.voiceTone,
+                persist({
+                  voiceTone: e.target.value as AISettingsShape["voiceTone"],
                 })
               }
               className="max-w-[300px]"
+              data-testid="ai-voice-select"
             >
               <option value="direct">Direct · action-oriented (default)</option>
               <option value="coaching">Coaching · question-led</option>
@@ -90,7 +132,7 @@ export function AISettings() {
           hint="8:00 AM daily · 3 priorities + recent context"
           control={
             <OrageToggle
-              on={ai.briefings.todaysFocus}
+              on={briefings.todaysFocus}
               onChange={() => toggleBriefing("todaysFocus")}
               label="Today's Focus"
             />
@@ -101,7 +143,7 @@ export function AISettings() {
           hint="30 min before L10 · top 3 IDS items + suggested resolutions"
           control={
             <OrageToggle
-              on={ai.briefings.preL10}
+              on={briefings.preL10}
               onChange={() => toggleBriefing("preL10")}
               label="Pre-L10 Brief"
             />
@@ -112,7 +154,7 @@ export function AISettings() {
           hint="5:00 PM Friday · what shipped, what stalled, what to think about over the weekend"
           control={
             <OrageToggle
-              on={ai.briefings.fridayDigest}
+              on={briefings.fridayDigest}
               onChange={() => toggleBriefing("fridayDigest")}
               label="Friday Digest"
             />
@@ -123,7 +165,7 @@ export function AISettings() {
           hint="Last Sunday of quarter · rocks completion + V/TO drift analysis"
           control={
             <OrageToggle
-              on={ai.briefings.quarterlyReview}
+              on={briefings.quarterlyReview}
               onChange={() => toggleBriefing("quarterlyReview")}
               label="Quarterly Review"
             />

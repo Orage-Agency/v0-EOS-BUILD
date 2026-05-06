@@ -6,6 +6,7 @@ import "server-only"
 
 import { requireUser } from "@/lib/auth"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { logError } from "@/lib/log"
 
 export type WorkspaceMember = {
   id: string
@@ -36,7 +37,7 @@ export async function listWorkspaceMembers(workspaceSlug: string): Promise<Works
       .eq("workspace_id", user.workspaceId)
       .eq("status", "active")
     if (mErr) {
-      console.error("[v0] listWorkspaceMembers memberships error", mErr.message)
+      logError("listWorkspaceMembers memberships error", mErr.message)
       return []
     }
 
@@ -56,7 +57,7 @@ export async function listWorkspaceMembers(workspaceSlug: string): Promise<Works
       .select("id, full_name, email")
       .in("id", ids)
     if (pErr) {
-      console.error("[v0] listWorkspaceMembers profiles error", pErr.message)
+      logError("listWorkspaceMembers profiles error", pErr.message)
       return []
     }
     const byId = new Map(
@@ -116,7 +117,7 @@ export async function listWorkspaceMembers(workspaceSlug: string): Promise<Works
       ]
     })
   } catch (err) {
-    console.error("[v0] listWorkspaceMembers exception", err)
+    logError("listWorkspaceMembers exception", err)
     return []
   }
 }

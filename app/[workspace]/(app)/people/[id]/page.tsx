@@ -4,6 +4,7 @@ import { USERS, type MockUser } from "@/lib/mock-data"
 import type { Role } from "@/types/permissions"
 import { requireUser } from "@/lib/auth"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { logError } from "@/lib/log"
 
 // Cookie-dependent auth via requireUser → render at request time only.
 export const dynamic = "force-dynamic"
@@ -76,7 +77,7 @@ async function resolveRealUser(
       color: colorForId(profile.id),
     }
   } catch (err) {
-    console.error("[v0] PersonPage profile lookup failed", err)
+    logError("PersonPage profile lookup failed", err)
     return undefined
   }
 }

@@ -14,6 +14,7 @@ import { createRock as createRockAction } from "@/app/actions/rocks"
 import { saveVTOData } from "@/app/actions/vto"
 import { completeOnboarding } from "@/app/actions/onboarding"
 import { cn } from "@/lib/utils"
+import { logError } from "@/lib/log"
 
 const STEP_META: Record<
   OnboardingStepId,
@@ -135,7 +136,7 @@ export function OnboardingWizard({
         await saveVTOData(workspaceSlug, vtoPayload)
       }
     } catch (err) {
-      console.error("[v0] saveVTOData failed during onboarding", err)
+      logError("saveVTOData failed during onboarding", err)
       // Non-fatal: rocks/onboarding-completion still proceed.
     }
 
@@ -157,7 +158,7 @@ export function OnboardingWizard({
     try {
       await completeOnboarding(workspaceSlug)
     } catch (err) {
-      console.error("[v0] completeOnboarding failed:", err)
+      logError("completeOnboarding failed:", err)
       toast("COULDN'T SAVE ONBOARDING — TRY AGAIN")
       return
     }

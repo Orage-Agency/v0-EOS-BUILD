@@ -132,10 +132,17 @@ export default function SignupPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-[2px] text-black font-semibold text-[12px] tracking-[0.1em] uppercase disabled:opacity-50"
+            data-testid="signup-submit"
+            className="w-full py-3 rounded-[2px] text-black font-semibold text-[12px] tracking-[0.1em] uppercase disabled:opacity-50 flex items-center justify-center gap-2"
             style={{ background: "linear-gradient(135deg, #B68039, #E4AF7A)", fontFamily: "Bebas Neue" }}
           >
-            {loading ? "Creating account…" : "Create account →"}
+            {loading && (
+              <span
+                aria-hidden
+                className="inline-block w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin"
+              />
+            )}
+            <span>{loading ? "Creating account…" : "Create account →"}</span>
           </button>
 
           <p className="text-center text-[11px] text-[#8a7860] mt-4">

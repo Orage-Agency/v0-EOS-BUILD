@@ -28,6 +28,7 @@ import {
   deleteTask as deleteTaskAction,
   updateTaskRock as updateTaskRockAction,
 } from "@/app/actions/tasks"
+import { logError } from "@/lib/log"
 
 const _ROCK_DEBOUNCERS: Record<string, ReturnType<typeof setTimeout> | undefined> = {}
 function debounceSave(key: string, fn: () => void, ms = 800) {
@@ -475,7 +476,7 @@ export const useRocksStore = create<RocksState>((set, get) => ({
       set((state) => ({
         milestones: state.milestones.filter((m) => m.id !== tempId),
       }))
-      console.error("[v0] addMilestone failed:", res.error)
+      logError("addMilestone failed:", res.error)
     }
   },
   removeMilestone: (id) => {
@@ -486,7 +487,7 @@ export const useRocksStore = create<RocksState>((set, get) => ({
     const { workspaceSlug } = get()
     if (workspaceSlug && isDbId(id)) {
       deleteMilestoneAction(workspaceSlug, id).catch((err) => {
-        console.error("[v0] removeMilestone failed:", err)
+        logError("removeMilestone failed:", err)
         if (prev) {
           set((state) => ({ milestones: [...state.milestones, prev] }))
         }
@@ -573,7 +574,7 @@ export const useRocksStore = create<RocksState>((set, get) => ({
       }))
     } else {
       set((state) => ({ linkedTasks: state.linkedTasks.filter((t) => t.id !== tempId) }))
-      console.error("[v0] addLinkedTask failed:", res.error)
+      logError("addLinkedTask failed:", res.error)
     }
   },
   toggleLinkedTask: (id) => {
@@ -605,7 +606,7 @@ export const useRocksStore = create<RocksState>((set, get) => ({
     const { workspaceSlug } = get()
     if (workspaceSlug && isDbId(id)) {
       deleteTaskAction(workspaceSlug, id).catch((err) => {
-        console.error("[v0] removeLinkedTask failed:", err)
+        logError("removeLinkedTask failed:", err)
         if (prev) set((state) => ({ linkedTasks: [...state.linkedTasks, prev] }))
       })
     }

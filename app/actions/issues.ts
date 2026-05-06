@@ -11,6 +11,7 @@ import { requireUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/server/permissions"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { logAudit } from "@/lib/audit"
+import { logError } from "@/lib/log"
 
 function revalidateIssueRoutes(workspaceSlug: string) {
   revalidatePath(`/${workspaceSlug}/issues`)
@@ -55,7 +56,7 @@ export async function createIssue(
       .single()
 
     if (error || !data) {
-      console.error("[v0] createIssue insert error", error?.message)
+      logError("createIssue insert error", error?.message)
       return { ok: false, error: error?.message ?? "Insert failed" }
     }
 
@@ -70,7 +71,7 @@ export async function createIssue(
     return { ok: true, id: data.id as string }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error"
-    console.error("[v0] createIssue exception", msg)
+    logError("createIssue exception", msg)
     return { ok: false, error: msg }
   }
 }

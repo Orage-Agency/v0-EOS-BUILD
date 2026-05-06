@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { logAudit } from "@/lib/audit"
 import type { Block } from "@/lib/notes-store"
+import { logError } from "@/lib/log"
 
 function revalidateNoteRoutes(workspaceSlug: string) {
   revalidatePath(`/${workspaceSlug}/notes`)
@@ -37,7 +38,7 @@ export async function createNote(
       .select("id")
       .single()
     if (error || !data) {
-      console.error("[v0] createNote error", error?.message)
+      logError("createNote error", error?.message)
       return { ok: false, error: error?.message ?? "Insert failed" }
     }
     await logAudit({

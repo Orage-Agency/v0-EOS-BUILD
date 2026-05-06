@@ -5,6 +5,8 @@ import { buildTools } from "@/lib/ai/tools"
 import { checkAndRecordAIRequest } from "@/lib/ai/rate-limit"
 import { summarizeToolOutput } from "@/lib/ai/summarize-tool-output"
 import { manualDigest } from "@/lib/help-manual"
+import { getAISettings } from "@/app/actions/ai-settings"
+import * as Sentry from "@sentry/nextjs"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -108,11 +110,21 @@ function revalidateAll(workspaceSlug: string) {
   } catch { /* best-effort */ }
 }
 
-function buildSystemPrompt(): string {
+const VOICE_OVERRIDES: Record<string, string> = {
+  direct: "",
+  coaching:
+    "\n\n# Voice override\nReplace 'Action over questions' with: lead with one Socratic question that names the trade-off, then act. Ask only when the user is making a decision they'll regret without context.",
+  concise:
+    "\n\n# Voice override\nMaximum 2 sentences per response. No emoji. No headers. Tool result + one-line confirm.",
+  custom: "",
+}
+
+function buildSystemPrompt(voiceTone: string = "direct"): string {
   const today = new Date()
   const todayStr = today.toISOString().slice(0, 10)
   const dayOfWeek = today.toLocaleDateString("en-US", { weekday: "long" })
-  return `${BASE_PROMPT}
+  const voiceTweak = VOICE_OVERRIDES[voiceTone] ?? ""
+  return `${BASE_PROMPT}${voiceTweak}
 
 # Today
 
@@ -120,6 +132,44 @@ Today is **${dayOfWeek}, ${todayStr}**. Use this when resolving relative dates (
 
 ---
 ${manualDigest()}`
+}
+
+/**
+ * Telemetry helper — logs total + first-token latency to Sentry as a
+ * breadcrumb so we can graph p50/p95 in the dashboard. The brief target
+ * is <800ms first-token p50; without measurement we can't tune for it.
+ */
+function logLatency(args: {
+  workspaceSlug: string
+  model: string
+  durationMs: number
+  firstTokenMs?: number | null
+  mode: "stream" | "json"
+}): void {
+  try {
+    Sentry.addBreadcrumb({
+      category: "ai.chat",
+      level: "info",
+      message: `ai.chat ${args.mode}`,
+      data: {
+        workspace: args.workspaceSlug,
+        model: args.model,
+        duration_ms: args.durationMs,
+        first_token_ms: args.firstTokenMs ?? null,
+      },
+    })
+    // Also surface as a metric so we can alert on regressions.
+    Sentry.captureMessage(`ai.chat.latency`, {
+      level: "info",
+      tags: { model: args.model, mode: args.mode },
+      extra: {
+        duration_ms: args.durationMs,
+        first_token_ms: args.firstTokenMs ?? null,
+      },
+    })
+  } catch {
+    /* never break the request to log */
+  }
 }
 
 /**
@@ -182,14 +232,23 @@ export async function POST(req: Request) {
       { role: "user" as const, content: message },
     ]
 
+    // Read the per-workspace model + voice/tone. Fail-soft: if the read
+    // throws, fall back to the defaults so a transient DB blip never
+    // takes the implementer offline.
+    const settings = await getAISettings(workspaceSlug).catch(() => null)
+    const model = settings?.model ?? "openai/gpt-5-mini"
+    const voiceTone = settings?.voiceTone ?? "direct"
+
     if (!wantsStream) {
+      const t0 = Date.now()
       const result = await generateText({
-        model: "openai/gpt-5-mini",
-        system: buildSystemPrompt(),
+        model,
+        system: buildSystemPrompt(voiceTone),
         messages,
         tools,
-        stopWhen: stepCountIs(12),
+        stopWhen: stepCountIs(20),
       })
+      logLatency({ workspaceSlug, model, durationMs: Date.now() - t0, mode: "json" })
       const toolCalls = collectToolCalls(result.steps ?? [])
       const didWrite = toolCalls.some((c) => WRITE_TOOLS.has(c.name))
       if (didWrite) revalidateAll(workspaceSlug)
@@ -201,14 +260,16 @@ export async function POST(req: Request) {
 
     // ---------- streaming path ----------
     // Tie the model run to the inbound request so client cancellation
-    // (composer Stop button → fetch AbortController) actually stops gpt-5-mini
-    // upstream instead of silently letting it finish on our dime.
+    // (composer Stop button → fetch AbortController) actually stops the
+    // model upstream instead of silently letting it finish on our dime.
+    const tStart = Date.now()
+    let firstTokenAt: number | null = null
     const result = streamText({
-      model: "openai/gpt-5-mini",
-      system: buildSystemPrompt(),
+      model,
+      system: buildSystemPrompt(voiceTone),
       messages,
       tools,
-      stopWhen: stepCountIs(12),
+      stopWhen: stepCountIs(20),
       abortSignal: req.signal,
     })
 
@@ -230,6 +291,7 @@ export async function POST(req: Request) {
           for await (const chunk of result.fullStream) {
             switch (chunk.type) {
               case "text-delta":
+                if (firstTokenAt === null) firstTokenAt = Date.now()
                 send({ kind: "text", delta: chunk.text })
                 break
               case "tool-call":
@@ -271,6 +333,13 @@ export async function POST(req: Request) {
             const toolCalls = collectToolCalls(steps ?? [])
             const didWrite = toolCalls.some((c) => WRITE_TOOLS.has(c.name))
             if (didWrite) revalidateAll(workspaceSlug)
+            logLatency({
+              workspaceSlug,
+              model,
+              durationMs: Date.now() - tStart,
+              firstTokenMs: firstTokenAt ? firstTokenAt - tStart : null,
+              mode: "stream",
+            })
             send({ kind: "done", didWrite })
           }
         } catch (err) {
@@ -310,7 +379,7 @@ export async function POST(req: Request) {
     // requireUser throws a NEXT_REDIRECT to push the caller to /login
     // when there's no session. Don't swallow it — let Next handle it.
     if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err
-    console.error("[v0] /api/ai/chat error:", err)
+    Sentry.captureException(err, { tags: { route: "ai.chat" } })
     const raw = err instanceof Error ? err.message : "Unknown error"
     // Translate the most common provider/credential failures into messages
     // the user can act on. The AI SDK gateway surfaces these as plain

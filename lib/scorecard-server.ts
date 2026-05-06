@@ -7,6 +7,7 @@ import "server-only"
 
 import { requireUser } from "@/lib/auth"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { logError } from "@/lib/log"
 
 // Mirror the client-side types to avoid cross-boundary imports from "use client" module
 type ScorecardMetric = {
@@ -176,7 +177,7 @@ export async function listScorecardData(workspaceSlug: string): Promise<{
 
     return { metrics, cells }
   } catch (err) {
-    console.error("[v0] listScorecardData exception", err)
+    logError("listScorecardData exception", err)
     return { metrics: [], cells: [] }
   }
 }

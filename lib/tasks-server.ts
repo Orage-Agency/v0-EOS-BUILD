@@ -19,6 +19,7 @@ import {
   type TaskStatus,
 } from "@/lib/mock-data"
 import type { DbTask } from "@/lib/db-types"
+import { logError } from "@/lib/log"
 
 // ----------------------------------------------------------- conversions
 
@@ -53,12 +54,12 @@ export async function listTasksForWorkspace(
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
     if (error) {
-      console.error("[v0] listTasksForWorkspace error", error.message)
+      logError("listTasksForWorkspace error", error.message)
       return []
     }
     return ((data as DbTask[] | null) ?? []).map(dbToMockTask)
   } catch (err) {
-    console.error("[v0] listTasksForWorkspace exception", err)
+    logError("listTasksForWorkspace exception", err)
     return []
   }
 }
@@ -97,7 +98,7 @@ export async function listWorkspaceMembers(
       .eq("workspace_id", user.workspaceId)
       .eq("status", "active")
     if (mErr) {
-      console.error("[v0] tasks-server listWorkspaceMembers memberships error", mErr.message)
+      logError("tasks-server listWorkspaceMembers memberships error", mErr.message)
       return []
     }
     const rows = (memberships ?? []) as Array<{ user_id: string; role: string }>
@@ -109,7 +110,7 @@ export async function listWorkspaceMembers(
       .select("id, email, full_name, avatar_url")
       .in("id", ids)
     if (pErr) {
-      console.error("[v0] tasks-server listWorkspaceMembers profiles error", pErr.message)
+      logError("tasks-server listWorkspaceMembers profiles error", pErr.message)
       return []
     }
     const byId = new Map(
@@ -137,7 +138,7 @@ export async function listWorkspaceMembers(
       ]
     })
   } catch (err) {
-    console.error("[v0] listWorkspaceMembers exception", err)
+    logError("listWorkspaceMembers exception", err)
     return []
   }
 }
@@ -164,7 +165,7 @@ export async function listActiveRocks(
       .neq("status", "done")
       .order("created_at", { ascending: false })
     if (error) {
-      console.error("[v0] listActiveRocks error", error.message)
+      logError("listActiveRocks error", error.message)
       return []
     }
     type R = { id: string; title: string; quarter: string; tag: string | null }
@@ -175,7 +176,7 @@ export async function listActiveRocks(
       tag: r.tag ?? null,
     }))
   } catch (err) {
-    console.error("[v0] listActiveRocks exception", err)
+    logError("listActiveRocks exception", err)
     return []
   }
 }

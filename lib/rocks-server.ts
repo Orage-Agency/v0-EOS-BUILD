@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/auth"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { UNASSIGNED_OWNER_ID, type MockRock } from "@/lib/mock-data"
 import type { DbRock } from "@/lib/db-types"
+import { logError } from "@/lib/log"
 
 function dbToMockRock(row: DbRock): MockRock {
   return {
@@ -34,12 +35,12 @@ export async function listRocksForWorkspace(workspaceSlug: string): Promise<Mock
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
     if (error) {
-      console.error("[v0] listRocksForWorkspace error", error.message)
+      logError("listRocksForWorkspace error", error.message)
       return []
     }
     return ((data as DbRock[] | null) ?? []).map(dbToMockRock)
   } catch (err) {
-    console.error("[v0] listRocksForWorkspace exception", err)
+    logError("listRocksForWorkspace exception", err)
     return []
   }
 }

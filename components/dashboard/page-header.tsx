@@ -46,7 +46,25 @@ export function DashboardHeader({ priorityCount }: { priorityCount?: number }) {
   }, [])
 
   const name = sessionUser?.name ?? CURRENT_USER.name
-  const firstName = name.split(" ")[0].toUpperCase()
+  // Fall back to "TEAM" for accounts whose display name is just the
+  // workspace seed ("Orage Team" → would otherwise greet "ORAGE", which
+  // reads weird in front of a real user). If the first token resolves
+  // to the workspace name itself, prefer the second token instead, and
+  // if that's empty too, just say "TEAM".
+  const firstName = (() => {
+    const tokens = name.trim().split(/\s+/).filter(Boolean)
+    if (tokens.length === 0) return "TEAM"
+    const wsName = sessionUser?.workspaceName ?? ""
+    const first = tokens[0]
+    if (
+      tokens.length > 1 &&
+      wsName &&
+      first.toLowerCase() === wsName.toLowerCase().split(/\s+/)[0]
+    ) {
+      return tokens[1].toUpperCase()
+    }
+    return first.toUpperCase()
+  })()
 
   // Falls back to a friendly null state when no priorities are explicitly
   // passed — used during SSR before the count is known. Server-side

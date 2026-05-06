@@ -27,6 +27,7 @@ import {
   type TaskStatus,
 } from "@/lib/mock-data"
 import type { DbTask } from "@/lib/db-types"
+import { logError } from "@/lib/log"
 
 // ---------------------------------------------------------- helpers
 
@@ -109,7 +110,7 @@ export async function createTask(
       .single()
 
     if (error || !data) {
-      console.error("[v0] createTask insert error", error?.message)
+      logError("createTask insert error", error?.message)
       return { ok: false, error: error?.message ?? "Insert failed" }
     }
 
@@ -137,7 +138,7 @@ export async function createTask(
     return { ok: true, id: data.id as string, task: dbToMockTask(data as DbTask) }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error"
-    console.error("[v0] createTask exception", msg)
+    logError("createTask exception", msg)
     return { ok: false, error: msg }
   }
 }

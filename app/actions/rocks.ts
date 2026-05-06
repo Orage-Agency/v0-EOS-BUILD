@@ -14,6 +14,7 @@ import { logAudit } from "@/lib/audit"
 import { notify } from "@/lib/notifications-server"
 import { UNASSIGNED_OWNER_ID, type MockRock, type RockStatus } from "@/lib/mock-data"
 import type { DbRock } from "@/lib/db-types"
+import { logError } from "@/lib/log"
 
 function dbToMockRock(row: DbRock): MockRock {
   return {
@@ -79,7 +80,7 @@ export async function createRock(
       .single()
 
     if (error || !data) {
-      console.error("[v0] createRock insert error", error?.message)
+      logError("createRock insert error", error?.message)
       return { ok: false, error: error?.message ?? "Insert failed" }
     }
 
@@ -94,7 +95,7 @@ export async function createRock(
     return { ok: true, id: data.id as string, rock: dbToMockRock(data as DbRock) }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error"
-    console.error("[v0] createRock exception", msg)
+    logError("createRock exception", msg)
     return { ok: false, error: msg }
   }
 }

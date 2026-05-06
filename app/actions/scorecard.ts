@@ -9,6 +9,7 @@ import { requirePermission } from "@/lib/server/permissions"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import { logAudit } from "@/lib/audit"
 import { upsertScorecardEntry } from "@/lib/scorecard-server"
+import { logError } from "@/lib/log"
 
 export type CreateMetricInput = {
   name: string
@@ -80,7 +81,7 @@ export async function updateMetricValue(
   }
   const result = await upsertScorecardEntry(workspaceSlug, input.metricId, input.week, input.value)
   if (!result.ok) {
-    console.error("[v0] updateMetricValue upsert failed", result.error)
+    logError("updateMetricValue upsert failed", result.error)
   }
   return result
 }

@@ -2,6 +2,7 @@ import { DirectoryShell } from "@/components/people/directory-shell"
 import type { WorkspaceMember } from "@/lib/people-server"
 import { requireUser } from "@/lib/auth"
 import { supabaseAdmin } from "@/lib/supabase/admin"
+import { logError } from "@/lib/log"
 
 // Reads the authenticated user via cookies → must run at request time.
 export const dynamic = "force-dynamic"
@@ -21,7 +22,7 @@ async function loadMembers(workspaceSlug: string): Promise<WorkspaceMember[]> {
       .eq("workspace_id", me.workspaceId)
       .eq("status", "active")
     if (mErr) {
-      console.error("[v0] PeoplePage memberships error", mErr.message)
+      logError("PeoplePage memberships error", mErr.message)
       return []
     }
     const rows = (memberships ?? []) as Array<{
@@ -35,7 +36,7 @@ async function loadMembers(workspaceSlug: string): Promise<WorkspaceMember[]> {
       .select("id, full_name, email")
       .in("id", ids)
     if (pErr) {
-      console.error("[v0] PeoplePage profiles error", pErr.message)
+      logError("PeoplePage profiles error", pErr.message)
       return []
     }
     const byId = new Map(
@@ -59,7 +60,7 @@ async function loadMembers(workspaceSlug: string): Promise<WorkspaceMember[]> {
       ]
     })
   } catch (err) {
-    console.error("[v0] PeoplePage load failed", err)
+    logError("PeoplePage load failed", err)
     return []
   }
 }

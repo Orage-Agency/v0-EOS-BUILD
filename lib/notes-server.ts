@@ -7,6 +7,7 @@ import "server-only"
 import { requireUser } from "@/lib/auth"
 import { supabaseAdmin } from "@/lib/supabase/admin"
 import type { NoteRef, Block } from "@/lib/notes-store"
+import { logError } from "@/lib/log"
 
 type DbNote = {
   id: string
@@ -58,12 +59,12 @@ export async function listNotesForWorkspace(workspaceSlug: string): Promise<Note
       .eq("tenant_id", user.workspaceId)
       .order("updated_at", { ascending: false })
     if (error) {
-      console.error("[v0] listNotesForWorkspace error", error.message)
+      logError("listNotesForWorkspace error", error.message)
       return []
     }
     return ((data as DbNote[] | null) ?? []).map(dbToNoteRef)
   } catch (err) {
-    console.error("[v0] listNotesForWorkspace exception", err)
+    logError("listNotesForWorkspace exception", err)
     return []
   }
 }
