@@ -128,6 +128,29 @@ export default async function ApiDocsPage({
           List endpoints accept <code className="font-mono">?limit=50&amp;offset=0</code>{" "}
           (max 200 per page) and return{" "}
           <code className="font-mono">{`{ items, pagination }`}</code>.
+          Per-key rate limit: <strong>60/minute, 1000/hour</strong> — the
+          response carries{" "}
+          <code className="font-mono">X-RateLimit-Remaining-Minute</code>/
+          <code className="font-mono">-Hour</code> headers.
+        </p>
+        <p className="text-[11px] text-text-muted leading-relaxed">
+          POST endpoints accept an{" "}
+          <code className="font-mono">Idempotency-Key</code> header. Same key
+          + same body returns the original response (with{" "}
+          <code className="font-mono">Idempotent-Replay: true</code>); same
+          key + different body returns <code className="font-mono">422</code>.
+          Cached for 24 hours.
+        </p>
+        <p className="text-[12px] text-text-muted leading-relaxed">
+          Machine-readable spec:{" "}
+          <a
+            href="/api/v1/openapi"
+            className="text-gold-400 underline hover:text-gold-300 font-mono"
+          >
+            GET /api/v1/openapi
+          </a>{" "}
+          (OpenAPI 3.1) — drop into Postman, Insomnia, or any OpenAPI-aware
+          tool.
         </p>
       </section>
 

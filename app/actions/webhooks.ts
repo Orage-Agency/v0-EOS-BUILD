@@ -173,6 +173,79 @@ export async function listDeliveries(
 }
 
 /**
+ * Send a test event so the user can verify the receiving end is wired
+ * up correctly without waiting for a real domain event. The payload is
+ * a synthetic `webhook.test` event signed with the real secret.
+ */
+export async function sendTestWebhook(
+  workspaceSlug: string,
+  webhookId: string,
+): Promise<{ ok: boolean; status?: number; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "tenants:admin")
+    const sb = supabaseAdmin()
+    const { data: hook } = await sb
+      .from("webhooks")
+      .select("id, target_url, secret")
+      .eq("id", webhookId)
+      .eq("workspace_id", user.workspaceId)
+      .maybeSingle()
+    if (!hook) return { ok: false, error: "Webhook not found" }
+    const { signPayload } = await import("@/lib/webhooks")
+    const { WEBHOOK_PAYLOAD_VERSION } = await import("@/lib/webhooks-types")
+    const nowIso = new Date().toISOString()
+    const body = JSON.stringify({
+      id: null,
+      event: "webhook.test",
+      version: WEBHOOK_PAYLOAD_VERSION,
+      workspace_id: user.workspaceId,
+      created_at: nowIso,
+      data: {
+        triggered_by: user.email,
+        message:
+          "If you can see this in your consumer logs, the wire is healthy.",
+      },
+    })
+    const signature = signPayload(hook.secret as string, body)
+    let status = 0
+    try {
+      const res = await fetch(hook.target_url as string, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "Orage-Core-Webhooks/1",
+          "X-Orage-Event": "webhook.test",
+          "X-Orage-Delivery": "test",
+          "X-Orage-Signature": `sha256=${signature}`,
+        },
+        body,
+        signal: AbortSignal.timeout(10_000),
+      })
+      status = res.status
+      if (status < 200 || status >= 300) {
+        return { ok: false, status, error: `HTTP ${status}` }
+      }
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : "Fetch failed",
+      }
+    }
+    await logAudit({
+      user,
+      action: "create",
+      entityType: "tenant",
+      entityId: webhookId,
+      metadata: { kind: "webhook_test_sent", status },
+    })
+    return { ok: true, status }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown" }
+  }
+}
+
+/**
  * Re-queue an existing delivery so the next pg_cron / Vercel cron pass
  * picks it up again. Resets `delivered_at`, decrements attempts back to
  * 0, and pushes `next_attempt_at` to NOW so it goes out on the very next

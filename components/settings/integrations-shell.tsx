@@ -13,6 +13,7 @@ import {
   listDeliveries,
   redeliverWebhookDelivery,
   rotateWebhookSecret,
+  sendTestWebhook,
   type DeliveryRow,
   type WebhookRow,
 } from "@/app/actions/webhooks"
@@ -346,6 +347,20 @@ function WebhookListItem({
         )}
         <button
           type="button"
+          onClick={async () => {
+            const res = await sendTestWebhook(workspaceSlug, webhook.id)
+            if (res.ok) {
+              toast.success(`Test sent · HTTP ${res.status}`)
+            } else {
+              toast.error(res.error ?? "Test failed")
+            }
+          }}
+          className="font-display text-[10px] tracking-[0.18em] uppercase px-2.5 py-1.5 rounded-sm border border-border-orage hover:border-gold-500/60 hover:text-gold-400 transition-colors"
+        >
+          Test
+        </button>
+        <button
+          type="button"
           onClick={() => {
             const willOpen = !open
             setOpen(willOpen)
@@ -353,7 +368,7 @@ function WebhookListItem({
           }}
           className="font-display text-[10px] tracking-[0.18em] uppercase px-2.5 py-1.5 rounded-sm border border-border-orage hover:border-gold-500/60 hover:text-gold-400 transition-colors"
         >
-          {open ? "Close" : "Deliveries"}
+          {open ? "Close" : "Log"}
         </button>
         <button
           type="button"

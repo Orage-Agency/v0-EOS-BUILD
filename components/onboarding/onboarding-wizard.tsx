@@ -596,8 +596,14 @@ function TeamStep({ draft, patch }: StepProps) {
   const [draftEmail, setDraftEmail] = useState("")
   const isValid = useMemo(() => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(draftEmail), [draftEmail])
 
+  // Cap onboarding-time invites so we don't trip Supabase's shared
+  // SMTP rate limit (3-4/hr) on the very first day. The user can keep
+  // inviting from Settings → Members where the throttle is more lenient.
+  const ONBOARDING_INVITE_CAP = 3
+  const atCap = draft.invitedEmails.length >= ONBOARDING_INVITE_CAP
+
   function add() {
-    if (!isValid) return
+    if (!isValid || atCap) return
     if (draft.invitedEmails.includes(draftEmail)) return
     patch({ invitedEmails: [...draft.invitedEmails, draftEmail] })
     setDraftEmail("")
@@ -610,7 +616,7 @@ function TeamStep({ draft, patch }: StepProps) {
     <div className="flex flex-col gap-5">
       <Field
         label="Invite teammates"
-        hint="They land in Settings → Members as pending invites — no email sent until you flip the switch."
+        hint={`Up to ${ONBOARDING_INVITE_CAP} from here. Add the rest in Settings → Members — there's no per-hour cap there.`}
       >
         <div className="flex gap-2">
           <input
@@ -629,10 +635,10 @@ function TeamStep({ draft, patch }: StepProps) {
           <button
             type="button"
             onClick={add}
-            disabled={!isValid}
+            disabled={!isValid || atCap}
             className={cn(
               "px-4 rounded-sm font-mono text-xs uppercase tracking-[0.16em] transition-colors",
-              isValid
+              isValid && !atCap
                 ? "bg-gold-500 hover:bg-gold-400 text-text-on-gold"
                 : "bg-bg-3 text-text-muted cursor-not-allowed",
             )}
@@ -640,6 +646,12 @@ function TeamStep({ draft, patch }: StepProps) {
             Add
           </button>
         </div>
+        {atCap && (
+          <p className="text-[11px] text-text-muted mt-1.5 leading-relaxed">
+            Reached the {ONBOARDING_INVITE_CAP}-invite cap for onboarding.
+            Finish setup, then add more from Settings → Members.
+          </p>
+        )}
       </Field>
 
       {draft.invitedEmails.length > 0 ? (
