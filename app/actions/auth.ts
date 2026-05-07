@@ -745,6 +745,21 @@ export async function acceptInvite(token: string, password: string, fullName?: s
     )
 
     if (existingByEmail) {
+      // Real-account guard: if this auth user has ever signed in, the
+      // accept-invite flow MUST NOT silently rotate their password —
+      // otherwise anyone holding the invite link can hijack the account
+      // by typing a new password. Force them to authenticate first; once
+      // they have a session and revisit the link, the magic-link branch
+      // above runs and only updates user_metadata + adds the membership.
+      if (existingByEmail.last_sign_in_at) {
+        return {
+          error:
+            "An account already exists for this email. Sign in first, then click the invite link again to join this workspace.",
+        }
+      }
+      // Pre-created auth user that has never signed in (e.g. createInvite
+      // pre-create path). Safe to rotate the placeholder password to the
+      // one the recipient just chose.
       const { error: updErr } = await admin.auth.admin.updateUserById(
         existingByEmail.id,
         {
