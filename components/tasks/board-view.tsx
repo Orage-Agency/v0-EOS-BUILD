@@ -58,7 +58,7 @@ export function BoardView() {
   }
 
   return (
-    <div className="px-8">
+    <div className="h-full px-8 pb-8">
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="grid h-full grid-cols-1 gap-4 md:grid-cols-3">
           {COLUMNS.map((status) => (
