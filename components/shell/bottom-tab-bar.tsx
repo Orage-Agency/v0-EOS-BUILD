@@ -75,7 +75,7 @@ export function BottomTabBar({
     <>
       <nav
         aria-label="Primary"
-        className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-bg-1/95 backdrop-blur-md border-t border-border-orage h-16 grid grid-cols-5"
+        className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-bg-1/95 backdrop-blur-md border-t border-border-orage h-[76px] grid grid-cols-5"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {TABS.map((t) => {
@@ -86,11 +86,11 @@ export function BottomTabBar({
               key={t.href}
               href={prefixed(t.href)}
               className={cn(
-                "flex flex-col items-center justify-center gap-1 text-[10px] tracking-[0.18em] font-display uppercase transition-colors",
+                "flex flex-col items-center justify-center gap-1.5 text-[12px] tracking-[0.18em] font-display uppercase transition-colors",
                 active ? "text-gold-400" : "text-text-muted hover:text-text-primary",
               )}
             >
-              <Icon className="w-5 h-5" />
+              <Icon className="w-6 h-6" />
               {t.label}
             </Link>
           )
@@ -99,9 +99,9 @@ export function BottomTabBar({
           type="button"
           onClick={() => setMoreOpen(true)}
           aria-label="More navigation"
-          className="flex flex-col items-center justify-center gap-1 text-[10px] tracking-[0.18em] font-display uppercase text-text-muted hover:text-text-primary transition-colors"
+          className="flex flex-col items-center justify-center gap-1.5 text-[12px] tracking-[0.18em] font-display uppercase text-text-muted hover:text-text-primary transition-colors"
         >
-          <IcMore className="w-5 h-5" />
+          <IcMore className="w-6 h-6" />
           More
         </button>
       </nav>

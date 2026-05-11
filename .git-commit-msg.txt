@@ -1,0 +1,23 @@
+feat(dashboard,mobile): fullscreen task detail panel + bigger bottom nav
+
+MY FOCUS card tap now opens a fullscreen modal panel covering the
+viewport instead of a small inline flip. The panel shows every field
+the user needs to focus and edit in place:
+
+  - Title (autosave-debounced 600ms)
+  - Description (autosave-debounced 800ms) — fetched onto DashboardTask
+  - Priority chips (HIGH / MED / LOW)
+  - Due date picker
+  - Status chips (Open / In Progress / Done)
+  - Unstar
+  - Full edit link (to /tasks?task=id for owner-reassign, etc.)
+  - Close / Done buttons + Escape key + backdrop click
+
+Body scroll locks while open. Slide-up + scale enter animation,
+gold-bordered panel, blurred backdrop.
+
+Bottom mobile nav sized up 20%: h-16 to h-[76px], icon w-5 h-5 to
+w-6 h-6, label text 10px to 12px. Easier to thumb-hit without
+fat-fingering adjacent tabs.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>

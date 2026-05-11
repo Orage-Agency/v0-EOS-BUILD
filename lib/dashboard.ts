@@ -75,6 +75,7 @@ export type UpcomingEvent = {
 export type DashboardTask = {
   id: string
   title: string
+  description?: string
   owner: string
   status: TaskStatus
   priority: TaskPriority
@@ -134,6 +135,7 @@ function mockToDashboardTask(t: MockTask): DashboardTask {
   return {
     id: t.id,
     title: t.title,
+    description: t.description ?? undefined,
     owner: t.owner,
     status: t.status,
     priority: t.priority,
@@ -148,6 +150,7 @@ function dbRowToDashboardTask(row: DbTask): DashboardTask {
   return {
     id: row.id,
     title: row.title,
+    description: row.description ?? undefined,
     owner: row.owner_id ?? "",
     status: row.status,
     priority: row.priority,
