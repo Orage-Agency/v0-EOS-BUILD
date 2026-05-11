@@ -193,7 +193,7 @@ export function TaskRow({ task }: { task: MockTask }) {
           options={clientTagOptions}
           size={7}
         />
-        <span className="truncate">{task.title}</span>
+        <span className="truncate uppercase">{task.title}</span>
         {rockLink && (
           <span className="font-display text-[9px] tracking-[0.15em] text-gold-500 bg-gold-500/10 px-1.5 py-0.5 rounded-sm shrink-0">
             {rockLink}
