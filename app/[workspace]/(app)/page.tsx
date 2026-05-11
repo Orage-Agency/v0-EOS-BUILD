@@ -17,7 +17,7 @@ import { TeamFocus } from "@/components/dashboard/team-focus"
 import { ScorecardPulse } from "@/components/dashboard/scorecard-pulse"
 import { RecentActivity } from "@/components/dashboard/recent-activity"
 import { Upcoming } from "@/components/dashboard/upcoming"
-import { MobileHomeRedirect } from "@/components/shell/mobile-home-redirect"
+import { MobileAskAI } from "@/components/dashboard/mobile-ask-ai"
 
 export const dynamic = "force-dynamic"
 
@@ -63,9 +63,8 @@ export default async function DashboardPage({
 
   return (
     <div className="relative z-10">
-      <MobileHomeRedirect />
       <DashboardHeader priorityCount={priorityCount} />
-      <div className="px-6 md:px-8 pt-5 pb-12">
+      <div className="px-4 md:px-8 pt-5 pb-28 md:pb-12">
         <SummaryGrid kpis={kpis} />
 
         <MyStarred tasks={starred} clientTagOptions={clientTagOptions} />
@@ -82,6 +81,7 @@ export default async function DashboardPage({
           </div>
         </div>
       </div>
+      <MobileAskAI />
     </div>
   )
 }

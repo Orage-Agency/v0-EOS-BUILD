@@ -22,7 +22,11 @@ export type AISettings = {
 }
 
 export const DEFAULT_AI_SETTINGS: AISettings = {
-  model: "openai/gpt-5-mini",
+  // Claude Haiku 4.5 — fastest tool-using model in the lineup. Chosen as
+  // the default for the Implementer because conversation feel ("ask and
+  // see something happen") matters more than top-of-line reasoning depth
+  // for this product's typical "make a task / update a rock" turns.
+  model: "anthropic/claude-haiku-4-5",
   contextScope: "full",
   voiceTone: "direct",
 }
