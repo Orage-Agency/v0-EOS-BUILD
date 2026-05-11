@@ -72,6 +72,7 @@ export function NewRockModal({
         avatarUrl: currentUser.avatarUrl,
         initials: deriveInitials(currentUser.name, currentUser.email),
         role: currentUser.role,
+        color: null,
       },
       ...members,
     ]

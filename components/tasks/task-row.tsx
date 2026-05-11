@@ -56,6 +56,7 @@ export function TaskRow({ task }: { task: MockTask }) {
           id: memberOwner.id,
           name: memberOwner.name,
           initials: memberOwner.initials || deriveInitials(memberOwner.name),
+          color: memberOwner.color ?? undefined,
         }
       : null)
 

@@ -170,10 +170,33 @@ export async function reactivateMembership(
   }
 }
 
+const VALID_AVATAR_COLORS = new Set([
+  "gold",
+  "white",
+  "pink",
+  "green",
+  "blue",
+  "purple",
+  "orange",
+  "teal",
+  "red",
+  "yellow",
+  "slate",
+  // legacy seed colors — kept so admins can still pick the original palette
+  "geo",
+  "bro",
+  "bar",
+  "ivy",
+])
+
 export async function updateProfile(
   workspaceSlug: string,
   userId: string,
-  patch: { fullName?: string | null; avatarUrl?: string | null },
+  patch: {
+    fullName?: string | null
+    avatarUrl?: string | null
+    avatarColor?: string | null
+  },
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const user = await requireUser(workspaceSlug)
@@ -186,6 +209,13 @@ export async function updateProfile(
     const dbPatch: Record<string, unknown> = {}
     if (patch.fullName !== undefined) dbPatch.full_name = patch.fullName?.trim() || null
     if (patch.avatarUrl !== undefined) dbPatch.avatar_url = patch.avatarUrl?.trim() || null
+    if (patch.avatarColor !== undefined) {
+      const next = patch.avatarColor?.trim().toLowerCase() || null
+      if (next !== null && !VALID_AVATAR_COLORS.has(next)) {
+        return { ok: false, error: "Invalid avatar color" }
+      }
+      dbPatch.avatar_color = next
+    }
     if (Object.keys(dbPatch).length === 0) {
       return { ok: false, error: "Nothing to update." }
     }

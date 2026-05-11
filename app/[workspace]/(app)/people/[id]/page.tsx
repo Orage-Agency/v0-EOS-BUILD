@@ -37,7 +37,7 @@ async function resolveRealUser(
       email: m.email,
       role: m.role as Role,
       isMaster: m.isMaster,
-      color: colorForId(m.id),
+      color: (m.color ?? colorForId(m.id)) as never,
     }
   }
 
@@ -66,6 +66,17 @@ async function resolveRealUser(
       email: string
       is_master: boolean
     }
+    let chosenColor: string | null = null
+    try {
+      const { data: c } = await sb
+        .from("profiles")
+        .select("avatar_color")
+        .eq("id", profile.id)
+        .maybeSingle()
+      chosenColor = (c as { avatar_color: string | null } | null)?.avatar_color ?? null
+    } catch {
+      /* column may be missing */
+    }
     const name = profile.full_name ?? profile.email
     return {
       id: profile.id,
@@ -74,7 +85,7 @@ async function resolveRealUser(
       email: profile.email,
       role: (ms as { role: string }).role as Role,
       isMaster: profile.is_master,
-      color: colorForId(profile.id),
+      color: (chosenColor ?? colorForId(profile.id)) as never,
     }
   } catch (err) {
     logError("PersonPage profile lookup failed", err)

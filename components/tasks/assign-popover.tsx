@@ -14,7 +14,7 @@ export type AssignTarget = {
   name: string
   initials: string
   role: string
-  color?: MockUser["color"]
+  color?: MockUser["color"] | string
 }
 
 function deriveInitials(name: string): string {
@@ -87,6 +87,7 @@ export function AssignPopover({
         name: m.name,
         initials: m.initials || deriveInitials(m.name),
         role: m.role,
+        color: m.color ?? undefined,
       }))
     : USERS.map((u) => ({
         id: u.id,

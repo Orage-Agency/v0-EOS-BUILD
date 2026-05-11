@@ -56,6 +56,7 @@ async function loadMembers(workspaceSlug: string): Promise<WorkspaceMember[]> {
           avatarUrl: null,
           isMaster: false,
           joinedAt: null,
+          color: null,
         } satisfies WorkspaceMember,
       ]
     })

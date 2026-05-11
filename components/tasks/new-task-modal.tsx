@@ -81,6 +81,7 @@ export function NewTaskModal({
         avatarUrl: currentUser.avatarUrl,
         initials: deriveInitials(currentUser.name, currentUser.email),
         role: "member",
+        color: null,
       },
       ...members,
     ]

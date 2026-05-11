@@ -474,6 +474,20 @@
 .avatar.bar { background: linear-gradient(135deg, #6faa6b, #3a5e37); }
 .avatar.ivy { background: linear-gradient(135deg, #c25450, #6e2e2c); }
 
+/* User-selectable palette. Each token maps to a CSS class set by the
+   profile color picker. Keep gradients soft so initials stay legible. */
+.avatar.gold   { background: linear-gradient(135deg, #d6a85f, #7a5a26); }
+.avatar.white  { background: linear-gradient(135deg, #f4f1ea, #c8c2b3); color: #2a2418; }
+.avatar.pink   { background: linear-gradient(135deg, #e58fb5, #8a3f63); }
+.avatar.green  { background: linear-gradient(135deg, #6faa6b, #2f5b2b); }
+.avatar.blue   { background: linear-gradient(135deg, #5a8faa, #1f4358); }
+.avatar.purple { background: linear-gradient(135deg, #9b7bd6, #4a2f7a); }
+.avatar.orange { background: linear-gradient(135deg, #e6925a, #8a3f1a); }
+.avatar.teal   { background: linear-gradient(135deg, #4fb5a8, #1f5e58); }
+.avatar.red    { background: linear-gradient(135deg, #d96460, #7a2a26); }
+.avatar.yellow { background: linear-gradient(135deg, #e6c860, #8a6f1a); color: #2a2418; }
+.avatar.slate  { background: linear-gradient(135deg, #8a92a6, #3a4252); }
+
 .avatar-online::after {
   content: '';
   position: absolute;

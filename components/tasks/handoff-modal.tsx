@@ -93,6 +93,7 @@ export function HandoffModal() {
       id: m.id,
       name: m.name,
       initials: m.initials || deriveInitials(m.name),
+      color: m.color ?? undefined,
     }
   }
 

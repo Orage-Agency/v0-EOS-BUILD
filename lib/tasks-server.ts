@@ -73,6 +73,7 @@ export type WorkspaceMember = {
   avatarUrl: string | null
   initials: string
   role: string
+  color: string | null
 }
 
 function deriveInitials(name: string, email: string): string {
@@ -122,6 +123,23 @@ export async function listWorkspaceMembers(
       }>).map((p) => [p.id, p]),
     )
 
+    // Best-effort: pull avatar_color separately so a missing column in an
+    // older env doesn't break the whole select.
+    let colorById = new Map<string, string | null>()
+    try {
+      const { data: colors } = await sb
+        .from("profiles")
+        .select("id, avatar_color")
+        .in("id", ids)
+      colorById = new Map(
+        ((colors ?? []) as Array<{ id: string; avatar_color: string | null }>).map(
+          (r) => [r.id, r.avatar_color],
+        ),
+      )
+    } catch {
+      /* ignore — column missing */
+    }
+
     return rows.flatMap((m) => {
       const p = byId.get(m.user_id)
       if (!p) return []
@@ -134,6 +152,7 @@ export async function listWorkspaceMembers(
           avatarUrl: p.avatar_url,
           initials: deriveInitials(p.full_name ?? "", p.email),
           role: m.role,
+          color: colorById.get(p.id) ?? null,
         } satisfies WorkspaceMember,
       ]
     })

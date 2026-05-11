@@ -16,6 +16,7 @@ export type WorkspaceMember = {
   avatarUrl: string | null
   isMaster: boolean
   joinedAt: string | null
+  color: string | null
 }
 
 export async function listWorkspaceMembers(workspaceSlug: string): Promise<WorkspaceMember[]> {
@@ -101,6 +102,21 @@ export async function listWorkspaceMembers(workspaceSlug: string): Promise<Works
       /* ignore — column missing */
     }
 
+    let colorById = new Map<string, string | null>()
+    try {
+      const { data: colors } = await sb
+        .from("profiles")
+        .select("id, avatar_color")
+        .in("id", ids)
+      colorById = new Map(
+        ((colors ?? []) as Array<{ id: string; avatar_color: string | null }>).map(
+          (r) => [r.id, r.avatar_color],
+        ),
+      )
+    } catch {
+      /* ignore — column missing */
+    }
+
     return rows.flatMap((m) => {
       const p = byId.get(m.user_id)
       if (!p) return []
@@ -113,6 +129,7 @@ export async function listWorkspaceMembers(workspaceSlug: string): Promise<Works
           avatarUrl: avatarById.get(p.id) ?? null,
           isMaster: masterById.get(p.id) ?? false,
           joinedAt: null,
+          color: colorById.get(p.id) ?? null,
         },
       ]
     })
