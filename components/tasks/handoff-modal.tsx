@@ -69,13 +69,35 @@ export function HandoffModal() {
       return
     }
     await confirm(context)
-    const toUser = getUser(pending.toUserId)
+    const toUser = resolveUser(pending.toUserId)
     toast(`HANDOFF · ${toUser?.name.split(" ")[0].toUpperCase() ?? "ASSIGNED"}`)
     setSubmitting(false)
   }
 
-  const from = pending ? getUser(pending.fromUserId) : null
-  const to = pending ? getUser(pending.toUserId) : null
+  const members = useTasksStore((s) => s.members)
+
+  function deriveInitials(name: string): string {
+    const parts = name.trim().split(/\s+/)
+    if (parts.length === 0) return "??"
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+  }
+
+  function resolveUser(id: string | undefined) {
+    if (!id) return null
+    const mock = getUser(id)
+    if (mock) return mock
+    const m = members.find((mm) => mm.id === id)
+    if (!m) return null
+    return {
+      id: m.id,
+      name: m.name,
+      initials: m.initials || deriveInitials(m.name),
+    }
+  }
+
+  const from = pending ? resolveUser(pending.fromUserId) : null
+  const to = pending ? resolveUser(pending.toUserId) : null
   const task = pending ? tasks.find((t) => t.id === pending.taskId) : null
 
   return (
