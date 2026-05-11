@@ -17,7 +17,7 @@ import { TeamFocus } from "@/components/dashboard/team-focus"
 import { ScorecardPulse } from "@/components/dashboard/scorecard-pulse"
 import { RecentActivity } from "@/components/dashboard/recent-activity"
 import { Upcoming } from "@/components/dashboard/upcoming"
-import { MobileAskAI } from "@/components/dashboard/mobile-ask-ai"
+import { DashboardImplementer } from "@/components/dashboard/dashboard-implementer"
 
 export const dynamic = "force-dynamic"
 
@@ -64,10 +64,13 @@ export default async function DashboardPage({
   return (
     <div className="relative z-10">
       <DashboardHeader priorityCount={priorityCount} />
-      <div className="px-4 md:px-8 pt-5 pb-28 md:pb-12">
-        <SummaryGrid kpis={kpis} />
-
+      <div className="px-4 md:px-8 pt-5 pb-24 md:pb-12">
+        {/* Hero: MY FOCUS first, then the Implementer right under it — the
+            two things the user said they need on open. */}
         <MyStarred tasks={starred} clientTagOptions={clientTagOptions} />
+        <DashboardImplementer />
+
+        <SummaryGrid kpis={kpis} />
 
         <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-5">
           <div>
@@ -81,7 +84,6 @@ export default async function DashboardPage({
           </div>
         </div>
       </div>
-      <MobileAskAI />
     </div>
   )
 }
