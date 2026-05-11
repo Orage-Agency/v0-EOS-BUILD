@@ -51,7 +51,11 @@ export function InlineDateEditor({
         ref={inputRef}
         type="date"
         value={draft}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => {
+          const next = e.target.value
+          setDraft(next)
+          if (next) commit(next)
+        }}
         onBlur={() => commit(draft)}
         onKeyDown={(e) => {
           if (e.key === "Enter") commit(draft)

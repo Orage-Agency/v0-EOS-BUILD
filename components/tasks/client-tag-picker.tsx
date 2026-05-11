@@ -110,7 +110,24 @@ export function ClientDot({
   size?: number
   withTitle?: boolean
 }) {
-  if (!clientWorkspaceId) return null
+  // Only render an indicator when the user actually operates in a multi-workspace
+  // (agency) context. Single-workspace users see no dot at all.
+  if (options.length === 0) return null
+
+  if (!clientWorkspaceId) {
+    return (
+      <span
+        aria-label="Internal task"
+        title={withTitle ? "Internal" : undefined}
+        className="inline-block rounded-full ring-1 ring-gold-500/60 shrink-0"
+        style={{
+          backgroundColor: "var(--gold-500, #B68039)",
+          width: `${size}px`,
+          height: `${size}px`,
+        }}
+      />
+    )
+  }
   const opt = options.find((o) => o.id === clientWorkspaceId)
   if (!opt) return null
   return (
