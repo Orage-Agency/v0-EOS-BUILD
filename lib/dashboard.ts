@@ -331,6 +331,159 @@ export async function getTodayPriorities(
   return all.filter(isOpen).slice(0, 5)
 }
 
+/** Top-N tasks the current user has starred (most-recent first). */
+export async function getStarredTasks(
+  workspaceSlug: string,
+  userId: string,
+  limit = 3,
+): Promise<DashboardTask[]> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    const sb = supabaseAdmin()
+    const { data: stars } = await sb
+      .from("task_stars")
+      .select("task_id, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(limit)
+    const ids = ((stars ?? []) as Array<{ task_id: string }>).map((s) => s.task_id)
+    if (ids.length === 0) return []
+    const { data: rows } = await sb
+      .from("tasks")
+      .select("*")
+      .eq("tenant_id", user.workspaceId)
+      .in("id", ids)
+    const byId = new Map(
+      ((rows as DbTask[] | null) ?? []).map((r) => [r.id, dbRowToDashboardTask(r)]),
+    )
+    return ids.flatMap((id) => {
+      const t = byId.get(id)
+      return t ? [t] : []
+    })
+  } catch {
+    return []
+  }
+}
+
+export type TeamFocusEntry = {
+  userId: string
+  name: string
+  email: string
+  initials: string
+  color: string | null
+  openTasks: number
+  current: { id: string; title: string; due: string; priority: TaskPriority } | null
+}
+
+/** What each teammate is currently working on. Picks the highest-priority,
+ *  earliest-due open task per member as their "current focus". */
+export async function getTeamFocus(workspaceSlug: string): Promise<TeamFocusEntry[]> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    const sb = supabaseAdmin()
+    const { data: memberships } = await sb
+      .from("workspace_memberships")
+      .select("user_id, role")
+      .eq("workspace_id", user.workspaceId)
+      .eq("status", "active")
+    const ids = ((memberships ?? []) as Array<{ user_id: string }>)
+      .map((m) => m.user_id)
+      .filter(Boolean)
+    if (ids.length === 0) return []
+
+    const { data: profiles } = await sb
+      .from("profiles")
+      .select("id, full_name, email")
+      .in("id", ids)
+    const profById = new Map(
+      ((profiles ?? []) as Array<{
+        id: string
+        full_name: string | null
+        email: string
+      }>).map((p) => [p.id, p]),
+    )
+
+    let colorById = new Map<string, string | null>()
+    try {
+      const { data: colors } = await sb
+        .from("profiles")
+        .select("id, avatar_color")
+        .in("id", ids)
+      colorById = new Map(
+        ((colors ?? []) as Array<{ id: string; avatar_color: string | null }>).map(
+          (r) => [r.id, r.avatar_color],
+        ),
+      )
+    } catch {
+      /* column missing */
+    }
+
+    const { data: openTasks } = await sb
+      .from("tasks")
+      .select("id, title, owner_id, due_date, priority, status")
+      .eq("tenant_id", user.workspaceId)
+      .in("owner_id", ids)
+      .not("status", "in", "(done,cancelled)")
+      .is("deleted_at", null)
+      .order("due_date", { ascending: true, nullsFirst: false })
+
+    const byOwner = new Map<string, Array<DbTask>>()
+    for (const t of ((openTasks as DbTask[] | null) ?? [])) {
+      if (!t.owner_id) continue
+      const arr = byOwner.get(t.owner_id) ?? []
+      arr.push(t)
+      byOwner.set(t.owner_id, arr)
+    }
+
+    const priorityRank: Record<TaskPriority, number> = {
+      high: 0,
+      med: 1,
+      low: 2,
+    }
+
+    return ids.flatMap((id): TeamFocusEntry[] => {
+      const p = profById.get(id)
+      if (!p) return []
+      const name = p.full_name ?? p.email
+      const tasks = byOwner.get(id) ?? []
+      const sorted = [...tasks].sort((a, b) => {
+        const pa = priorityRank[a.priority] ?? 3
+        const pb = priorityRank[b.priority] ?? 3
+        if (pa !== pb) return pa - pb
+        const da = a.due_date ?? "9999"
+        const db = b.due_date ?? "9999"
+        return da.localeCompare(db)
+      })
+      const top = sorted[0]
+      return [
+        {
+          userId: id,
+          name,
+          email: p.email,
+          initials: (() => {
+            const parts = name.trim().split(/\s+|@/).filter(Boolean)
+            if (parts.length === 0) return "??"
+            if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+            return (parts[0][0] + parts[1][0]).toUpperCase()
+          })(),
+          color: colorById.get(id) ?? null,
+          openTasks: tasks.length,
+          current: top
+            ? {
+                id: top.id,
+                title: top.title,
+                due: fmtDate(top.due_date),
+                priority: top.priority,
+              }
+            : null,
+        },
+      ]
+    }).sort((a, b) => b.openTasks - a.openTasks)
+  } catch {
+    return []
+  }
+}
+
 export async function getDashboardTasks(
   workspaceSlug: string,
   userId: string,

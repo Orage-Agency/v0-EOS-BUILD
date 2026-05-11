@@ -657,3 +657,55 @@ export async function bulkDeleteTasks(
     return { ok: false, count: 0, error: msg }
   }
 }
+
+// ---------------------------------------------------------- star task
+
+/** Toggle whether the current user has starred a task. Stars are private
+ *  per user and surface on the dashboard "MY STARRED" widget. */
+export async function toggleTaskStar(
+  workspaceSlug: string,
+  taskId: string,
+): Promise<{ ok: boolean; starred?: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    if (!isUuid(taskId)) return { ok: false, error: "Invalid task id" }
+    const sb = supabaseAdmin()
+    const { data: row } = await sb
+      .from("tasks")
+      .select("id")
+      .eq("id", taskId)
+      .eq("tenant_id", user.workspaceId)
+      .maybeSingle()
+    if (!row) return { ok: false, error: "Task not found" }
+
+    const { data: existing } = await sb
+      .from("task_stars")
+      .select("task_id")
+      .eq("task_id", taskId)
+      .eq("user_id", user.id)
+      .maybeSingle()
+
+    if (existing) {
+      const { error } = await sb
+        .from("task_stars")
+        .delete()
+        .eq("task_id", taskId)
+        .eq("user_id", user.id)
+      if (error) return { ok: false, error: error.message }
+      revalidatePath(`/${workspaceSlug}`)
+      revalidatePath(`/${workspaceSlug}/tasks`)
+      return { ok: true, starred: false }
+    } else {
+      const { error } = await sb
+        .from("task_stars")
+        .insert({ task_id: taskId, user_id: user.id })
+      if (error) return { ok: false, error: error.message }
+      revalidatePath(`/${workspaceSlug}`)
+      revalidatePath(`/${workspaceSlug}/tasks`)
+      return { ok: true, starred: true }
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error"
+    return { ok: false, error: msg }
+  }
+}

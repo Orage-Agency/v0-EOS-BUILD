@@ -43,6 +43,9 @@ export function TaskRow({ task }: { task: MockTask }) {
   const archiveOne = useTasksStore((s) => s.archiveOne)
   const members = useTasksStore((s) => s.members)
   const clientTagOptions = useTasksStore((s) => s.clientTagOptions)
+  const starred = useTasksStore((s) => s.starred)
+  const toggleStar = useTasksStore((s) => s.toggleStar)
+  const isStarred = starred.has(task.id)
 
   // Resolve owner: prefer real DB member, fall back to USERS mock for
   // legacy seeded ids. Display nothing if neither matches (better than
@@ -188,6 +191,15 @@ export function TaskRow({ task }: { task: MockTask }) {
         >
           {isDone && <IcCheck className="w-2.5 h-2.5 text-text-on-gold" />}
         </button>
+        {isStarred && (
+          <span
+            aria-hidden
+            title="Starred — pinned on your dashboard"
+            className="text-gold-400 text-[13px] leading-none shrink-0"
+          >
+            ★
+          </span>
+        )}
         <ClientDot
           clientWorkspaceId={task.clientWorkspaceId}
           options={clientTagOptions}
@@ -275,6 +287,26 @@ export function TaskRow({ task }: { task: MockTask }) {
       </div>
 
       <div className="md:opacity-0 md:group-hover:opacity-100 flex gap-1 transition-opacity">
+        <button
+          type="button"
+          aria-label={isStarred ? "Unstar task" : "Star task (pin to dashboard)"}
+          aria-pressed={isStarred}
+          title={isStarred ? "Unstar" : "Star — pin to your dashboard"}
+          onClick={(e) => {
+            e.stopPropagation()
+            toggleStar(task.id)
+          }}
+          className={cn(
+            "w-7 h-7 rounded-sm flex items-center justify-center transition-colors",
+            isStarred
+              ? "text-gold-400 opacity-100"
+              : "text-text-muted hover:bg-bg-2 hover:text-gold-400",
+          )}
+        >
+          <span aria-hidden className="text-[14px] leading-none">
+            {isStarred ? "★" : "☆"}
+          </span>
+        </button>
         <button
           type="button"
           aria-label="Archive task"

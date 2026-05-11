@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef } from "react"
+import { useSearchParams } from "next/navigation"
 import { useTasksStore } from "@/lib/tasks-store"
 import type { MockTask } from "@/lib/mock-data"
 import type { RockOption, WorkspaceMember } from "@/lib/tasks-server"
@@ -25,6 +26,7 @@ export function TasksShell({
   members,
   rocks,
   clientTagOptions,
+  starredIds,
   currentUser,
 }: {
   workspaceSlug: string
@@ -32,6 +34,7 @@ export function TasksShell({
   members: WorkspaceMember[]
   rocks: RockOption[]
   clientTagOptions: ClientTagOption[]
+  starredIds: string[]
   currentUser: CurrentUserCard
 }) {
   const view = useTasksStore((s) => s.view)
@@ -41,6 +44,7 @@ export function TasksShell({
   const setMembers = useTasksStore((s) => s.setMembers)
   const setClientTagOptions = useTasksStore((s) => s.setClientTagOptions)
   const setWorkspaceSlug = useTasksStore((s) => s.setWorkspaceSlug)
+  const setStarred = useTasksStore((s) => s.setStarred)
   const openNewTask = useTasksStore((s) => s.openNewTask)
   const quickAddRef = useRef<QuickAddHandle | null>(null)
 
@@ -67,6 +71,19 @@ export function TasksShell({
   useEffect(() => {
     setClientTagOptions(clientTagOptions)
   }, [clientTagOptions, setClientTagOptions])
+
+  useEffect(() => {
+    setStarred(starredIds)
+  }, [starredIds, setStarred])
+
+  // Allow deep-linking to a specific task drawer via ?task=<id> — used by
+  // the dashboard MY STARRED widget to "open and focus" a starred task.
+  const searchParams = useSearchParams()
+  const openTask = useTasksStore((s) => s.openTask)
+  useEffect(() => {
+    const id = searchParams?.get("task")
+    if (id) openTask(id)
+  }, [searchParams, openTask])
 
   return (
     <div className="flex h-full flex-col">

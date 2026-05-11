@@ -27,7 +27,9 @@ import {
   bulkUpdateTasks as bulkUpdateTasksAction,
   bulkDeleteTasks as bulkDeleteTasksAction,
   deleteTask as deleteTaskAction,
+  toggleTaskStar as toggleTaskStarAction,
 } from "@/app/actions/tasks"
+import { toast } from "sonner"
 
 export type Handoff = {
   id: string
@@ -58,6 +60,12 @@ type TasksState = {
    * cross-workspace client tag picker. Empty for single-workspace users. */
   clientTagOptions: ClientTagOption[]
   setClientTagOptions: (options: ClientTagOption[]) => void
+
+  /** Task ids the current user has starred. Drives the row star icon
+   *  and the dashboard "MY STARRED" widget hydration. */
+  starred: Set<string>
+  setStarred: (ids: string[]) => void
+  toggleStar: (id: string) => void
 
   currentUserId: string | null
   setCurrentUserId: (id: string) => void
@@ -129,6 +137,34 @@ export const useTasksStore = create<TasksState>((set, get) => ({
 
   clientTagOptions: [],
   setClientTagOptions: (clientTagOptions) => set({ clientTagOptions }),
+
+  starred: new Set(),
+  setStarred: (ids) => set({ starred: new Set(ids) }),
+  toggleStar: (id) => {
+    const prev = get().starred
+    const next = new Set(prev)
+    const willStar = !next.has(id)
+    if (willStar) next.add(id)
+    else next.delete(id)
+    set({ starred: next })
+    const { workspaceSlug } = get()
+    if (!workspaceSlug || !isDbId(id)) return
+    toggleTaskStarAction(workspaceSlug, id)
+      .then((res) => {
+        if (!res.ok) {
+          set({ starred: prev })
+          toast.error(`Couldn't update star: ${res.error ?? "save failed"}`)
+          return
+        }
+        toast(willStar ? "STARRED" : "UNSTARRED")
+      })
+      .catch((err) => {
+        set({ starred: prev })
+        toast.error(
+          `Couldn't update star: ${err instanceof Error ? err.message : "network error"}`,
+        )
+      })
+  },
 
   currentUserId: null,
   setCurrentUserId: (id) => set({ currentUserId: id }),

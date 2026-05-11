@@ -3,6 +3,7 @@ import {
   listActiveRocks,
   listTasksForWorkspace,
   listWorkspaceMembers,
+  listMyStarredTaskIds,
 } from "@/lib/tasks-server"
 import { listClientTagOptions } from "@/lib/client-tags"
 import { requireUser } from "@/lib/auth"
@@ -21,11 +22,12 @@ export default async function TasksPage({
 }) {
   const { workspace } = await params
   const user = await requireUser(workspace)
-  const [tasks, members, rocks, clientTagOptions] = await Promise.all([
+  const [tasks, members, rocks, clientTagOptions, starredIds] = await Promise.all([
     listTasksForWorkspace(workspace),
     listWorkspaceMembers(workspace),
     listActiveRocks(workspace),
     listClientTagOptions(workspace),
+    listMyStarredTaskIds(workspace, user.id),
   ])
 
   return (
@@ -35,6 +37,7 @@ export default async function TasksPage({
       members={members}
       rocks={rocks}
       clientTagOptions={clientTagOptions}
+      starredIds={starredIds}
       currentUser={{
         id: user.id,
         name: user.fullName ?? user.email,

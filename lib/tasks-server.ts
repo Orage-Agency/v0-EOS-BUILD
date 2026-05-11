@@ -21,6 +21,32 @@ import {
 import type { DbTask } from "@/lib/db-types"
 import { logError } from "@/lib/log"
 
+// ----------------------------------------------------------- starred
+
+/** Return the set of task ids the given user has starred in this
+ *  workspace. Used to hydrate the row star button. */
+export async function listMyStarredTaskIds(
+  workspaceSlug: string,
+  userId: string,
+): Promise<string[]> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    const sb = supabaseAdmin()
+    // Only return stars for tasks in this workspace — the join is via
+    // tasks.tenant_id so a leaked star id wouldn't surface cross-tenant.
+    const { data } = await sb
+      .from("task_stars")
+      .select("task_id, tasks!inner(tenant_id)")
+      .eq("user_id", userId)
+      .eq("tasks.tenant_id", user.workspaceId)
+      .order("created_at", { ascending: false })
+    return ((data ?? []) as Array<{ task_id: string }>).map((r) => r.task_id)
+  } catch (err) {
+    logError("listMyStarredTaskIds exception", err)
+    return []
+  }
+}
+
 // ----------------------------------------------------------- conversions
 
 function dbToMockTask(row: DbTask): MockTask {

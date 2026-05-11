@@ -5,6 +5,8 @@ import {
   getNudges,
   getRecentActivity,
   getScorecard,
+  getStarredTasks,
+  getTeamFocus,
   getUpcoming,
 } from "@/lib/dashboard"
 import { listClientTagOptions } from "@/lib/client-tags"
@@ -12,6 +14,8 @@ import { DashboardHeader } from "@/components/dashboard/page-header"
 import { SummaryGrid } from "@/components/dashboard/summary-grid"
 import { AINudgeStack } from "@/components/dashboard/ai-nudge-stack"
 import { TodayPriorities } from "@/components/dashboard/today-priorities"
+import { MyStarred } from "@/components/dashboard/my-starred"
+import { TeamFocus } from "@/components/dashboard/team-focus"
 import { ScorecardPulse } from "@/components/dashboard/scorecard-pulse"
 import { RecentActivity } from "@/components/dashboard/recent-activity"
 import { Upcoming } from "@/components/dashboard/upcoming"
@@ -26,16 +30,27 @@ export default async function DashboardPage({
 }) {
   const { workspace } = await params
   const user = await requireUser(workspace)
-  const [kpis, nudges, tasks, scorecard, activity, upcoming, clientTagOptions] =
-    await Promise.all([
-      getKpis(workspace),
-      getNudges(workspace),
-      getDashboardTasks(workspace, user.id),
-      getScorecard(workspace),
-      getRecentActivity(workspace),
-      getUpcoming(workspace),
-      listClientTagOptions(workspace),
-    ])
+  const [
+    kpis,
+    nudges,
+    tasks,
+    scorecard,
+    activity,
+    upcoming,
+    clientTagOptions,
+    starred,
+    teamFocus,
+  ] = await Promise.all([
+    getKpis(workspace),
+    getNudges(workspace),
+    getDashboardTasks(workspace, user.id),
+    getScorecard(workspace),
+    getRecentActivity(workspace),
+    getUpcoming(workspace),
+    listClientTagOptions(workspace),
+    getStarredTasks(workspace, user.id, 3),
+    getTeamFocus(workspace),
+  ])
 
   // Priorities = open tasks owned by the user that are due today,
   // overdue, or due in the next 3 days.
@@ -60,9 +75,11 @@ export default async function DashboardPage({
         <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-5">
           <div>
             <AINudgeStack nudges={nudges} />
+            <MyStarred tasks={starred} clientTagOptions={clientTagOptions} />
             <TodayPriorities tasks={tasks} clientTagOptions={clientTagOptions} />
           </div>
           <div>
+            <TeamFocus entries={teamFocus} />
             <ScorecardPulse metrics={scorecard} />
             <RecentActivity rows={activity} />
             <Upcoming events={upcoming} />
