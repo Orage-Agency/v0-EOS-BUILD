@@ -2,7 +2,6 @@ import { requireUser } from "@/lib/auth"
 import {
   getDashboardTasks,
   getKpis,
-  getNudges,
   getRecentActivity,
   getScorecard,
   getStarredTasks,
@@ -12,7 +11,6 @@ import {
 import { listClientTagOptions } from "@/lib/client-tags"
 import { DashboardHeader } from "@/components/dashboard/page-header"
 import { SummaryGrid } from "@/components/dashboard/summary-grid"
-import { AINudgeStack } from "@/components/dashboard/ai-nudge-stack"
 import { TodayPriorities } from "@/components/dashboard/today-priorities"
 import { MyStarred } from "@/components/dashboard/my-starred"
 import { TeamFocus } from "@/components/dashboard/team-focus"
@@ -32,7 +30,6 @@ export default async function DashboardPage({
   const user = await requireUser(workspace)
   const [
     kpis,
-    nudges,
     tasks,
     scorecard,
     activity,
@@ -42,7 +39,6 @@ export default async function DashboardPage({
     teamFocus,
   ] = await Promise.all([
     getKpis(workspace),
-    getNudges(workspace),
     getDashboardTasks(workspace, user.id),
     getScorecard(workspace),
     getRecentActivity(workspace),
@@ -72,10 +68,10 @@ export default async function DashboardPage({
       <div className="px-6 md:px-8 pt-5 pb-12">
         <SummaryGrid kpis={kpis} />
 
+        <MyStarred tasks={starred} clientTagOptions={clientTagOptions} />
+
         <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-5">
           <div>
-            <AINudgeStack nudges={nudges} />
-            <MyStarred tasks={starred} clientTagOptions={clientTagOptions} />
             <TodayPriorities tasks={tasks} clientTagOptions={clientTagOptions} />
           </div>
           <div>

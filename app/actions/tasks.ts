@@ -696,6 +696,18 @@ export async function toggleTaskStar(
       revalidatePath(`/${workspaceSlug}/tasks`)
       return { ok: true, starred: false }
     } else {
+      // Hard cap: each user can only have 3 stars at a time so the
+      // dashboard MY STARRED section stays a focus list, not a backlog.
+      const { count } = await sb
+        .from("task_stars")
+        .select("task_id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+      if ((count ?? 0) >= 3) {
+        return {
+          ok: false,
+          error: "You can only star 3 tasks at a time. Unstar one first.",
+        }
+      }
       const { error } = await sb
         .from("task_stars")
         .insert({ task_id: taskId, user_id: user.id })

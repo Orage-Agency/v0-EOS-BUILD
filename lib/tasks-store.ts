@@ -142,8 +142,14 @@ export const useTasksStore = create<TasksState>((set, get) => ({
   setStarred: (ids) => set({ starred: new Set(ids) }),
   toggleStar: (id) => {
     const prev = get().starred
+    const willStar = !prev.has(id)
+    // Client-side guard so the user gets instant feedback. Server enforces
+    // the same cap as the source of truth.
+    if (willStar && prev.size >= 3) {
+      toast.error("Max 3 starred — unstar one first.")
+      return
+    }
     const next = new Set(prev)
-    const willStar = !next.has(id)
     if (willStar) next.add(id)
     else next.delete(id)
     set({ starred: next })
