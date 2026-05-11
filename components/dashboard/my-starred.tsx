@@ -354,7 +354,7 @@ function FullscreenDetail({
   return (
     <div
       className={cn(
-        "fixed inset-0 z-[80] flex items-center justify-center p-3 md:p-8 transition-opacity duration-200",
+        "fixed inset-0 z-[80] flex items-center justify-center px-3 pt-3 pb-[100px] md:p-8 transition-opacity duration-200",
         entered ? "opacity-100" : "opacity-0",
       )}
       role="dialog"
@@ -363,6 +363,7 @@ function FullscreenDetail({
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
+      style={{ paddingBottom: "max(100px, calc(env(safe-area-inset-bottom) + 90px))" }}
     >
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/70 backdrop-blur-md" aria-hidden />
@@ -370,7 +371,7 @@ function FullscreenDetail({
       {/* Panel */}
       <div
         className={cn(
-          "relative z-10 w-full max-w-[640px] h-[calc(100dvh-24px)] md:h-auto md:max-h-[88vh] flex flex-col rounded-lg border-2 border-gold-500/80 bg-gradient-to-br from-bg-2 to-bg-3 shadow-orage-lg shadow-gold/30 overflow-hidden transition-transform duration-300 ease-out",
+          "relative z-10 w-full max-w-[640px] h-full md:h-auto md:max-h-[88vh] flex flex-col rounded-lg border-2 border-gold-500/80 bg-gradient-to-br from-bg-2 to-bg-3 shadow-orage-lg shadow-gold/30 overflow-hidden transition-transform duration-300 ease-out",
           entered ? "translate-y-0 scale-100" : "translate-y-4 scale-[0.96]",
         )}
       >
