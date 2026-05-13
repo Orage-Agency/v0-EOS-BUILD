@@ -35,6 +35,7 @@ export type Action =
   | "people:invite"
   | "people:role"
   | "people:suspend"
+  | "people:remove"
   | "l10:write"
   | "l10:delete"
 
@@ -64,6 +65,7 @@ const MATRIX: Record<Action, ReadonlyArray<Role>> = {
   "people:invite": ["founder", "admin", "leader"],
   "people:role": ["founder", "admin"],
   "people:suspend": ["founder", "admin"],
+  "people:remove": ["founder", "admin"],
   "l10:write": ["founder", "admin", "leader"],
   "l10:delete": ["founder", "admin"],
 }

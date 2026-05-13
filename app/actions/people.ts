@@ -148,6 +148,54 @@ export async function suspendMembership(
   }
 }
 
+/**
+ * Permanently remove a member from the workspace. Deletes the
+ * `workspace_memberships` row (the auth user itself is untouched, so they can
+ * still be re-invited later). Founders cannot be removed — they must be
+ * downgraded first. Self-removal is blocked too: founders/admins use the
+ * dedicated "leave workspace" flow.
+ */
+export async function removeMembership(
+  workspaceSlug: string,
+  membershipId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const user = await requireUser(workspaceSlug)
+    requirePermission(user, "people:remove")
+    if (!isUuid(membershipId)) return { ok: false, error: "Invalid membership id" }
+
+    const sb = supabaseAdmin()
+    const { data: target, error: lookupErr } = await sb
+      .from("workspace_memberships")
+      .select("id, user_id, role")
+      .eq("id", membershipId)
+      .eq("workspace_id", user.workspaceId)
+      .maybeSingle()
+
+    if (lookupErr) return { ok: false, error: lookupErr.message }
+    if (!target) return { ok: false, error: "Member not found in this workspace." }
+    if (target.user_id === user.id) {
+      return { ok: false, error: "You cannot remove yourself." }
+    }
+    if (target.role === "founder") {
+      return { ok: false, error: "Cannot remove a founder. Change their role first." }
+    }
+
+    const { error } = await sb
+      .from("workspace_memberships")
+      .delete()
+      .eq("id", membershipId)
+      .eq("workspace_id", user.workspaceId)
+
+    if (error) return { ok: false, error: error.message }
+    revalidatePeople(workspaceSlug)
+    revalidatePath(`/${workspaceSlug}/settings/members`)
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" }
+  }
+}
+
 export async function reactivateMembership(
   workspaceSlug: string,
   userId: string,
