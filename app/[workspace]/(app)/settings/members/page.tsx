@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
 import { createInvite, resendInvite, revokeInvite } from "@/app/actions/auth"
+import { removeMembership } from "@/app/actions/people"
 import { createClient } from "@/lib/supabase/client"
 
 type Member = {
@@ -143,6 +144,22 @@ export default function MembersPage() {
       return
     }
     alert("Invite email re-sent.")
+  }
+
+  async function handleRemoveMember(membershipId: string, label: string) {
+    if (
+      !confirm(
+        `Remove ${label} from this workspace? They will lose access immediately. You can re-invite them later.`,
+      )
+    ) {
+      return
+    }
+    const result = await removeMembership(workspaceSlug, membershipId)
+    if (!result.ok) {
+      alert(result.error ?? "Could not remove member.")
+      return
+    }
+    loadData()
   }
 
   return (
@@ -392,6 +409,21 @@ export default function MembersPage() {
               >
                 {m.role}
               </div>
+              {m.role !== "founder" && (
+                <button
+                  onClick={() =>
+                    handleRemoveMember(
+                      m.id,
+                      m.user?.full_name ?? m.user?.email ?? "this member",
+                    )
+                  }
+                  data-testid={`remove-member-${m.id}`}
+                  className="px-3 py-1 text-[10px] uppercase tracking-[0.1em] text-[#C25450] hover:bg-[rgba(194,84,80,0.1)] rounded-[2px]"
+                  style={{ fontFamily: "Bebas Neue" }}
+                >
+                  Remove
+                </button>
+              )}
             </div>
           ))}
         </div>
