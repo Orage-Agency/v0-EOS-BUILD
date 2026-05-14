@@ -30,6 +30,9 @@ export function SeatDrawer() {
   const addRole = useOrgChartStore((s) => s.addRole)
   const removeRole = useOrgChartStore((s) => s.removeRole)
   const updateTitle = useOrgChartStore((s) => s.updateTitle)
+  const openHire = useOrgChartStore((s) => s.openHire)
+  const addSeat = useOrgChartStore((s) => s.addSeat)
+  const deleteSeat = useOrgChartStore((s) => s.deleteSeat)
 
   useEffect(() => {
     if (!seatId) return
@@ -119,9 +122,25 @@ export function SeatDrawer() {
               ) : (
                 <div className="mb-6 p-3.5 bg-warning/[0.06] border border-warning/40 rounded-sm text-[12px] text-text-secondary">
                   <strong className="font-display tracking-[0.15em] text-warning text-[10px] block mb-1">
-                    SEAT VACANT
+                    SEAT OPEN · NO PERSON ASSIGNED
                   </strong>
-                  Click any empty seat tile to open the hire flow.
+                  Define accountabilities below, then assign someone when ready.
+                  <div className="mt-2.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        close()
+                        openHire(seat.id)
+                      }}
+                      className="px-3 py-1.5 rounded-sm text-[11px] font-semibold text-text-on-gold transition-shadow hover:shadow-gold"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, var(--gold-500), var(--gold-400))",
+                      }}
+                    >
+                      Fill this seat
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -272,6 +291,47 @@ export function SeatDrawer() {
                   </section>
                 </>
               ) : null}
+
+              <section className="mt-2 pt-5 border-t border-border-orage">
+                <header className="font-display text-[11px] tracking-[0.2em] text-gold-500 uppercase mb-2.5">
+                  SEAT MANAGEMENT
+                </header>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newId = addSeat({
+                        title: "NEW SEAT",
+                        parentId: seat.id,
+                      })
+                      toast("CHILD SEAT ADDED")
+                      // jump straight into editing the new seat
+                      useOrgChartStore.getState().openDrawer(newId)
+                    }}
+                    className="px-3 py-1.5 rounded-sm border border-dashed border-border-orage text-[11px] text-text-secondary font-display tracking-[0.12em] hover:border-gold-500 hover:text-gold-400 transition-colors"
+                  >
+                    + ADD CHILD SEAT
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (
+                        typeof window !== "undefined" &&
+                        !window.confirm(
+                          `Delete "${seat.title}"? Any seats reporting to it will also be removed.`,
+                        )
+                      ) {
+                        return
+                      }
+                      deleteSeat(seat.id)
+                      toast("SEAT DELETED")
+                    }}
+                    className="px-3 py-1.5 rounded-sm border border-danger/40 text-[11px] text-danger font-display tracking-[0.12em] hover:bg-danger/10 transition-colors ml-auto"
+                  >
+                    ✕ DELETE SEAT
+                  </button>
+                </div>
+              </section>
             </div>
           </>
         ) : null}

@@ -27,7 +27,8 @@ export function OrgChartShell() {
   const setView = useOrgChartStore((s) => s.setView)
   const setFilter = useOrgChartStore((s) => s.setFilter)
   const seats = useOrgChartStore((s) => s.seats)
-  const openNew = useOrgChartStore((s) => s.openNewSeat)
+  const addSeat = useOrgChartStore((s) => s.addSeat)
+  const openDrawer = useOrgChartStore((s) => s.openDrawer)
 
   const filled = seats.filter((s) => !s.vacant).length
   const empty = seats.length - filled
@@ -73,8 +74,9 @@ export function OrgChartShell() {
           <button
             type="button"
             onClick={() => {
-              openNew()
+              const id = addSeat({ title: "NEW SEAT", parentId: null })
               toast("NEW SEAT")
+              openDrawer(id)
             }}
             className="px-4 py-2 rounded-sm text-[12px] font-semibold flex items-center gap-1.5 transition-shadow text-text-on-gold hover:shadow-gold"
             style={{

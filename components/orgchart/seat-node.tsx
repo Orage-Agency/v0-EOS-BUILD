@@ -29,12 +29,10 @@ const GWC_LABEL: Record<"yes" | "no" | "pending", string> = {
 
 export function SeatNode({ seat }: { seat: Seat }) {
   const openDrawer = useOrgChartStore((s) => s.openDrawer)
-  const openHire = useOrgChartStore((s) => s.openHire)
   const user = userBySeat(seat)
 
   function onClick() {
-    if (seat.vacant) openHire(seat.id)
-    else openDrawer(seat.id)
+    openDrawer(seat.id)
   }
 
   return (
@@ -107,19 +105,30 @@ export function SeatNode({ seat }: { seat: Seat }) {
 
       <footer className="flex items-center gap-2 px-3.5 py-2 border-t border-border-orage">
         {seat.vacant ? (
-          <>
-            <span className="font-display text-[10px] tracking-[0.18em] text-info">
-              {seat.hiringStatus === "hiring" ? "▲ HIRING" : "▲ HIRE"} ·{" "}
-              {seat.hiringQuarter}
-            </span>
-            <span className="ml-auto font-mono text-[10px]">
-              {seat.candidates ? (
-                <span className="text-info">{seat.candidates} CANDIDATES</span>
-              ) : (
-                <span className="text-text-muted">SOURCING</span>
-              )}
-            </span>
-          </>
+          seat.hiringStatus || seat.hiringQuarter ? (
+            <>
+              <span className="font-display text-[10px] tracking-[0.18em] text-info">
+                {seat.hiringStatus === "hiring" ? "▲ HIRING" : "▲ HIRE"}
+                {seat.hiringQuarter ? ` · ${seat.hiringQuarter}` : ""}
+              </span>
+              <span className="ml-auto font-mono text-[10px]">
+                {seat.candidates ? (
+                  <span className="text-info">{seat.candidates} CANDIDATES</span>
+                ) : (
+                  <span className="text-text-muted">SOURCING</span>
+                )}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="font-display text-[10px] tracking-[0.18em] text-text-muted">
+                ◇ OPEN SEAT
+              </span>
+              <span className="ml-auto font-mono text-[10px] text-text-muted">
+                {seat.roles.length} {seat.roles.length === 1 ? "ROLE" : "ROLES"}
+              </span>
+            </>
+          )
         ) : (
           <>
             <div className="flex gap-0.5">
