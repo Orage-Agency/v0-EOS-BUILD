@@ -12,7 +12,11 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import type React from "react"
 import { toast } from "sonner"
 import { SeatNode } from "./seat-node"
-import { useOrgChartStore, type Seat } from "@/lib/orgchart-store"
+import {
+  isSeatExpanded,
+  useOrgChartStore,
+  type Seat,
+} from "@/lib/orgchart-store"
 
 const MIN_ZOOM = 25
 const FIT_PADDING = 48 // px breathing room around the tree
@@ -208,12 +212,22 @@ export function TreeView() {
 
 function SubTree({ seat, seats }: { seat: Seat; seats: Seat[] }) {
   const children = seats.filter((s) => s.parentId === seat.id)
+  const expandedMap = useOrgChartStore((s) => s.expanded)
+  const toggleExpand = useOrgChartStore((s) => s.toggleExpand)
+  const expanded = isSeatExpanded(seat, expandedMap)
+  const hasChildren = children.length > 0
 
   return (
     <div className="flex flex-col items-center">
-      <SeatNode seat={seat} />
+      <SeatNode
+        seat={seat}
+        hasChildren={hasChildren}
+        childCount={children.length}
+        expanded={expanded}
+        onToggle={() => toggleExpand(seat.id)}
+      />
 
-      {children.length > 0 ? (
+      {hasChildren && expanded ? (
         <>
           {/* trunk from this seat down to the children's connector bar */}
           <div className="w-px h-8 bg-border-strong" aria-hidden />

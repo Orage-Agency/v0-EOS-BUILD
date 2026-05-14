@@ -280,6 +280,11 @@ type State = {
 
   // incremented to request a "fit to screen" zoom recalc in the TreeView
   fitSignal: number
+
+  // per-seat expand/collapse override. missing key = use defaultExpanded(seat).
+  // Department heads start collapsed so the chart opens with just the
+  // leadership backbone visible.
+  expanded: Record<string, boolean>
 }
 
 type Actions = {
@@ -287,6 +292,9 @@ type Actions = {
   setFilter: (f: State["filter"]) => void
   setZoom: (z: number) => void
   requestFit: () => void
+  toggleExpand: (seatId: string) => void
+  expandAll: () => void
+  collapseToLeadership: () => void
 
   openDrawer: (id: string) => void
   closeDrawer: () => void
@@ -323,12 +331,40 @@ export const useOrgChartStore = create<State & Actions>((set, get) => ({
   hirePath: "start_hiring",
   newSeatOpen: false,
   fitSignal: 0,
+  expanded: {},
 
   setView: (view) => set({ view }),
   setFilter: (filter) => set({ filter }),
   setZoom: (zoom) =>
     set({ zoom: Math.max(25, Math.min(150, Math.round(zoom))) }),
   requestFit: () => set((s) => ({ fitSignal: s.fitSignal + 1 })),
+
+  toggleExpand: (seatId) =>
+    set((s) => {
+      const seat = s.seats.find((x) => x.id === seatId)
+      if (!seat) return s
+      const current =
+        seatId in s.expanded ? s.expanded[seatId] : defaultExpanded(seat)
+      return {
+        expanded: { ...s.expanded, [seatId]: !current },
+        // re-fit on every toggle so the chart resizes around the new shape
+        fitSignal: s.fitSignal + 1,
+      }
+    }),
+
+  expandAll: () =>
+    set((s) => {
+      const next: Record<string, boolean> = {}
+      for (const seat of s.seats) next[seat.id] = true
+      return { expanded: next, fitSignal: s.fitSignal + 1 }
+    }),
+
+  collapseToLeadership: () =>
+    set((s) => {
+      const next: Record<string, boolean> = {}
+      for (const seat of s.seats) next[seat.id] = defaultExpanded(seat)
+      return { expanded: next, fitSignal: s.fitSignal + 1 }
+    }),
 
   openDrawer: (id) => set({ drawerSeatId: id }),
   closeDrawer: () => set({ drawerSeatId: null }),
@@ -430,7 +466,13 @@ export const useOrgChartStore = create<State & Actions>((set, get) => ({
       createdAt: today,
       daysActive: 0,
     }
-    set((s) => ({ seats: [...s.seats, newSeat] }))
+    set((s) => ({
+      seats: [...s.seats, newSeat],
+      // auto-expand the parent so the new child is immediately visible
+      expanded:
+        parentId == null ? s.expanded : { ...s.expanded, [parentId]: true },
+      fitSignal: s.fitSignal + 1,
+    }))
     return id
   },
 
@@ -479,6 +521,23 @@ export const useOrgChartStore = create<State & Actions>((set, get) => ({
 }))
 
 // ---------- helpers --------------------------------------------------------
+/**
+ * A seat's default expand state when the user hasn't toggled it.
+ * Department heads start collapsed — the chart opens to just the
+ * leadership backbone (Visionary → Integrator → 4 heads). Everything
+ * else starts expanded.
+ */
+export function defaultExpanded(seat: Seat): boolean {
+  return seat.kind !== "department"
+}
+
+export function isSeatExpanded(
+  seat: Seat,
+  expanded: Record<string, boolean>,
+): boolean {
+  return seat.id in expanded ? expanded[seat.id] : defaultExpanded(seat)
+}
+
 export function userBySeat(seat: Seat): MockUser | undefined {
   if (!seat.personId) return undefined
   return USERS.find((u) => u.id === seat.personId)

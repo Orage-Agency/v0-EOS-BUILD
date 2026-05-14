@@ -1,10 +1,17 @@
 "use client"
 
 /**
- * One seat card in the accountability chart. Renders both filled
- * and vacant states. Click filled → drawer; click empty → hire modal.
+ * One seat card in the accountability chart. Renders filled / vacant /
+ * leaf / parent states.
+ *
+ * Click behavior:
+ *   - Seat has children: primary click toggles expand/collapse of the
+ *     subtree below it. The pencil icon (top-right) opens the drawer
+ *     for role editing.
+ *   - Seat is a leaf: primary click opens the drawer.
  */
 
+import type React from "react"
 import { OrageAvatar } from "@/components/orage/avatar"
 import {
   type Seat,
@@ -27,21 +34,54 @@ const GWC_LABEL: Record<"yes" | "no" | "pending", string> = {
   pending: "?",
 }
 
-export function SeatNode({ seat }: { seat: Seat }) {
+type Props = {
+  seat: Seat
+  hasChildren?: boolean
+  childCount?: number
+  expanded?: boolean
+  onToggle?: () => void
+}
+
+export function SeatNode({
+  seat,
+  hasChildren = false,
+  childCount = 0,
+  expanded = true,
+  onToggle,
+}: Props) {
   const openDrawer = useOrgChartStore((s) => s.openDrawer)
   const user = userBySeat(seat)
 
-  function onClick() {
-    openDrawer(seat.id)
+  function handleCardClick() {
+    if (hasChildren && onToggle) onToggle()
+    else openDrawer(seat.id)
   }
 
+  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault()
+      handleCardClick()
+    }
+  }
+
+  const primaryLabel = hasChildren
+    ? expanded
+      ? `Collapse team under ${seat.title}`
+      : `Expand team under ${seat.title}`
+    : seat.vacant
+      ? `Open empty seat: ${seat.title}`
+      : `Open ${seat.title}`
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={seat.vacant ? `Fill empty seat: ${seat.title}` : `Open ${seat.title}`}
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={handleCardClick}
+      onKeyDown={handleKeyDown}
+      aria-label={primaryLabel}
+      aria-expanded={hasChildren ? expanded : undefined}
       className={cn(
-        "group relative w-[240px] text-left rounded-md border-[1.5px] overflow-hidden transition-all bg-bg-3",
+        "group relative w-[240px] text-left rounded-md border-[1.5px] overflow-hidden transition-all bg-bg-3 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500",
         seat.vacant
           ? "border-dashed border-border-orage bg-transparent hover:bg-gold-500/5 hover:border-gold-500"
           : "border-border-orage hover:border-gold-500 hover:-translate-y-0.5 hover:shadow-gold",
@@ -82,12 +122,34 @@ export function SeatNode({ seat }: { seat: Seat }) {
             {seat.title}
           </div>
         </div>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            openDrawer(seat.id)
+          }}
+          aria-label={`Edit ${seat.title}`}
+          title="Edit accountabilities"
+          className="opacity-0 group-hover:opacity-100 focus:opacity-100 w-6 h-6 rounded-sm flex items-center justify-center text-text-muted hover:bg-gold-500/15 hover:text-gold-400 transition-opacity"
+        >
+          <svg
+            viewBox="0 0 16 16"
+            width="12"
+            height="12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            aria-hidden
+          >
+            <path d="M11.5 2.5l2 2L5 13H3v-2L11.5 2.5z" />
+          </svg>
+        </button>
       </header>
 
       <div className="px-3.5 py-2.5 flex flex-col gap-1 min-h-[74px]">
         {seat.roles.length === 0 ? (
           <p className="text-[10px] text-text-muted italic leading-snug">
-            Click to add accountabilities…
+            Click pencil to add accountabilities…
           </p>
         ) : (
           seat.roles.slice(0, 3).map((r, i) => (
@@ -171,6 +233,27 @@ export function SeatNode({ seat }: { seat: Seat }) {
           </>
         )}
       </footer>
-    </button>
+
+      {hasChildren ? (
+        <div
+          className={cn(
+            "flex items-center justify-center gap-1.5 px-3 py-1.5 border-t font-display text-[10px] tracking-[0.15em] transition-colors",
+            expanded
+              ? "border-border-orage text-gold-400 bg-gold-500/[0.04]"
+              : "border-dashed border-border-orage text-text-secondary bg-bg-2/40",
+          )}
+          aria-hidden
+        >
+          <span className="text-gold-400 text-[11px] leading-none">
+            {expanded ? "▾" : "▸"}
+          </span>
+          <span>
+            {expanded
+              ? `HIDE ${childCount} ${childCount === 1 ? "REPORT" : "REPORTS"}`
+              : `${childCount} ${childCount === 1 ? "REPORT" : "REPORTS"}`}
+          </span>
+        </div>
+      ) : null}
+    </div>
   )
 }
