@@ -277,12 +277,16 @@ type State = {
   hireSeatId: string | null
   hirePath: HirePath
   newSeatOpen: boolean
+
+  // incremented to request a "fit to screen" zoom recalc in the TreeView
+  fitSignal: number
 }
 
 type Actions = {
   setView: (v: State["view"]) => void
   setFilter: (f: State["filter"]) => void
   setZoom: (z: number) => void
+  requestFit: () => void
 
   openDrawer: (id: string) => void
   closeDrawer: () => void
@@ -318,11 +322,13 @@ export const useOrgChartStore = create<State & Actions>((set, get) => ({
   hireSeatId: null,
   hirePath: "start_hiring",
   newSeatOpen: false,
+  fitSignal: 0,
 
   setView: (view) => set({ view }),
   setFilter: (filter) => set({ filter }),
   setZoom: (zoom) =>
-    set({ zoom: Math.max(50, Math.min(150, Math.round(zoom))) }),
+    set({ zoom: Math.max(25, Math.min(150, Math.round(zoom))) }),
+  requestFit: () => set((s) => ({ fitSignal: s.fitSignal + 1 })),
 
   openDrawer: (id) => set({ drawerSeatId: id }),
   closeDrawer: () => set({ drawerSeatId: null }),

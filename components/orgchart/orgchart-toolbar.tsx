@@ -19,6 +19,7 @@ export function OrgChartToolbar() {
   const view = useOrgChartStore((s) => s.view)
   const zoom = useOrgChartStore((s) => s.zoom)
   const setZoom = useOrgChartStore((s) => s.setZoom)
+  const requestFit = useOrgChartStore((s) => s.requestFit)
 
   return (
     <div className="px-8 py-3.5 flex items-center gap-2 border-b border-border-orage bg-bg-1 flex-wrap">
@@ -63,8 +64,9 @@ export function OrgChartToolbar() {
           </button>
           <button
             type="button"
-            onClick={() => setZoom(100)}
+            onClick={() => requestFit()}
             aria-label="Fit to screen"
+            title="Fit to screen"
             className="w-[22px] h-[22px] rounded-sm flex items-center justify-center text-text-muted hover:bg-bg-4 hover:text-gold-400 transition-colors"
           >
             ⛶

@@ -84,18 +84,24 @@ export function SeatNode({ seat }: { seat: Seat }) {
         </div>
       </header>
 
-      <div className="px-3.5 py-2.5 flex flex-col gap-1">
-        {seat.roles.slice(0, 3).map((r, i) => (
-          <p
-            key={i}
-            className="flex items-start gap-1.5 text-[11px] text-text-secondary leading-snug"
-          >
-            <span aria-hidden className="text-gold-500 leading-snug">
-              ▸
-            </span>
-            <span className="line-clamp-1">{r}</span>
+      <div className="px-3.5 py-2.5 flex flex-col gap-1 min-h-[74px]">
+        {seat.roles.length === 0 ? (
+          <p className="text-[10px] text-text-muted italic leading-snug">
+            Click to add accountabilities…
           </p>
-        ))}
+        ) : (
+          seat.roles.slice(0, 3).map((r, i) => (
+            <p
+              key={i}
+              className="flex items-start gap-1.5 text-[11px] text-text-secondary leading-snug"
+            >
+              <span aria-hidden className="text-gold-500 leading-snug">
+                ▸
+              </span>
+              <span className="line-clamp-1">{r}</span>
+            </p>
+          ))
+        )}
         {seat.roles.length > 3 ? (
           <p className="text-[9px] text-text-muted text-center pt-1 font-display tracking-[0.15em]">
             + {seat.roles.length - 3} MORE {seat.roles.length - 3 === 1 ? "ROLE" : "ROLES"}
